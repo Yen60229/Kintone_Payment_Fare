@@ -1,0 +1,281 @@
+'use strict';
+
+// 測試：payment_request_submit_20260506.js 的存檔驗證（749 交通費請款單）
+//   公司名稱必填、付款方式必選且只能一種、子表格每列費用歸屬必填且要在「使用中」代碼內、
+//   發票號碼重複檢查（查本 App：狀態 not in 表單作廢、發票號碼記錄 like、排除自己）、
+//   表單作廢時跳過、驗證失敗視窗。
+// 單獨執行：node tests/submit_validation.test.cjs
+
+const assert = require('assert');
+const { createEnv, createRunner, readSrc } = require('./lib/pr_env.cjs');
+
+const { check, done } = createRunner('submit_validation.test.cjs');
+
+/**
+ * 載入 main + submit。validCodes 為「使用中」費用歸屬代碼；invoiceHits 為發票重複查詢要回的筆數。
+ * 回傳 env 與 api 呼叫紀錄。
+ */
+const loadSubmit = async ({ validCodes = ['AJ30', 'AJ31'], invoiceHits = 0, failCostCenter = false, failInvoice = false } = {}) => {
+  const calls = [];
+  const env = createEnv({
+    appId: 749,
+    api: (url, method, params) => {
+      calls.push({ url, method, params });
+      const apps = env.window.PR_CONFIG.APPS;
+      if (params.app === apps.COST_CENTER || params.id || url.includes('cursor')) {
+        if (failCostCenter) return Promise.reject(new Error('cc down'));
+        if (method === 'POST') return Promise.resolve({ id: 'c' });
+        const CC = env.window.PR_CONFIG.REF_FIELDS.COST_CENTER;
+        return Promise.resolve({ records: validCodes.map((code) => ({ [CC.CODE]: { value: code } })), next: false });
+      }
+      if (failInvoice) return Promise.reject(new Error('invoice down'));
+      return Promise.resolve({ records: Array.from({ length: invoiceHits }, () => ({ $id: { value: '1' } })) });
+    },
+  });
+  env.load('payment_request_config.js');
+  env.load('payment_request_main_20260521.js');
+  env.load('payment_request_submit_20260506.js');
+  return { env, calls, C: env.window.PR_CONFIG, F: env.window.PR_CONFIG.FIELDS };
+};
+
+const goodRecord = (F, over = {}) => {
+  const T = F.TRAFFIC_TABLE;
+  return {
+    [F.COMPANY_NAME]: { value: 'ＮＸ臺灣國際物流' },
+    [F.PAY_METHOD]: { value: ['電匯'] },
+    [F.INVOICE_AGG]: { value: '' },
+    [T.CODE]: { value: [{ value: { [T.COLS.EXPENSE]: { value: 'AJ30' } } }] },
+    ...over,
+  };
+};
+
+const withRows = (F, codes) => {
+  const T = F.TRAFFIC_TABLE;
+  return { [T.CODE]: { value: codes.map((c) => ({ value: { [T.COLS.EXPENSE]: { value: c } } })) } };
+};
+
+const submit = (env, record, type = 'create') => env.fire(`app.record.${type}.submit`, { record });
+const popupText = (env) => env.swalCalls.map((c) => c.html || c.text || '').join('\n').replace(/<[^>]+>/g, ' ');
+const plainText = (html) => html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+
+// ── 通過與基本必填 ─────────────────────────────────────────────────────────
+check('全部合法 → 不擋存檔、不跳視窗', async () => {
+  const { env, F } = await loadSubmit();
+  const ev = await submit(env, goodRecord(F));
+  assert.strictEqual(ev.error, undefined);
+  assert.strictEqual(env.swalCalls.length, 0);
+});
+
+check('新增與編輯畫面的存檔都有註冊', async () => {
+  const { env } = await loadSubmit();
+  const types = env.registeredTypes();
+  assert.ok(types.includes('app.record.create.submit'));
+  assert.ok(types.includes('app.record.edit.submit'));
+});
+
+check('公司名稱空白 → 擋下並提示', async () => {
+  const { env, F } = await loadSubmit();
+  const ev = await submit(env, goodRecord(F, { [F.COMPANY_NAME]: { value: '' } }));
+  assert.strictEqual(ev.error, '儲存失敗');
+  assert.ok(plainText(env.swalCalls[0].html).includes('需填寫公司名稱欄位'));
+});
+
+check('付款方式：沒選 → 「需選擇一種付款方式」；選兩種 → 「限選一種付款方式」；選一種 → 通過', async () => {
+  const { env, F } = await loadSubmit();
+  const none = await submit(env, goodRecord(F, { [F.PAY_METHOD]: { value: [] } }));
+  assert.strictEqual(none.error, '儲存失敗');
+  assert.ok(plainText(env.swalCalls.at(-1).html).includes('需選擇一種付款方式'));
+
+  const two = await submit(env, goodRecord(F, { [F.PAY_METHOD]: { value: ['現金', '電匯'] } }));
+  assert.strictEqual(two.error, '儲存失敗');
+  assert.ok(plainText(env.swalCalls.at(-1).html).includes('限選一種付款方式'));
+
+  for (const way of ['現金', '電匯', '票據', '部門零用金']) {
+    const ok = await submit(env, goodRecord(F, { [F.PAY_METHOD]: { value: [way] } }));
+    assert.strictEqual(ok.error, undefined, way);
+  }
+});
+
+// ── 費用歸屬驗證 ───────────────────────────────────────────────────────────
+check('費用歸屬空白（含只有空白字元）→ 「第 N 行請確實填寫費用歸屬」，列號正確', async () => {
+  const { env, F } = await loadSubmit();
+  const ev = await submit(env, goodRecord(F, withRows(F, ['AJ30', '', '   ', 'AJ31'])));
+  assert.strictEqual(ev.error, '儲存失敗');
+  const text = plainText(env.swalCalls[0].html);
+  assert.ok(text.includes('第 2 行請確實填寫費用歸屬'), text);
+  assert.ok(text.includes('第 3 行請確實填寫費用歸屬'), text);
+  assert.ok(!text.includes('第 1 行') && !text.includes('第 4 行'), text);
+});
+
+check('費用歸屬不在「使用中」代碼內 → 「第 N 行的 XXX 不屬於 YYYY 年最新分攤表」', async () => {
+  const { env, F } = await loadSubmit();
+  const ev = await submit(env, goodRecord(F, withRows(F, ['AJ30', 'ZZ99'])));
+  assert.strictEqual(ev.error, '儲存失敗');
+  const text = plainText(env.swalCalls[0].html);
+  assert.ok(text.includes(`第 2 行的 ZZ99 不屬於${new Date().getFullYear()}年最新分攤表，請重新填寫`), text);
+});
+
+check('費用歸屬前後有空白但代碼合法 → 通過（比對時先去空白）', async () => {
+  const { env, F } = await loadSubmit();
+  const ev = await submit(env, goodRecord(F, withRows(F, [' AJ30 '])));
+  assert.strictEqual(ev.error, undefined);
+});
+
+check('「如附件」不再是合法的費用歸屬（沒有分攤填寫方式了）', async () => {
+  const { env, F } = await loadSubmit();
+  const ev = await submit(env, goodRecord(F, withRows(F, ['如附件'])));
+  assert.strictEqual(ev.error, '儲存失敗');
+});
+
+check('取不到費用歸屬主檔 → 只報一條「無法取得最新費用歸屬代碼」，不會對每一列誤報不存在', async () => {
+  const { env, F } = await loadSubmit({ failCostCenter: true });
+  const ev = await submit(env, goodRecord(F, withRows(F, ['AJ30', 'AJ31', ''])));
+  assert.strictEqual(ev.error, '儲存失敗');
+  const text = plainText(env.swalCalls[0].html);
+  assert.ok(text.includes('無法取得最新費用歸屬代碼'), text);
+  assert.ok(!text.includes('不屬於'), text);
+  assert.ok(text.includes('第 3 行請確實填寫費用歸屬'), '空白仍要擋');
+});
+
+check('子表格不存在 → 「找不到 … 表格資料」', async () => {
+  const { env, F } = await loadSubmit();
+  const record = goodRecord(F);
+  delete record[F.TRAFFIC_TABLE.CODE];
+  const ev = await submit(env, record);
+  assert.strictEqual(ev.error, '儲存失敗');
+  assert.ok(plainText(env.swalCalls[0].html).includes(`找不到 ${F.TRAFFIC_TABLE.CODE} 表格資料`));
+});
+
+check('多個錯誤一次列在同一個視窗（逐條編號）', async () => {
+  const { env, F } = await loadSubmit();
+  await submit(env, goodRecord(F, { [F.COMPANY_NAME]: { value: '' }, [F.PAY_METHOD]: { value: [] }, ...withRows(F, ['']) }));
+  assert.strictEqual(env.swalCalls.length, 1);
+  const html = env.swalCalls[0].html;
+  assert.strictEqual((html.match(/pr-validation-item/g) || []).length, 3);
+  assert.ok(html.includes('請修正以下 3 個問題'));
+  assert.strictEqual(env.swalCalls[0].customClass.popup, 'pr-validation-popup');
+  assert.strictEqual(env.swalCalls[0].icon, 'error');
+});
+
+// ── 發票號碼重複檢查 ───────────────────────────────────────────────────────
+const invoiceQueryOf = (calls) => calls.find((c) => c.url.includes('records.json'));
+
+check('發票重複查詢字串：狀態 not in 表單作廢 + 每張發票各一個 like + 排除自己，沒有類型條件', async () => {
+  const { env, calls, C, F } = await loadSubmit();
+  const record = goodRecord(F, { [F.INVOICE_AGG]: { value: ' / AB12345678 / CD87654321 / ' }, $id: { value: '77' } });
+  await submit(env, record, 'edit');
+  const q = invoiceQueryOf(calls);
+  assert.strictEqual(q.method, 'GET');
+  assert.strictEqual(q.params.app, C.APPS.PAYMENT);
+  assert.deepStrictEqual([...q.params.fields], ['$id']);
+  assert.strictEqual(
+    q.params.query,
+    `${F.STATUS_FIELD} not in ("${C.STATUS.VOID}") and (${F.INVOICE_AGG} like " / AB12345678 / " or ${F.INVOICE_AGG} like " / CD87654321 / ") and $id != 77 limit 1`,
+  );
+  assert.ok(!q.params.query.includes('in ("交通'), '不應有類型條件');
+});
+
+check('新增（還沒有 $id）時查詢不帶「排除自己」', async () => {
+  const { env, calls, F } = await loadSubmit();
+  await submit(env, goodRecord(F, { [F.INVOICE_AGG]: { value: ' / A1 / ' } }));
+  assert.ok(!invoiceQueryOf(calls).params.query.includes('$id !='));
+  assert.ok(invoiceQueryOf(calls).params.query.endsWith('limit 1'));
+});
+
+check('發票號碼含雙引號或反斜線時要跳脫，不破壞查詢字串', async () => {
+  const { env, calls, F } = await loadSubmit();
+  await submit(env, goodRecord(F, { [F.INVOICE_AGG]: { value: ' / A"B\\C / ' } }));
+  assert.ok(invoiceQueryOf(calls).params.query.includes('like " / A\\"B\\\\C / "'), invoiceQueryOf(calls).params.query);
+});
+
+check('發票號碼記錄空白 → 不發查詢', async () => {
+  const { env, calls, F } = await loadSubmit();
+  await submit(env, goodRecord(F));
+  assert.strictEqual(invoiceQueryOf(calls), undefined);
+});
+
+check('查到重複 → 擋下並提示；沒查到 → 通過', async () => {
+  const dup = await loadSubmit({ invoiceHits: 1 });
+  const evDup = await submit(dup.env, goodRecord(dup.F, { [dup.F.INVOICE_AGG]: { value: ' / A1 / ' } }));
+  assert.strictEqual(evDup.error, '儲存失敗');
+  assert.ok(plainText(dup.env.swalCalls[0].html).includes('發票號碼重複：已存在相同發票號碼'));
+
+  const clean = await loadSubmit({ invoiceHits: 0 });
+  const evClean = await submit(clean.env, goodRecord(clean.F, { [clean.F.INVOICE_AGG]: { value: ' / A1 / ' } }));
+  assert.strictEqual(evClean.error, undefined);
+});
+
+check('發票查詢失敗 → 擋下並提示稍後再試（不放行）', async () => {
+  const { env, F } = await loadSubmit({ failInvoice: true });
+  const ev = await submit(env, goodRecord(F, { [F.INVOICE_AGG]: { value: ' / A1 / ' } }));
+  assert.strictEqual(ev.error, '儲存失敗');
+  assert.ok(plainText(env.swalCalls[0].html).includes('發票號碼檢查失敗'));
+});
+
+check('查 API 的兩項檢查（費用歸屬主檔、發票重複）同時送出，不互相等待', async () => {
+  const sent = [];
+  const waiting = [];
+  const env = createEnv({
+    appId: 749,
+    api: (url, method, params) =>
+      new Promise((resolve) => {
+        const kind = params.app === env.window.PR_CONFIG.APPS.PAYMENT ? 'invoice' : `cc-${method}`;
+        sent.push(kind);
+        waiting.push(() => {
+          if (kind === 'invoice') resolve({ records: [] });
+          else if (kind === 'cc-POST') resolve({ id: 'c' });
+          else resolve({ records: [{ [env.window.PR_CONFIG.REF_FIELDS.COST_CENTER.CODE]: { value: 'AJ30' } }], next: false });
+        });
+      }),
+  });
+  env.load('payment_request_config.js');
+  env.load('payment_request_main_20260521.js');
+  env.load('payment_request_submit_20260506.js');
+  const F = env.window.PR_CONFIG.FIELDS;
+  // 主程式 show 時已經在載入主檔；這裡直接讓存檔去等它，並讓發票查詢同時發出
+  const done_ = submit(env, goodRecord(F, { [F.INVOICE_AGG]: { value: ' / A1 / ' } }));
+  await new Promise((r) => setImmediate(r));
+  assert.ok(sent.includes('invoice') && sent.includes('cc-POST'), `兩個查詢都該已送出：${sent}`);
+  // 依序放行
+  while (waiting.length) {
+    waiting.shift()();
+    await new Promise((r) => setImmediate(r));
+  }
+  const ev = await done_;
+  assert.strictEqual(ev.error, undefined);
+});
+
+// ── 作廢跳過 ───────────────────────────────────────────────────────────────
+check('表單作廢有勾 → 整段驗證跳過：不打 API、不擋存檔，即使公司名稱／付款方式／費用歸屬都有問題', async () => {
+  const { env, calls, C, F } = await loadSubmit();
+  const record = goodRecord(F, {
+    [F.COMPANY_NAME]: { value: '' },
+    [F.PAY_METHOD]: { value: [] },
+    [F.INVOICE_AGG]: { value: ' / A1 / ' },
+    ...withRows(F, ['']),
+    [C.VOID_FIELD]: { value: [C.STATUS.VOID] },
+  });
+  const ev = await submit(env, record, 'edit');
+  assert.strictEqual(ev.error, undefined);
+  assert.strictEqual(env.swalCalls.length, 0);
+  assert.strictEqual(calls.length, 0);
+});
+
+check('表單作廢沒勾（空陣列）→ 照常驗證', async () => {
+  const { env, C, F } = await loadSubmit();
+  const record = goodRecord(F, { [F.COMPANY_NAME]: { value: '' }, [C.VOID_FIELD]: { value: [] } });
+  const ev = await submit(env, record, 'edit');
+  assert.strictEqual(ev.error, '儲存失敗');
+});
+
+// ── 結構 ───────────────────────────────────────────────────────────────────
+check('submit 原始碼沒有 723 的殘留（借支、分攤、交際費、帶入來源單、請購金額上限）', () => {
+  const src = readSrc('payment_request_submit_20260506.js');
+  [
+    'F.TYPE', 'TYPES', 'ALLOWED_TYPES', 'COMPANY_PAYMENT_REQUEST', 'SRC.', 'SOURCE_FIELDS', 'fetchOriginalData', 'PR_ENT_AMOUNT',
+    'PR_COST_CENTER_SCOPE', 'EXPENSE_FILL_MODE', 'AMOUNT_CHANGE', 'ENTERTAINMENT', 'VENDOR_TABLE', 'ATTACHMENT_TEXT', 'ADVANCE',
+    'INVOICE_CHECK_TYPES', 'grand-total-display', 'docs/',
+  ].forEach((s) => assert.ok(!src.includes(s), `不應殘留 ${s}`));
+});
+
+done();

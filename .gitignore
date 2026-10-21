@@ -1,0 +1,10 @@
+.DS_Store
+*.log
+node_modules/
+
+# Claude Code 本機設定與別的 repo 的 worktree
+.claude/settings.local.json
+.claude/worktrees/
+
+# 掃描工具的詳細輸出（node tests/scan_hardcoded.cjs --json）
+tests/scan_hardcoded.report.json
