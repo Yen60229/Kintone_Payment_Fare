@@ -3,7 +3,7 @@
 // 測試：流程管理設定的檢查工具（tests/lib/process_*.cjs、process_management/check_process.cjs、load_config.cjs）
 //   1. 載入設定檔：kintone.app.getId() 回 749，欄位代碼從 FIELDS 取
 //   2. 模擬器怎麼解讀條件：in／not in、群組與組織的類型標記、THIS_YEAR()；看不懂的寫法會明確報錯，不會靜默通過
-//   3. 749 目前的流程（process_management/exports/749_rev1791.json）：
+//   3. 749 目前的流程（process_management/exports/749_rev1795.json）：
 //        結構檢查 0 個問題；走一遍與按鈕檢查有「已知的問題清單」（見下方 KNOWN_*），
 //        測試斷言的就是這份清單——之後使用者把流程改好、清單變了，測試會失敗提醒更新
 //   4. 修好的複本（只補 749 現況缺的條件）：全部通過，證明已知問題的成因就是下面講的那幾個條件
@@ -28,7 +28,7 @@ const ROOT = path.join(__dirname, '..');
 const EXPORTS_DIR = path.join(ROOT, 'process_management', 'exports');
 const CONFIG = loadConfig();
 const F = CONFIG.FIELDS;
-const EXPORT_1791 = JSON.parse(fs.readFileSync(path.join(EXPORTS_DIR, '749_rev1791.json'), 'utf8'));
+const EXPORT_CURRENT = JSON.parse(fs.readFileSync(path.join(EXPORTS_DIR, '749_rev1795.json'), 'utf8'));
 
 const clone = (obj) => JSON.parse(JSON.stringify(obj));
 
@@ -41,7 +41,7 @@ const check = (label, fn) => {
 
 const hasProblem = (problems, ...words) => problems.some((p) => words.every((w) => p.includes(w)));
 
-// ── 749 revision 1791 已知的問題（流程本身的設定，不是檢查工具的錯；要由使用者決定怎麼改）─────────────
+// ── 749 revision 1795 已知的問題（流程本身的設定，不是檢查工具的錯；要由使用者決定怎麼改）─────────────
 //   成因 A：自動排人的單、有部長（單位部長_支店長 有人）時，
 //           「申請單位主管3確認中」「申請單位次長1確認中」同時出現「提交單位部長確認」和「提交單位會計入帳」兩顆按鈕。
 //           因為這兩關的「提交單位會計入帳」只看「會計單位」，沒有像「申請開始」那樣加 單位部長_支店長 not in (部長)。
@@ -101,7 +101,7 @@ const repair = (proc) => {
   });
   return fixed;
 };
-const FIXED = repair(EXPORT_1791);
+const FIXED = repair(EXPORT_CURRENT);
 
 console.log('process_checks.test.cjs');
 
@@ -177,12 +177,12 @@ check('模擬器解讀：不支援的寫法（>、or、其他函式）直接丟�
 
 // ── 3. 749 目前的流程 ────────────────────────────────────────────────────
 
-check('749 revision 1791：結構檢查 0 個問題（24 個狀態、129 條動作、作業者欄位與條件欄位都是已知欄位，條件模擬器都看得懂）', () => {
-  assert.strictEqual(EXPORT_1791.revision, '1791');
-  assert.strictEqual(Object.keys(EXPORT_1791.states).length, 24);
-  assert.strictEqual(EXPORT_1791.actions.length, 129);
-  assert.deepStrictEqual(lintProcess(EXPORT_1791, CONFIG), []);
-  const conds = EXPORT_1791.actions.map((a) => a.filterCond).filter(Boolean);
+check('749 revision 1795：結構檢查 0 個問題（24 個狀態、129 條動作、作業者欄位與條件欄位都是已知欄位，條件模擬器都看得懂）', () => {
+  assert.strictEqual(EXPORT_CURRENT.revision, '1795');
+  assert.strictEqual(Object.keys(EXPORT_CURRENT.states).length, 24);
+  assert.strictEqual(EXPORT_CURRENT.actions.length, 129);
+  assert.deepStrictEqual(lintProcess(EXPORT_CURRENT, CONFIG), []);
+  const conds = EXPORT_CURRENT.actions.map((a) => a.filterCond).filter(Boolean);
   assert.ok(conds.some((c) => c.includes('THIS_YEAR()')));
   assert.ok(conds.some((c) => c.includes('" GROUP"')));
   assert.ok(conds.some((c) => c.includes('" ORGANIZATION"')));
@@ -190,7 +190,7 @@ check('749 revision 1791：結構檢查 0 個問題（24 個狀態、129 條動�
 });
 
 check('⚠️ 749 全部走一遍：目前已知的問題清單（流程本身的設定問題，要使用者決定；清單變了就代表流程改過，請更新 KNOWN_WALK_PROBLEMS）', () => {
-  const { total, failures } = checkAll(EXPORT_1791, CONFIG);
+  const { total, failures } = checkAll(EXPORT_CURRENT, CONFIG);
   assert.strictEqual(total, 192);
   assert.deepStrictEqual(tally(failures), KNOWN_WALK_PROBLEMS);
   // 問題只出在「有簽核人的單」：沒有簽核人（主管 0 人、次長 0 人、無部長）的單全都走得通
@@ -203,7 +203,7 @@ check('⚠️ 749 全部走一遍：目前已知的問題清單（流程本身�
 });
 
 check('⚠️ 749 每個狀態的按鈕：目前已知的問題清單（同上，清單變了請更新 KNOWN_BUTTON_PROBLEMS）；其餘狀態都走得到', () => {
-  const result = checkButtons(EXPORT_1791, CONFIG);
+  const result = checkButtons(EXPORT_CURRENT, CONFIG);
   assert.strictEqual(result.total, 192);
   assert.deepStrictEqual(tally(result.failures), KNOWN_BUTTON_PROBLEMS);
   assert.deepStrictEqual(result.unreached, []);
@@ -216,18 +216,18 @@ check('⚠️ 749 每個狀態的按鈕：目前已知的問題清單（同上�
 });
 
 check('749 的 THIS_YEAR() 條件：傳票日期填去年的日期時，七個會計狀態都沒有「入帳完成」（跨年入帳會卡住，列在 notes 讓使用者知道）', () => {
-  const { notes } = checkButtons(EXPORT_1791, CONFIG, { year: 2026 });
+  const { notes } = checkButtons(EXPORT_CURRENT, CONFIG, { year: 2026 });
   assert.strictEqual(notes.length, 7);
   assert.ok(notes.every((n) => n.includes('2025-12-31') && n.includes('入帳完成') && n.includes('THIS_YEAR()')));
   ['單位會計處理中(台北)', '單位會計處理中(台北海運)', '單位會計處理中(桃園&新竹)', '單位會計處理中(台中)', '單位會計處理中(物流)', '單位會計處理中(高雄)', '「單位會計處理中」'].forEach((name) => {
     assert.ok(notes.some((n) => n.includes(name)), name);
   });
   // 年份跟著基準年走
-  assert.ok(checkButtons(EXPORT_1791, CONFIG, { year: 2030 }).notes.every((n) => n.includes('2029-12-31')));
+  assert.ok(checkButtons(EXPORT_CURRENT, CONFIG, { year: 2030 }).notes.every((n) => n.includes('2029-12-31')));
 });
 
 check('749 條件永遠不成立的動作：「申請單位次長確認中 → 提交單位會計入帳」六條（該關只會在次長 2 人時進來，條件卻要求 1 人）', () => {
-  const { unusedActions } = checkButtons(EXPORT_1791, CONFIG);
+  const { unusedActions } = checkButtons(EXPORT_CURRENT, CONFIG);
   assert.strictEqual(unusedActions.length, 6);
   unusedActions.forEach((a) => assert.ok(a.startsWith(`${S.DEPUTY} →「提交單位會計入帳」→ 單位會計處理中(`) && a.includes('"1人"'), a));
 });
@@ -235,7 +235,7 @@ check('749 條件永遠不成立的動作：「申請單位次長確認中 → �
 // ── 4. 修好的複本全部通過 ────────────────────────────────────────────────
 
 check('修好的複本（補 部長 not in、次長 0 人、聯海通運組織三處條件）：結構、走一遍、按鈕全部 0 個問題——已知問題的成因就是這三處', () => {
-  assert.notDeepStrictEqual(FIXED.actions, EXPORT_1791.actions);
+  assert.notDeepStrictEqual(FIXED.actions, EXPORT_CURRENT.actions);
   assert.deepStrictEqual(lintProcess(FIXED, CONFIG), []);
   assert.deepStrictEqual(checkAll(FIXED, CONFIG).failures.map((f) => `${f.id}：${f.message}`), []);
   const buttons = checkButtons(FIXED, CONFIG);
@@ -475,7 +475,7 @@ check('latestExport：挑 revision 最大的 749_rev*.json（不是字串排序�
 check('命令列：沒給參數時檢查 exports 裡 revision 最大的 749 流程檔；749 目前有已知問題，結束代碼 1、輸出「未通過」', () => {
   const run = runCli();
   assert.strictEqual(run.status, 1, run.stdout + run.stderr);
-  assert.ok(run.stdout.includes(`${path.basename(latestExport())}（revision 1791）`), run.stdout);
+  assert.ok(run.stdout.includes(`${path.basename(latestExport())}（revision 1795）`), run.stdout);
   assert.ok(run.stdout.includes('[1] 結構檢查：沒有問題'));
   assert.ok(run.stdout.includes('105 筆'));
   assert.ok(run.stdout.includes('未通過'));

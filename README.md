@@ -41,7 +41,7 @@ npm run check:process
 - 沒給參數時，檢查 `process_management/exports/` 裡 revision 最大的 `749_rev*.json`。
 - 會跑三項：結構檢查、把所有合法假資料從「報銷人填單」走到會計、每個狀態的按鈕。
 - 從 kintone 下載新版流程設定後，放進 `process_management/exports/` 再跑一次。
-- 目前 749 rev 1791 本身有已知問題，所以會回傳結束代碼 1（見 docs 待決事項）。
+- 目前 749 rev 1795 本身有已知問題，所以會回傳結束代碼 1（見 docs 待決事項）。
 
 ### 打包
 ```bash

@@ -4,7 +4,7 @@
 // 用法：
 //   node process_management/check_process.cjs [檔案路徑]
 //   npm run check:process                      檢查 process_management/exports/ 裡 revision 最大的 749_rev*.json
-//   node process_management/check_process.cjs process_management/exports/749_rev1791.json
+//   node process_management/check_process.cjs process_management/exports/749_rev1795.json
 //
 // 做三件事：
 //   1. 結構檢查（tests/lib/process_lint.cjs）：狀態、動作、作業者欄位、條件值有沒有寫錯
