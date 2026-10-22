@@ -1,6 +1,9 @@
 (() => {
   'use strict';
 
+  // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+  const KT = window.PR_KT;
+
   // =============================================================================
   // 預計付款日（2026-10-20）
   //   會計需要 5 個工作日作業，之後的第一個付款日（每月 10 號、20 號、月底）付款，付款日遇假日往後順延。
@@ -138,7 +141,7 @@
     return event;
   };
 
-  kintone.events.on(['app.record.create.submit', 'app.record.edit.submit'], handleSubmit);
+  KT.on(['app.record.create.submit', 'app.record.edit.submit'], handleSubmit);
 
   /**
    * 畫面：預計付款日鎖住，並在旁邊的空白欄位顯示付款說明。
@@ -148,15 +151,15 @@
     const field = record[F.EXPECTED_PAY_DATE];
     if (!field) return event;
     if (event.type !== 'app.record.detail.show' && event.type !== 'app.record.print.show') field.disabled = true;
-    const space = kintone.app.record.getSpaceElement(C.SPACES.EXPECTED_PAY_DATE_NOTE);
+    const space = KT.record().getSpaceElement(C.SPACES.EXPECTED_PAY_DATE_NOTE);
     if (space) {
       space.textContent = `※ ${CFG.NOTE}`;
-      space.style.cssText = 'color:#c62828; font-weight:bold; margin-top:30px; display:inline-block;';
+      space.classList.add('pr-expected-pay-note'); // 樣式在 styles/common.css
     }
     return event;
   };
 
-  kintone.events.on(['app.record.create.show', 'app.record.edit.show', 'app.record.detail.show', 'app.record.print.show'], handleShow);
+  KT.on(['app.record.create.show', 'app.record.edit.show', 'app.record.detail.show', 'app.record.print.show'], handleShow);
 
   window.PR_EXPECTED_PAY_DATE = Object.freeze({ calcExpectedPayDate, isWorkday, nextPayDayOnOrAfter, fetchHolidayMap, handleSubmit, handleShow });
 })();

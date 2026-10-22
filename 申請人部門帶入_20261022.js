@@ -1,6 +1,9 @@
 (() => {
   'use strict';
 
+  // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+  const KT = window.PR_KT;
+
   // =============================================================================
   // 申請人部門依申請人帶入（2026-10-22）
   //
@@ -45,7 +48,7 @@
           picker.warnNoOrg('申請人');
           return;
         }
-        const currentCode = kintone.app.record.get().record[F.APPLICANT_ORG]?.value?.[0]?.code;
+        const currentCode = KT.record().get().record[F.APPLICANT_ORG]?.value?.[0]?.code;
         const currentValid = orgs.some((o) => o.organization.code === currentCode);
         if (keepIfValid && currentValid) return;
 
@@ -56,17 +59,17 @@
         });
         if (!picked || seq !== applicantSeq) return;
 
-        const current = kintone.app.record.get();
+        const current = KT.record().get();
         current.record[F.APPLICANT_ORG].value = [{ code: picked.organization.code, name: picked.organization.name }];
         current.record[F.APPLICANT_ORG].disabled = true;
-        kintone.app.record.set(current);
+        KT.record().set(current);
       })
       .catch((err) => console.error('[申請人部門] 帶入申請人部門失敗:', err));
     return event;
   };
 
-  kintone.events.on('app.record.create.show', (event) => syncApplicantOrg(event, { keepIfValid: true }));
-  kintone.events.on([`app.record.create.change.${F.APPLICANT}`, `app.record.edit.change.${F.APPLICANT}`], (event) => syncApplicantOrg(event));
+  KT.on('app.record.create.show', (event) => syncApplicantOrg(event, { keepIfValid: true }));
+  KT.on([`app.record.create.change.${F.APPLICANT}`, `app.record.edit.change.${F.APPLICANT}`], (event) => syncApplicantOrg(event));
 
   window.PR_APPLICANT_ORG = Object.freeze({ syncApplicantOrg });
 })();

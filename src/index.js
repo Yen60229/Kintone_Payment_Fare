@@ -1,11 +1,15 @@
 // =========================================================================
-// kintone 交通費請款單 總入口檔 (src/index.js)
-// 打包工具 Vite 會從此檔開始，依序讀入所有模組合併為一支 JS 檔
+// kintone 交通費請款單 桌面版入口檔 (src/index.js)
+// 打包工具 Vite 會從此檔開始，依序讀入所有模組，輸出
+//   dist/payment_request_desktop.js   → kintone「JavaScript 自訂（PC）」
+//   dist/payment_request_desktop.css  → kintone「CSS 自訂（PC）」
+// 手機版入口是 src/mobile.js（模組是本檔的子集，順序必須一致）。
 //
 // 依賴順序說明：
-//   ①  Config 常數檔必須排最前（其他模組在執行時會存取 window.PR_CONFIG）
+//   ①  Config 常數檔必須排最前（其他模組在執行時會存取 window.PR_CONFIG、window.PR_KT）
 //   ②  依賴 Config 的模組
 //   ③  無 Config 依賴的獨立工具檔，順序不影響
+//   ④  樣式（打包成獨立的 CSS 檔，不會塞進 JS）
 // =========================================================================
 
 // ① Config 常數檔（必須排最前）────────────────────────────────────────────
@@ -40,3 +44,7 @@ import '../SetFieldWidth_4_20251206.js';
 // ③ 無 Config 依賴的獨立工具檔（順序不影響）──────────────────────────────
 import '../file_reader.js';
 import '../轉至其他會計單位按鈕處理_20250723.js';
+
+// ④ 樣式（共用＋桌面版專用）─────────────────────────────────────────────
+import '../styles/common.css';
+import '../styles/desktop.css';

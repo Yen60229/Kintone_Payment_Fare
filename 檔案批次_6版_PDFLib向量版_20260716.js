@@ -1015,7 +1015,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
     overlay.innerHTML = `
       <div class="loading-message">
         <button id="close-button" class="close-button">✕</button>
-        <div style="margin-bottom:15px;font-weight:bold;font-size:16px;">處理中...</div>
+        <div class="pr-loading-title">處理中...</div>
         <div class="progress-bar"><div id="progress-fill" class="progress-bar-fill"></div></div>
         <div id="result-message" class="result-message">準備中...</div>
       </div>
@@ -1031,202 +1031,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       const headerMenuSpace = kintone.app.getHeaderMenuSpaceElement();
       if (!headerMenuSpace) throw new Error('找不到標頭菜單空間');
 
-      // 樣式（原樣保留）
-      const buttonStyle = document.createElement('style');
-      buttonStyle.innerHTML = `
-        #batch-download-container {
-          display: flex;
-          align-items: flex-start;
-          flex-wrap: nowrap;
-          gap: 10px;
-          margin-right: 15px;
-          position: relative;
-          max-width: 100%;
-          box-sizing: border-box;
-        }
-        .buttons-container {
-          display: flex;
-          align-items: center;
-          flex-shrink: 0;
-          white-space: nowrap;
-        }
-        .batch-download-button,
-        .batch-print-button {
-          background: linear-gradient(45deg, #4a90a4, #5ba0b4);
-          color: white;
-          padding: 8px 16px;
-          border-radius: 5px;
-          border: none;
-          font-weight: bold;
-          cursor: pointer;
-          margin-left: 15px;
-          font-size: 14px;
-          height: fit-content;
-          white-space: nowrap;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .batch-print-button {
-          background: linear-gradient(45deg,rgb(142, 107, 255),rgb(43, 70, 224));
-        }
-        .batch-download-button:hover,
-        .batch-print-button:hover {
-          box-shadow: 0 3px 6px rgba(0,0,0,0.15);
-        }
-        .batch-download-button:hover {
-          background: linear-gradient(45deg, #3a7d91, #4b8fa1);
-        }
-        .batch-print-button:hover {
-          background: linear-gradient(45deg, rgb(139, 113, 223), rgb(81, 103, 222));
-        }
-        .range-input-group {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-start;
-          margin-right: 15px;
-          background: white;
-          padding: 10px;
-          border-radius: 5px;
-          flex-shrink: 0;
-          min-width: max-content;
-          width: max-content;
-        }
-        .gaia-argoui-app-index-toolbar,
-        .gaia-argoui-app-toolbar-menu {
-          overflow: visible !important;
-          min-height: fit-content !important;
-          padding-bottom: 10px !important;
-        }
-        .contents-gaia.app-index-contents-gaia {
-          clear: both !important;
-          position: relative !important;
-          z-index: 1 !important;
-          margin-top: 10px !important;
-        }
-        .input-mode-selector {
-          display: flex;
-          align-items: center;
-          margin-bottom: 10px;
-          white-space: nowrap;
-        }
-        .input-mode-selector label {
-          margin-right: 15px;
-          font-weight: bold;
-          cursor: pointer;
-          font-size: 14px;
-          white-space: nowrap;
-        }
-        .input-mode-selector input[type="radio"] {
-          margin-right: 5px;
-        }
-        .range-inputs {
-          display: flex;
-          align-items: center;
-          white-space: nowrap;
-          flex-shrink: 0;
-        }
-        .specific-input {
-          display: none;
-          align-items: center;
-          white-space: nowrap;
-          flex-shrink: 0;
-        }
-        .range-input-label {
-          margin-right: 5px;
-          font-weight: bold;
-          font-size: 14px;
-          white-space: nowrap;
-        }
-        .range-input {
-          width: 80px;
-          padding: 5px;
-          border: 0.8px solid #000;
-          border-radius: 4px;
-          text-align: center;
-        }
-        .range-input-separator {
-          margin: 0 5px;
-        }
-        .specific-records-input {
-          width: 300px;
-          padding: 5px;
-          border: 0.8px solid #000;
-          border-radius: 4px;
-          font-size: 14px;
-        }
-        .loading-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background-color: rgba(0, 0, 0, 0.5);
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          align-items: center;
-          z-index: 9999;
-        }
-        .loading-message {
-          background: white;
-          padding: 25px;
-          border-radius: 8px;
-          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-          text-align: center;
-          min-width: 400px;
-          max-width: 90vw;
-          position: relative;
-        }
-        .close-button {
-          position: absolute;
-          top: 10px;
-          right: 15px;
-          background: #f0f0f0;
-          border: none;
-          border-radius: 50%;
-          width: 30px;
-          height: 30px;
-          cursor: pointer;
-          font-size: 18px;
-          font-weight: bold;
-          color: #666;
-          display: none;
-        }
-        .close-button:hover {
-          background: #e0e0e0;
-          color: #333;
-        }
-        .close-button.show {
-          display: block;
-        }
-        .progress-bar {
-          width: 80%;
-          min-width: 300px;
-          max-width: 500px;
-          height: 25px;
-          background-color: #f0f0f0;
-          border-radius: 12px;
-          margin: 15px auto 10px auto;
-          overflow: hidden;
-          box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .progress-bar-fill {
-          height: 100%;
-          background: linear-gradient(90deg, #4CAF50, #45a049);
-          width: 0%;
-          transition: width 0.5s ease-in-out;
-          border-radius: 12px;
-          box-shadow: 0 2px 4px rgba(76, 175, 80, 0.3);
-        }
-        .result-message {
-          margin-top: 10px;
-          font-weight: bold;
-          font-size: 13px;
-          color: #333;
-          white-space: pre-wrap;
-          text-align: left;
-        }
-      `;
-      document.head.appendChild(buttonStyle);
+      // 樣式在 styles/desktop.css（批次下載／列印按鈕、處理中視窗）
 
       // 容器
       const container = document.createElement('div');
@@ -1385,22 +1190,14 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       const detailPrintButton = document.createElement('button');
       detailPrintButton.id = 'detail-print-pdflib-btn';
       detailPrintButton.textContent = '📄 下載此筆交通費請款單PDF';
-      detailPrintButton.style.background = 'linear-gradient(45deg,rgb(142, 107, 255),rgb(43, 70, 224))';
-      detailPrintButton.style.color = 'white';
-      detailPrintButton.style.padding = '8px 16px';
-      detailPrintButton.style.borderRadius = '5px';
-      detailPrintButton.style.border = 'none';
-      detailPrintButton.style.fontWeight = 'bold';
-      detailPrintButton.style.cursor = 'pointer';
-      detailPrintButton.style.fontSize = '14px';
-      detailPrintButton.style.marginLeft = '10px';
+      detailPrintButton.className = 'pr-detail-print-button'; // 樣式在 styles/desktop.css
 
       detailPrintButton.addEventListener('click', async function () {
         const recordId = event.record.$id.value;
 
         Swal.fire({
           title: '確認下載',
-          html: '即將下載「此筆交通費請款單」的 PDF 檔案。<br>確認要開始下載嗎？<br><span style="font-size: 0.9em; color: #1640b2ff;">（不會修改或影響表單內容）</span>',
+          html: '即將下載「此筆交通費請款單」的 PDF 檔案。<br>確認要開始下載嗎？<br><span class="pr-download-note">（不會修改或影響表單內容）</span>',
           icon: 'question',
           showCancelButton: true,
           confirmButtonText: '開始下載',

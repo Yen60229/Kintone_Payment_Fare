@@ -1,0 +1,471 @@
+/* =============================================================================
+ * 交通費請款單（App 749）共用樣式：桌面版與手機版都載入
+ *   打包後：dist/payment_request_desktop.css、dist/payment_request_mobile.css 都含本檔
+ *   class 名稱都以 pr- 開頭，避免和 kintone、SweetAlert2 的樣式撞名
+ * ============================================================================= */
+
+/* ── 頁面說明文字（payment_request_main：Space_Noti_2／Space_Noti_3）────────── */
+.pr-noti {
+  font-size: 20px;
+  color: #333;
+  font-weight: bold;
+}
+.pr-noti-red {
+  font-size: 20px;
+  color: #ff0000;
+  font-weight: bold;
+}
+.pr-noti-payee {
+  margin-top: 30px;
+  display: inline-block;
+}
+
+/* ── 存檔驗證失敗視窗（payment_request_submit）───────────────────────────────
+ *   字放大、逐條編號、每條一張卡片，年長同仁也看得清楚 */
+.pr-validation-popup { width: min(760px, 95vw) !important; padding: 28px 28px 24px !important; }
+.pr-validation-popup .swal2-title { font-size: 28px !important; font-weight: 800; color: #b71c1c; }
+.pr-validation-popup .swal2-html-container { margin: 12px 0 0 !important; text-align: left !important; }
+.pr-validation-popup .swal2-confirm { font-size: 20px !important; font-weight: 700; padding: 12px 40px !important; }
+.pr-validation-lead { font-size: 19px; font-weight: 700; color: #333; margin: 0 0 14px; }
+.pr-validation-list { list-style: none; margin: 0; padding: 0; max-height: 55vh; overflow-y: auto; }
+.pr-validation-item {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  background: #fff5f5;
+  border: 1px solid #f5c2c2;
+  border-left: 6px solid #d32f2f;
+  border-radius: 8px;
+}
+.pr-validation-no {
+  flex: 0 0 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #d32f2f;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 34px;
+  text-align: center;
+}
+.pr-validation-text { flex: 1; min-width: 0; line-height: 1.7; color: #1a1a1a; word-break: break-word; }
+.pr-v-head { font-size: 20px; font-weight: 700; color: #1a1a1a; }
+.pr-v-detail { margin-top: 6px; font-size: 17px; color: #555; }
+.pr-v-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 2px; }
+.pr-v-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 14px;
+  background: #fff;
+  border: 2px solid #d32f2f;
+  border-radius: 999px;
+}
+.pr-v-chip-code { font-family: Consolas, 'Courier New', monospace; font-size: 20px; font-weight: 800; color: #b71c1c; letter-spacing: 0.5px; }
+.pr-v-chip-note { font-size: 15px; color: #666; }
+.pr-v-hint { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #f0b4b4; font-size: 16px; color: #5d4037; }
+.pr-v-hint-tag {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: #ffe082;
+  color: #5d4037;
+  font-size: 14px;
+  font-weight: 800;
+}
+.pr-hl { background: linear-gradient(transparent 55%, #ffe082 55%); color: #b71c1c; font-weight: 800; padding: 0 2px; }
+.pr-field { color: #1565c0; font-weight: 800; }
+.pr-row {
+  display: inline-block;
+  margin: 0 4px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: #455a64;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.6;
+  vertical-align: 1px;
+}
+
+/* ── 「同申請人」受款人按鈕（受款人填寫設定）────────────────────────────────── */
+.pr-same-applicant-btn {
+  background-color: #3498db;
+  color: #ffffff;
+  border: 1px solid #2980b9;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-top: 30px;
+}
+.pr-same-applicant-btn:hover {
+  background-color: #2980b9;
+  border-color: #21618c;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+}
+.pr-copied-msg {
+  color: #28a745;
+  margin-left: 10px;
+  font-size: 12px;
+  animation: pr-fade-out 2s forwards;
+}
+@keyframes pr-fade-out {
+  0% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ── 「理由」動態必填的紅色 *（交通費明細規則）──────────────────────────────── */
+.pr-required-mark {
+  color: #e74c3c;
+  margin-left: 4px;
+  font-weight: bold;
+}
+
+/* ── 預計付款日旁的說明文字（預計付款日）──────────────────────────────────── */
+.pr-expected-pay-note {
+  color: #c62828;
+  font-weight: bold;
+  margin-top: 30px;
+  display: inline-block;
+}
+
+/* ── 作廢確認視窗內容（作廢防呆）──────────────────────────────────────────── */
+.pr-void-confirm { text-align: left; line-height: 1.8; }
+.pr-void-action { color: #d4380d; }
+.pr-void-next { color: #cf1322; }
+/* =============================================================================
+ * 交通費請款單（App 749）桌面版專用樣式：只打包進 dist/payment_request_desktop.css
+ *   這些畫面（列表頁工具列、附件預覽、列印／PDF、費用歸屬提示）手機版沒有或 DOM 不同
+ * ============================================================================= */
+
+/* ── 費用歸屬中文名稱（綠字）／代碼不存在（紅字）提示（payment_request_main）── */
+.department-hint {
+  color: #28a745 !important;
+  font-size: 18px !important;
+  margin-top: 2px !important;
+  font-weight: bold !important;
+  position: relative !important;
+  z-index: 1000 !important;
+  white-space: pre-line !important;
+  text-align: center !important;
+}
+.department-error {
+  color: #dc3545 !important;
+  font-size: 12px !important;
+  margin-top: 2px !important;
+  font-weight: bold !important;
+  position: relative !important;
+  z-index: 1000 !important;
+  text-align: center !important;
+}
+
+/* ── 批次下載／批次列印按鈕、處理中視窗（檔案批次_6版_PDFLib向量版） ── */
+#batch-download-container {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  gap: 10px;
+  margin-right: 15px;
+  position: relative;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.buttons-container {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.batch-download-button,
+.batch-print-button {
+  background: linear-gradient(45deg, #4a90a4, #5ba0b4);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 5px;
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
+  margin-left: 15px;
+  font-size: 14px;
+  height: fit-content;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.batch-print-button {
+  background: linear-gradient(45deg,rgb(142, 107, 255),rgb(43, 70, 224));
+}
+.batch-download-button:hover,
+.batch-print-button:hover {
+  box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+}
+.batch-download-button:hover {
+  background: linear-gradient(45deg, #3a7d91, #4b8fa1);
+}
+.batch-print-button:hover {
+  background: linear-gradient(45deg, rgb(139, 113, 223), rgb(81, 103, 222));
+}
+.range-input-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-right: 15px;
+  background: white;
+  padding: 10px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  min-width: max-content;
+  width: max-content;
+}
+.gaia-argoui-app-index-toolbar,
+.gaia-argoui-app-toolbar-menu {
+  overflow: visible !important;
+  min-height: fit-content !important;
+  padding-bottom: 10px !important;
+}
+.contents-gaia.app-index-contents-gaia {
+  clear: both !important;
+  position: relative !important;
+  z-index: 1 !important;
+  margin-top: 10px !important;
+}
+.input-mode-selector {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  white-space: nowrap;
+}
+.input-mode-selector label {
+  margin-right: 15px;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.input-mode-selector input[type="radio"] {
+  margin-right: 5px;
+}
+.range-inputs {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.specific-input {
+  display: none;
+  align-items: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.range-input-label {
+  margin-right: 5px;
+  font-weight: bold;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.range-input {
+  width: 80px;
+  padding: 5px;
+  border: 0.8px solid #000;
+  border-radius: 4px;
+  text-align: center;
+}
+.range-input-separator {
+  margin: 0 5px;
+}
+.specific-records-input {
+  width: 300px;
+  padding: 5px;
+  border: 0.8px solid #000;
+  border-radius: 4px;
+  font-size: 14px;
+}
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+.loading-message {
+  background: white;
+  padding: 25px;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  text-align: center;
+  min-width: 400px;
+  max-width: 90vw;
+  position: relative;
+}
+.close-button {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  background: #f0f0f0;
+  border: none;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: bold;
+  color: #666;
+  display: none;
+}
+.close-button:hover {
+  background: #e0e0e0;
+  color: #333;
+}
+.close-button.show {
+  display: block;
+}
+.progress-bar {
+  width: 80%;
+  min-width: 300px;
+  max-width: 500px;
+  height: 25px;
+  background-color: #f0f0f0;
+  border-radius: 12px;
+  margin: 15px auto 10px auto;
+  overflow: hidden;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+}
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4CAF50, #45a049);
+  width: 0%;
+  transition: width 0.5s ease-in-out;
+  border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(76, 175, 80, 0.3);
+}
+.result-message {
+  margin-top: 10px;
+  font-weight: bold;
+  font-size: 13px;
+  color: #333;
+  white-space: pre-wrap;
+  text-align: left;
+}
+
+/* ── 列表頁「JS 自定義設定」「流程管理」按鈕（coding_tools） ── */
+/* 黑色背景按鈕 */
+.workflow-button {
+  background-color: #2c3e50; /* 黑色背景 */
+  color: #fff;
+  font-size: 16px;
+  font-weight: bold;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-left: 10px;
+  margin-right: 10px; 
+  transition: all 0.3s ease;
+}
+
+/* 金色背景按鈕 */
+.settings-button {
+  background-color: #f39c12; /* 金色背景 */
+  color: #fff;
+  font-size: 16px;
+  font-weight: bold;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-left: 10px;
+  margin-right: 10px; 
+  transition: all 0.3s ease;
+}
+
+/* 按鈕 hover 和 active 效果 */
+.workflow-button:hover {
+  background-color: #34495e; /* 當滑鼠懸停時變成深灰色 */
+}
+
+.settings-button:hover {
+  background-color: #e67e22; /* 當滑鼠懸停時變成亮金色 */
+}
+
+.workflow-button:active {
+  background-color: #2c3e50;
+  transform: scale(0.98);
+}
+
+.settings-button:active {
+  background-color: #d35400;
+  transform: scale(0.98);
+}
+
+/* ── 詳細頁「下載此筆交通費請款單PDF」按鈕、處理中標題、下載確認的小字（檔案批次） ── */
+.pr-detail-print-button {
+  background: linear-gradient(45deg, rgb(142, 107, 255), rgb(43, 70, 224));
+  color: white;
+  padding: 8px 16px;
+  border-radius: 5px;
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 14px;
+  margin-left: 10px;
+}
+.pr-loading-title {
+  margin-bottom: 15px;
+  font-weight: bold;
+  font-size: 16px;
+}
+.pr-download-note {
+  font-size: 0.9em;
+  color: #1640b2;
+}
+
+/* ── 列表頁工具按鈕的容器（coding_tools，和批次下載按鈕排在一起時） ── */
+.pr-tool-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* ── 附件預覽按鈕（file_reader） ── */
+.pr-preview-button {
+  margin-left: 8px;
+}
+.pr-preview-button i {
+  color: #2c2c2c;
+  font-size: 16px;
+}
+
+/* ── 「轉至…」流程按鈕往右移（轉至其他會計單位按鈕處理） ── */
+.pr-transfer-button {
+  margin-left: 30px;
+}
+
+/* ── 已作廢單據的「表單作廢」欄位（請款單作廢_style） ── */
+.pr-void-field {
+  text-align: center;
+  color: #ff0000;
+  font-weight: bold;
+  font-size: 18px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  left: 5px;
+  border: 2px solid #ff0000;
+}
+.pr-void-field input[type='checkbox'] {
+  transform: scale(1.5);
+  accent-color: #ff0000;
+}

@@ -1,6 +1,9 @@
 (() => {
   'use strict';
 
+  // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+  const KT = window.PR_KT;
+
   // =============================================================================
   // 交通費明細規則（子表格「交通費請款單」與「是否有紙本憑證」「理由」）
   //
@@ -164,9 +167,9 @@
       if (!label) return;
       const mark = document.createElement('span');
       mark.id = REQUIRED_MARK_ID;
-      mark.className = 'kintone-field-required';
+      // 樣式在 styles/common.css 的 .pr-required-mark
+      mark.className = 'kintone-field-required pr-required-mark';
       mark.textContent = '*';
-      mark.style.cssText = 'color:#e74c3c;margin-left:4px;font-weight:bold;';
       label.appendChild(mark);
     } catch (e) {
       console.warn('[交通費明細規則] 理由必填標示失敗', e);
@@ -175,7 +178,7 @@
 
   // ── 事件 ───────────────────────────────────────────────────────────────
 
-  kintone.events.on(['app.record.create.show', 'app.record.edit.show'], (event) => {
+  KT.on(['app.record.create.show', 'app.record.edit.show'], (event) => {
     applyRecordRules(event.record, false);
     updateReasonRequiredMark(hasTaxi(event.record));
     return event;
@@ -186,7 +189,7 @@
     `app.record.edit.change.${code}`,
   ]);
 
-  kintone.events.on(changeEvents, (event) => {
+  KT.on(changeEvents, (event) => {
     applyRecordRules(event.record, true);
     // 憑證種類改掉會清空發票號碼，發票號碼記錄要跟著重算（程式寫入不會觸發發票號碼的 change）
     const agg = window.PR_INVOICE_AGG;

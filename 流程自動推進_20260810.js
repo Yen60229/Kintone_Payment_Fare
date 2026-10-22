@@ -1,6 +1,9 @@
 (function () {
   'use strict';
 
+  // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+  const KT = window.PR_KT;
+
   // =============================================================================
   // 建單後自動推進流程狀態
   //
@@ -187,7 +190,7 @@
 
   // 新建單後自動推進。
   // silent = true：建單後頁面立即跳轉，請求可能被中斷；失敗時靜默，補償交由 detail.show 接手。
-  kintone.events.on('app.record.create.submit.success', async (event) => {
+  KT.on('app.record.create.submit.success', async (event) => {
     if (!CONFIG.ENABLED || isVoided(event.record)) return event;
 
     const creatorCode = kintone.getLoginUser()?.code || '';
@@ -197,7 +200,7 @@
   });
 
   // SHOW handler 禁止 async（kintone 不等 Promise），須透過 setTimeout 脫離同步流程後再呼叫
-  kintone.events.on('app.record.detail.show', (event) => {
+  KT.on('app.record.detail.show', (event) => {
     setTimeout(() => compensateIfNeeded(event.record), 0);
     return event;
   });

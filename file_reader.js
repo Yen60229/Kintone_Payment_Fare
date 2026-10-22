@@ -36,16 +36,13 @@
 
         // 創建預覽按鈕
         const previewButton = document.createElement('a');
-        previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview';
+        previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview pr-preview-button'; // 樣式在 styles/desktop.css
         previewButton.title = '預覽';
-        previewButton.style.marginLeft = '8px';
         previewButton.href = 'javascript:void(0)';
 
         // 創建放大鏡圖示
         const magnifierIcon = document.createElement('i');
         magnifierIcon.className = 'fa fa-search gaia-attachment-file-action-preview-image';
-        magnifierIcon.style.color = '#2c2c2c';
-        magnifierIcon.style.fontSize = '16px';
         previewButton.appendChild(magnifierIcon);
 
         // 點擊事件
@@ -137,16 +134,13 @@
         }
 
         const previewButton = document.createElement('a');
-        previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview';
+        previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview pr-preview-button'; // 樣式在 styles/desktop.css
         previewButton.title = '預覽';
-        previewButton.style.marginLeft = '8px';
         previewButton.href = 'javascript:void(0)';
 
         // 創建放大鏡圖示
         const magnifierIcon = document.createElement('i');
         magnifierIcon.className = 'fa fa-search gaia-attachment-file-action-preview-image';
-        magnifierIcon.style.color = '#2c2c2c';
-        magnifierIcon.style.fontSize = '16px';
         previewButton.appendChild(magnifierIcon);
 
         // 添加點擊事件

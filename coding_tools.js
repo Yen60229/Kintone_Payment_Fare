@@ -53,7 +53,7 @@
 
         // 創建按鈕容器
         const buttonContainer = document.createElement('div');
-        buttonContainer.style.cssText = 'display: flex; align-items: center; gap: 10px; margin-top: 8px;';
+        buttonContainer.className = 'pr-tool-buttons'; // 樣式在 styles/desktop.css
 
         buttonContainer.appendChild(settingsButton);
         buttonContainer.appendChild(workflowButton);
@@ -67,59 +67,7 @@
       }
     }, 100); // 延遲 100ms 確保下載容器已載入
 
-    // 添加CSS樣式
-    const style = document.createElement('style');
-    style.innerHTML = `
-        /* 黑色背景按鈕 */
-        .workflow-button {
-          background-color: #2c3e50; /* 黑色背景 */
-          color: #fff;
-          font-size: 16px;
-          font-weight: bold;
-          padding: 10px 20px;
-          border: none;
-          border-radius: 5px;
-          cursor: pointer;
-          margin-left: 10px;
-          margin-right: 10px; 
-          transition: all 0.3s ease;
-        }
-  
-        /* 金色背景按鈕 */
-        .settings-button {
-          background-color: #f39c12; /* 金色背景 */
-          color: #fff;
-          font-size: 16px;
-          font-weight: bold;
-          padding: 10px 20px;
-          border: none;
-          border-radius: 5px;
-          cursor: pointer;
-          margin-left: 10px;
-          margin-right: 10px; 
-          transition: all 0.3s ease;
-        }
-  
-        /* 按鈕 hover 和 active 效果 */
-        .workflow-button:hover {
-          background-color: #34495e; /* 當滑鼠懸停時變成深灰色 */
-        }
-  
-        .settings-button:hover {
-          background-color: #e67e22; /* 當滑鼠懸停時變成亮金色 */
-        }
-  
-        .workflow-button:active {
-          background-color: #2c3e50;
-          transform: scale(0.98);
-        }
-  
-        .settings-button:active {
-          background-color: #d35400;
-          transform: scale(0.98);
-        }
-      `;
-    document.head.appendChild(style);
+    // 樣式在 styles/desktop.css（.workflow-button／.settings-button）
 
     return event;
   });

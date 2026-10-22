@@ -31,7 +31,7 @@ kintone **交通費請款單（測試區 App 749）** 的自訂 JavaScript 原�
 ```bash
 npm test && bash tests/syntax.test.sh && npm run scan
 ```
-- `npm test`：25 支測試（共 397 項斷言）。
+- `npm test`：26 支測試（共 408 項斷言）。
 - `bash tests/syntax.test.sh`：對根目錄所有 `*.js` 跑 `node --check`（目前 24 檔）。
 - `npm run scan`：統計剩餘的 App ID／狀態／選項／欄位代碼硬編碼（目前 11 處）。
 
@@ -48,13 +48,42 @@ npm run check:process
 ```bash
 npm run build
 ```
-- Vite 從 `src/index.js` 依序讀入所有模組，輸出 `dist/payment_request_bundle.min.js`（＋ `.map`）。
+一次打包桌面版與手機版，JS 和 CSS 分開輸出到 `dist/`：
+
+| 檔案 | 入口 | 內容 |
+|---|---|---|
+| `payment_request_desktop.js` | [`src/index.js`](src/index.js) | 全部模組 |
+| `payment_request_desktop.css` | 同上 | [`styles/common.css`](styles/common.css)＋[`styles/desktop.css`](styles/desktop.css) |
+| `payment_request_mobile.js` | [`src/mobile.js`](src/mobile.js) | 新增／編輯／詳細畫面的表單行為（桌面版的子集） |
+| `payment_request_mobile.css` | 同上 | `styles/common.css` |
+
+- 只打一套：`npm run build:desktop`、`npm run build:mobile`（`build:mobile` 不會清空 `dist/`）。
+- `.map` 是除錯用，不用上傳。
+- 樣式一律寫在 `styles/*.css`，JS 裡不注入 `<style>`、不寫 `cssText`／HTML `style` 屬性（`tests/build_targets.test.cjs` 會檢查）；
+  只有執行時才算得出來的值（欄寬、顯示／隱藏、進度條）留在 JS。
 
 ---
 
-## 部署注意事項（kintone 後台）
+## 上傳到 kintone（App 設定 →「JavaScript／CSS 自訂」）
 
-1. **載入順序的單一事實來源是 [`src/index.js`](src/index.js)**。打包後的 bundle 已把順序固化，上傳單一 bundle 即可。
-   若改成後台逐檔上傳，務必照 `src/index.js` 的順序排，而且 `payment_request_config.js` 一定排第一。
-2. bundle 依賴 SweetAlert2（`Swal`）；PDF 依賴 PDFLib 與 fontkit，ZIP 依賴 JSZip，SAP 轉檔依賴 SheetJS（`XLSX`）。這些外部函式庫要在 kintone 後台先載入。
-3. `APPS.PAYMENT` 用 `kintone.app.getId()` 動態取得，同一份 bundle 可上傳到測試區或正式區。
+每個區塊都是**由上往下載入**，外部函式庫要排在我們的檔案前面。外部函式庫沿用請款單 723 後台現在用的那幾份（同網址、同版本）。
+
+| 區塊 | 依序上傳 |
+|---|---|
+| JavaScript（PC） | ① SweetAlert2 ② PDFLib ③ fontkit ④ JSZip ⑤ SheetJS（`XLSX`）⑥ `dist/payment_request_desktop.js` |
+| CSS（PC） | ① SweetAlert2 的 CSS（若用的是 `sweetalert2.all.min.js` 已內含，可省略）② `dist/payment_request_desktop.css` |
+| JavaScript（手機） | ① SweetAlert2 ② `dist/payment_request_mobile.js` |
+| CSS（手機） | ① SweetAlert2 的 CSS（同上）② `dist/payment_request_mobile.css` |
+
+- PDFLib／fontkit／JSZip／SheetJS 只有列表頁批次下載、PDF、SAP 轉檔用，手機版沒有這些功能，不用上傳。
+- 換版時把舊的 `payment_request_bundle.min.js` 從 PC 區塊刪掉，改上傳 `payment_request_desktop.js`（兩份同時存在會重複註冊事件）。
+
+### 手機版有／沒有的功能
+- **有**：說明文字、欄位鎖定、申請人部門／費用所屬人部門帶入、簽核人員與會計單位、交通費明細規則、存檔驗證（費用歸屬、發票重複、掛帳單位限部內、手動簽核）、
+  預計付款日、受款人「同申請人」、建單後自動推進流程、作廢確認、「儲存中」提示。
+- **沒有**（桌面版專用，見 `src/mobile.js` 開頭）：帳號權限設定（欄位顯示／可編輯／必填規則）、列表頁批次下載／PDF／SAP 轉檔、列印頁、附件預覽、費用歸屬中文名稱提示、欄寬調整。
+
+### 其他
+1. **載入順序的單一事實來源是 [`src/index.js`](src/index.js)**（手機版 [`src/mobile.js`](src/mobile.js) 是它的子集，順序一致）。打包後已把順序固化，上傳打包好的檔即可。
+2. 模組一律寫桌面版的事件名稱，透過 `window.PR_KT`（`payment_request_config.js`）註冊與取用 kintone API；手機版打包時自動換成 `mobile.*` 事件與 `kintone.mobile.app.record`。
+3. `APPS.PAYMENT` 用 `PR_KT.app().getId()` 動態取得，同一份檔可上傳到測試區或正式區。

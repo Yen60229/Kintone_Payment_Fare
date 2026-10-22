@@ -8,9 +8,67 @@
   //   其餘檔案才能透過 window.PR_CONFIG 取用。
   // =============================================================================
 
+  // ── 桌面版／手機版共用的 kintone 入口（window.PR_KT）────────────────────────
+  //   手機版打包（src/mobile.js）在載入本檔前先設 window.PR_BUILD_TARGET = 'mobile'；桌面版不設。
+  //   模組一律寫桌面版的事件名稱，API 走 PR_KT：
+  //     PR_KT.on('app.record.create.show', fn) → 手機版改註冊 'mobile.app.record.create.show'；
+  //       處理程式拿到的 event.type 仍是去掉「mobile.」的名稱，模組裡比對 event.type 不用分兩套。
+  //       手機版沒有的事件（列印、列表直接編輯／刪除）略過不註冊。
+  //     PR_KT.record()／PR_KT.app() → 手機版是 kintone.mobile.app.record／kintone.mobile.app。
+  //   呼叫當下才取 kintone 物件（測試替身換掉 kintone 也照樣生效）。
+  const IS_MOBILE = window.PR_BUILD_TARGET === 'mobile';
+  const MOBILE_UNSUPPORTED_EVENT = /^app\.record\.(print\.show|index\.edit\.|index\.delete\.)/;
+
+  /** 手機版：處理程式執行期間把 event.type 換成桌面版名稱，結束（含 Promise 結束）後換回來 */
+  const withDesktopType = (handler) => (event) => {
+    const mobileType = event.type;
+    const restore = () => {
+      event.type = mobileType;
+    };
+    event.type = String(mobileType).replace(/^mobile\./, '');
+    let result;
+    try {
+      result = handler(event);
+    } catch (err) {
+      restore();
+      throw err;
+    }
+    if (result && typeof result.then === 'function') {
+      return result.then(
+        (value) => {
+          restore();
+          return value;
+        },
+        (err) => {
+          restore();
+          throw err;
+        },
+      );
+    }
+    restore();
+    return result;
+  };
+
+  const PR_KT = Object.freeze({
+    IS_MOBILE,
+    /** 註冊事件（寫桌面版名稱）；桌面版原封不動交給 kintone.events.on */
+    on: (types, handler) => {
+      const list = [].concat(types);
+      if (!IS_MOBILE) return kintone.events.on(types, handler);
+      const mobileTypes = list.filter((t) => !MOBILE_UNSUPPORTED_EVENT.test(t)).map((t) => `mobile.${t}`);
+      if (mobileTypes.length === 0) return undefined;
+      return kintone.events.on(mobileTypes, withDesktopType(handler));
+    },
+    /** kintone.app.record（手機版 kintone.mobile.app.record） */
+    record: () => (IS_MOBILE ? kintone.mobile.app.record : kintone.app.record),
+    /** kintone.app（手機版 kintone.mobile.app） */
+    app: () => (IS_MOBILE ? kintone.mobile.app : kintone.app),
+  });
+  window.PR_KT = PR_KT;
+
   // ── App ID 對照 ─────────────────────────────────────────────────────────────
   const APPS = Object.freeze({
-    PAYMENT: kintone.app.getId(), // 本 App（交通費請款單），動態取得
+    PAYMENT: PR_KT.app().getId(), // 本 App（交通費請款單），動態取得
     COST_CENTER: 661, // 費用歸屬代碼（CostCenter）
     ACCOUNTING_MAP: 433, // 申請單位 → 會計單位／承辦人 對應
     APPROVAL_FLOW: 139, // 簽核流程主檔

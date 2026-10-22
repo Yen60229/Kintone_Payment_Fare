@@ -1,6 +1,9 @@
 (function () {
   'use strict';
 
+  // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+  const KT = window.PR_KT;
+
   // =========================================================================
   // SECTION 1: 頂層常數與設定 (Config & Constants)
   // =========================================================================
@@ -214,34 +217,7 @@
   // =========================================================================
 
   // ── 驗證失敗視窗（字放大、逐條編號、每條一張卡片，年長同仁也看得清楚）──
-  const VALIDATION_STYLE_ID = 'pr-validation-popup-style';
-  const VALIDATION_CSS = `
-    .pr-validation-popup { width: min(760px, 95vw) !important; padding: 28px 28px 24px !important; }
-    .pr-validation-popup .swal2-title { font-size: 28px !important; font-weight: 800; color: #b71c1c; }
-    .pr-validation-popup .swal2-html-container { margin: 12px 0 0 !important; text-align: left !important; }
-    .pr-validation-lead { font-size: 19px; font-weight: 700; color: #333; margin: 0 0 14px; }
-    .pr-validation-list { list-style: none; margin: 0; padding: 0; max-height: 55vh; overflow-y: auto; }
-    .pr-validation-item { display: flex; gap: 14px; align-items: flex-start; margin: 0 0 12px; padding: 14px 16px;
-      background: #fff5f5; border: 1px solid #f5c2c2; border-left: 6px solid #d32f2f; border-radius: 8px; }
-    .pr-validation-no { flex: 0 0 34px; height: 34px; border-radius: 50%; background: #d32f2f; color: #fff;
-      font-size: 18px; font-weight: 800; line-height: 34px; text-align: center; }
-    .pr-validation-text { flex: 1; min-width: 0; line-height: 1.7; color: #1a1a1a; word-break: break-word; }
-    .pr-v-head { font-size: 20px; font-weight: 700; color: #1a1a1a; }
-    .pr-v-detail { margin-top: 6px; font-size: 17px; color: #555; }
-    .pr-v-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 2px; }
-    .pr-v-chip { display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 14px; background: #fff;
-      border: 2px solid #d32f2f; border-radius: 999px; }
-    .pr-v-chip-code { font-family: Consolas, 'Courier New', monospace; font-size: 20px; font-weight: 800; color: #b71c1c; letter-spacing: 0.5px; }
-    .pr-v-chip-note { font-size: 15px; color: #666; }
-    .pr-v-hint { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #f0b4b4; font-size: 16px; color: #5d4037; }
-    .pr-v-hint-tag { display: inline-block; margin-right: 8px; padding: 0 8px; border-radius: 4px; background: #ffe082;
-      color: #5d4037; font-size: 14px; font-weight: 800; }
-    .pr-hl { background: linear-gradient(transparent 55%, #ffe082 55%); color: #b71c1c; font-weight: 800; padding: 0 2px; }
-    .pr-field { color: #1565c0; font-weight: 800; }
-    .pr-row { display: inline-block; margin: 0 4px; padding: 0 8px; border-radius: 4px; background: #455a64; color: #fff;
-      font-size: 16px; font-weight: 700; line-height: 1.6; vertical-align: 1px; }
-    .pr-validation-popup .swal2-confirm { font-size: 20px !important; font-weight: 700; padding: 12px 40px !important; }
-  `;
+  //   樣式在 styles/common.css（.pr-validation-*、.pr-v-*），打包成獨立的 CSS 檔上傳
 
   const escapeValidationText = (text) =>
     String(text ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
@@ -308,12 +284,6 @@
   };
 
   const showValidationErrors = (title, errors) => {
-    if (!document.getElementById(VALIDATION_STYLE_ID)) {
-      const style = document.createElement('style');
-      style.id = VALIDATION_STYLE_ID;
-      style.textContent = VALIDATION_CSS;
-      document.head.appendChild(style);
-    }
     Swal.fire({
       icon: 'error',
       title,
@@ -324,7 +294,7 @@
     });
   };
 
-  kintone.events.on(['app.record.create.submit', 'app.record.edit.submit'], async (event) => {
+  KT.on(['app.record.create.submit', 'app.record.edit.submit'], async (event) => {
     if (event.record[C.VOID_FIELD]?.value?.length > 0) {
       return event;
     }

@@ -1,6 +1,9 @@
 (() => {
   'use strict';
 
+  // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+  const KT = window.PR_KT;
+
   const F = window.PR_CONFIG.FIELDS;
   const BUTTON_ID = 'same-applicant-btn';
 
@@ -32,39 +35,13 @@
     button.id = BUTTON_ID;
     button.textContent = '同申請人';
     button.type = 'button';
-
-    // 設定按鈕樣式（白色背景）
-    button.style.cssText = `
-      background-color: #3498db; 
-      color: #ffffff;              
-      border: 1px solid #2980b9; 
-      padding: 8px 16px;
-      font-size: 14px;
-      font-weight: 500;           
-      border-radius: 4px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      margin-top: 30px;
-    `;
-
-    // 滑鼠懸停效果
-    button.addEventListener('mouseenter', function () {
-      this.style.backgroundColor = '#2980b9';
-      this.style.borderColor = '#21618c';
-      this.style.boxShadow = '0 3px 6px rgba(0,0,0,0.2)';
-    });
-
-    button.addEventListener('mouseleave', function () {
-      this.style.backgroundColor = '#3498db';
-      this.style.borderColor = '#2980b9';
-      this.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-    });
+    // 樣式（含滑鼠懸停效果）在 styles/common.css
+    button.className = 'pr-same-applicant-btn';
 
     // 按鈕點擊事件
     button.addEventListener('click', function () {
       // 取得當前記錄
-      const record = kintone.app.record.get().record;
+      const record = KT.record().get().record;
       const applicantInfo = getApplicantInfo(record);
 
       if (applicantInfo.error) {
@@ -77,28 +54,12 @@
       record[F.PAYEE].value = applicantInfo.fullName;
 
       // 更新記錄
-      kintone.app.record.set({ record: record });
+      KT.record().set({ record: record });
 
-      // 顯示成功訊息（可選）
+      // 顯示成功訊息（淡出動畫在 styles/common.css 的 .pr-copied-msg）
       const successMsg = document.createElement('span');
       successMsg.textContent = ' ✓ 已複製';
-      successMsg.style.cssText = `
-        color: #28a745;
-        margin-left: 10px;
-        font-size: 12px;
-        animation: fadeOut 2s forwards;
-      `;
-
-      // 添加淡出動畫
-      const style = document.createElement('style');
-      style.textContent = `
-        @keyframes fadeOut {
-          0% { opacity: 1; }
-          70% { opacity: 1; }
-          100% { opacity: 0; }
-        }
-      `;
-      document.head.appendChild(style);
+      successMsg.className = 'pr-copied-msg';
 
       button.parentNode.appendChild(successMsg);
       setTimeout(() => {
@@ -111,7 +72,7 @@
 
   // 在編輯和新增頁面顯示按鈕（已掛過就不重複掛）
   function handleShow(event) {
-    const spaceElement = kintone.app.record.getSpaceElement(window.PR_CONFIG.SPACES.APPLY_BUTTON);
+    const spaceElement = KT.record().getSpaceElement(window.PR_CONFIG.SPACES.APPLY_BUTTON);
     if (spaceElement && !document.getElementById(BUTTON_ID)) {
       spaceElement.appendChild(createSameApplicantButton());
     }
@@ -127,8 +88,8 @@
     return event;
   }
 
-  kintone.events.on('app.record.create.show', (event) => handleShow(autoFillPayee(event)));
-  kintone.events.on('app.record.edit.show', handleShow);
+  KT.on('app.record.create.show', (event) => handleShow(autoFillPayee(event)));
+  KT.on('app.record.edit.show', handleShow);
 
   window.PR_PAYEE = Object.freeze({ getApplicantInfo, handleShow, autoFillPayee });
 })();

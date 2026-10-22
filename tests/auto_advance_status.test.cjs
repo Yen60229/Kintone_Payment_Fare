@@ -186,14 +186,15 @@ check('設定值一律取自 config，模組內不得自帶或寫死', () => {
 });
 
 check('有註冊 create.submit.success 並呼叫 advanceStatus', () => {
-  const m = src.match(/kintone\.events\.on\('app\.record\.create\.submit\.success'[\s\S]*?\n  \}\);/);
+  // 事件走 PR_KT.on（桌面版／手機版共用），見 payment_request_config.js
+  const m = src.match(/KT\.on\('app\.record\.create\.submit\.success'[\s\S]*?\n  \}\);/);
   assert.ok(m, '找不到 create.submit.success 事件註冊');
   assert.ok(m[0].includes('advanceStatus('), 'create.submit.success 未呼叫 advanceStatus');
   assert.ok(/silent:\s*true/.test(m[0]), '建單推進應為靜默（失敗交由詳細頁補償）');
 });
 
 check('detail.show 用 setTimeout 脫離同步流程（SHOW handler 禁止 async）', () => {
-  const m = src.match(/kintone\.events\.on\('app\.record\.detail\.show'[\s\S]*?\n  \}\);/);
+  const m = src.match(/KT\.on\('app\.record\.detail\.show'[\s\S]*?\n  \}\);/);
   assert.ok(m, '找不到 detail.show 事件註冊');
   assert.ok(/setTimeout\(\(\) => compensateIfNeeded/.test(m[0]), 'detail.show 未透過 setTimeout 呼叫補償');
   assert.ok(!/async \(event\)/.test(m[0]), 'SHOW handler 不可為 async');

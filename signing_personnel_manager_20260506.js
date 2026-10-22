@@ -1,6 +1,9 @@
 (function () {
   'use strict';
 
+  // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+  const KT = window.PR_KT;
+
   // =============================================================================
   // 簽核人員自動帶入
   //
@@ -150,7 +153,7 @@
    */
   function updateSigningCount(record, field, count) {
     record[field].value = `${count}人`;
-    kintone.app.record.setFieldShown(field, count > 0);
+    KT.record().setFieldShown(field, count > 0);
   }
 
   /**
@@ -338,7 +341,7 @@
           type: 'USER_SELECT',
           disabled: true,
         };
-        kintone.app.record.setFieldShown(displayField, true);
+        KT.record().setFieldShown(displayField, true);
       } else {
         // 隱藏欄位並清空值
         record[displayField] = {
@@ -346,7 +349,7 @@
           type: 'USER_SELECT',
           disabled: true,
         };
-        kintone.app.record.setFieldShown(displayField, false);
+        KT.record().setFieldShown(displayField, false);
       }
     });
 
@@ -398,7 +401,7 @@
               };
 
               // 隱藏欄位
-              kintone.app.record.setFieldShown(managerField, false);
+              KT.record().setFieldShown(managerField, false);
             }
           }
 
@@ -424,7 +427,7 @@
             type: 'USER_SELECT',
             disabled: true,
           };
-          kintone.app.record.setFieldShown(field, false);
+          KT.record().setFieldShown(field, false);
         });
         updateSigningCount(updateRecord.record, COUNT_FIELDS.manager, 0);
 
@@ -458,7 +461,7 @@
               disabled: true,
             };
 
-            kintone.app.record.setFieldShown(field, false);
+            KT.record().setFieldShown(field, false);
           }
 
           // 更新次長簽核人數
@@ -481,7 +484,7 @@
             type: 'USER_SELECT',
             disabled: true,
           };
-          kintone.app.record.setFieldShown(field, false);
+          KT.record().setFieldShown(field, false);
         });
         // 設定簽核人數為 0
         updateSigningCount(updateRecord.record, COUNT_FIELDS.manager, 0);
@@ -489,7 +492,7 @@
         break;
     }
 
-    kintone.app.record.set(updateRecord);
+    KT.record().set(updateRecord);
   }
 
   /**
@@ -538,7 +541,7 @@
         }
 
         const AccountData = resp.records[0];
-        const updateRecord = kintone.app.record.get();
+        const updateRecord = KT.record().get();
         // 手動設定簽核流程時，會計單位要維持空白（流程管理靠它分辨「送會計」與「送單位會計處理中」）。
         // API 回來時使用者可能剛勾選手動，所以看寫入當下的畫面資料，不看呼叫當時的狀態。
         const isManual = isManualSigningMode(updateRecord.record);
@@ -582,8 +585,8 @@
           type: 'USER_SELECT',
         };
 
-        kintone.app.record.setFieldShown(F.ACCOUNTING_UNIT, has_account && !isManual);
-        kintone.app.record.set(updateRecord);
+        KT.record().setFieldShown(F.ACCOUNTING_UNIT, has_account && !isManual);
+        KT.record().set(updateRecord);
       },
       function (error) {
         console.error('API錯誤:', error);
@@ -613,7 +616,7 @@
 
     // 先隱藏所有簽核相關欄位
     SIGNING_FIELDS_TO_HIDE.forEach((field) => {
-      kintone.app.record.setFieldShown(field, false);
+      KT.record().setFieldShown(field, false);
     });
 
     // 如果沒有選擇費用所屬人部門，清空所有簽核欄位
@@ -677,7 +680,7 @@
         'GET',
         params,
         function (resp) {
-          const updateRecord = kintone.app.record.get();
+          const updateRecord = KT.record().get();
 
           // API 回來前使用者可能已勾選手動設定簽核流程，那就不蓋掉他自選的人
           if (isManualSigningMode(updateRecord.record)) return;
@@ -688,9 +691,9 @@
           if (isSpecificDirector) {
             // 隱藏其餘欄位
             SIGNING_FIELDS_TO_HIDE.forEach((field) => {
-              kintone.app.record.setFieldShown(field, false);
+              KT.record().setFieldShown(field, false);
             });
-            kintone.app.record.set(updateRecord);
+            KT.record().set(updateRecord);
             console.log('台中支店長/營業戰略部長/總務部長/事業本部長，不帶入課/次/部長流程');
             return;
           }
@@ -703,7 +706,7 @@
           const managerData = resp.records[0];
 
           updateRecord.record = updateSigningFields(managerData, updateRecord.record, isSpecialDepartment);
-          kintone.app.record.set(updateRecord);
+          KT.record().set(updateRecord);
 
           // 計算主管人數
           let managerCount = 0;
@@ -723,7 +726,7 @@
           updateSigningCount(updateRecord.record, COUNT_FIELDS.manager, managerCount);
           updateSigningCount(updateRecord.record, COUNT_FIELDS.deputy, deputyCount);
 
-          kintone.app.record.set(updateRecord);
+          KT.record().set(updateRecord);
 
           // 六大簽核流程不需再運行下方程式
           if (isSpecialDepartment) return;
@@ -759,26 +762,26 @@
     record[MANUAL_MODE_CONFIG.countFields.manager].value = '0人';
     record[MANUAL_MODE_CONFIG.countFields.deputy].value = '0人';
 
-    kintone.app.record.setFieldShown(MANUAL_MODE_CONFIG.countFields.manager, true);
-    kintone.app.record.setFieldShown(MANUAL_MODE_CONFIG.countFields.deputy, true);
+    KT.record().setFieldShown(MANUAL_MODE_CONFIG.countFields.manager, true);
+    KT.record().setFieldShown(MANUAL_MODE_CONFIG.countFields.deputy, true);
 
     // B類：主管欄位先全部隱藏
     MANUAL_MODE_CONFIG.managerFields.forEach(({ field }) => {
       record[field].value = [];
       record[field].disabled = false;
-      kintone.app.record.setFieldShown(field, false);
+      KT.record().setFieldShown(field, false);
     });
 
     MANUAL_MODE_CONFIG.deputyFields.forEach(({ field }) => {
       record[field].value = [];
       record[field].disabled = false;
-      kintone.app.record.setFieldShown(field, false);
+      KT.record().setFieldShown(field, false);
     });
 
     // C類：固定欄位顯示
     MANUAL_MODE_CONFIG.fixedFields.forEach((field) => {
       record[field].disabled = false;
-      kintone.app.record.setFieldShown(field, true);
+      KT.record().setFieldShown(field, true);
     });
 
     console.log('手動簽核模式初始化完成');
@@ -800,13 +803,13 @@
 
       if (shouldShow) {
         record[field].disabled = false;
-        kintone.app.record.setFieldShown(field, true);
+        KT.record().setFieldShown(field, true);
 
         console.log(`顯示欄位: ${field}`);
       } else {
         record[field].value = [];
         record[field].disabled = false;
-        kintone.app.record.setFieldShown(field, false);
+        KT.record().setFieldShown(field, false);
 
         console.log(`隱藏欄位: ${field}`);
       }
@@ -828,13 +831,13 @@
 
       if (shouldShow) {
         record[field].disabled = false;
-        kintone.app.record.setFieldShown(field, true);
+        KT.record().setFieldShown(field, true);
 
         console.log(`顯示欄位: ${field}`);
       } else {
         record[field].value = [];
         record[field].disabled = false;
-        kintone.app.record.setFieldShown(field, false);
+        KT.record().setFieldShown(field, false);
 
         console.log(`隱藏欄位: ${field}`);
       }
@@ -942,7 +945,7 @@
   // =========================
 
   // 費用所屬人部門變更時的事件
-  kintone.events.on([`app.record.create.change.${F.EXPENSE_OWNER_ORG}`, `app.record.edit.change.${F.EXPENSE_OWNER_ORG}`], handleExpenseOwnerOrgChange);
+  KT.on([`app.record.create.change.${F.EXPENSE_OWNER_ORG}`, `app.record.edit.change.${F.EXPENSE_OWNER_ORG}`], handleExpenseOwnerOrgChange);
 
   /**
    * 申請人在「費用歸屬不限部門」群組（COST_SCOPE.EXEMPT_GROUP）→ 簽核人員自選：勾上手動設定簽核流程。
@@ -951,8 +954,8 @@
   function enterManualModeForExempt(record) {
     record[F.MANUAL_FLOW].value = [OPT.MANUAL_FLOW.ON];
     record[F.ACCOUNTING_UNIT].value = [];
-    kintone.app.record.setFieldShown(F.ACCOUNTING_UNIT, false);
-    if (typeof kintone.app.record.setGroupFieldOpen === 'function') kintone.app.record.setGroupFieldOpen(F.SIGN_FLOW_GROUP, true);
+    KT.record().setFieldShown(F.ACCOUNTING_UNIT, false);
+    if (typeof KT.record().setGroupFieldOpen === 'function') KT.record().setGroupFieldOpen(F.SIGN_FLOW_GROUP, true);
     initManualSigningMode(record);
   }
 
@@ -994,7 +997,7 @@
     return handleExpenseOwnerOrgChange(event);
   }
 
-  kintone.events.on('app.record.create.show', handleCreateShow);
+  KT.on('app.record.create.show', handleCreateShow);
 
   // ── 改費用所屬人後帶入費用所屬人部門並重排簽核人員（所有人適用）──
 
@@ -1088,7 +1091,7 @@
           warnNoOrg('費用所屬人');
           return;
         }
-        const currentCode = kintone.app.record.get().record[F.EXPENSE_OWNER_ORG]?.value?.[0]?.code;
+        const currentCode = KT.record().get().record[F.EXPENSE_OWNER_ORG]?.value?.[0]?.code;
         const currentValid = orgs.some((o) => o.organization.code === currentCode);
         if (keepIfValid && currentValid) return;
 
@@ -1100,28 +1103,28 @@
         });
         if (!picked || seq !== expenseOwnerChangeSeq) return;
 
-        const current = kintone.app.record.get();
+        const current = KT.record().get();
         current.record[F.EXPENSE_OWNER_ORG].value = [{ code: picked.organization.code, name: picked.organization.name }];
         current.record[F.EXPENSE_OWNER_ORG].disabled = true;
         // 程式寫入部門不會觸發 change 事件，公司名稱要在這裡跟著重算（推導規則在 main）
         window.PR_COMPANY_NAME?.apply(current.record);
-        kintone.app.record.set(current);
-        handleExpenseOwnerOrgChange({ record: kintone.app.record.get().record });
+        KT.record().set(current);
+        handleExpenseOwnerOrgChange({ record: KT.record().get().record });
       })
       .catch((err) => console.error('[簽核人員] 改費用所屬人後帶入費用所屬人部門失敗:', err));
     return event;
   }
 
-  kintone.events.on([`app.record.create.change.${F.EXPENSE_OWNER}`, `app.record.edit.change.${F.EXPENSE_OWNER}`], handleExpenseOwnerChange);
+  KT.on([`app.record.create.change.${F.EXPENSE_OWNER}`, `app.record.edit.change.${F.EXPENSE_OWNER}`], handleExpenseOwnerChange);
 
   // 表單編輯時，有顯示的繼續顯示，隱藏的繼續隱藏
-  kintone.events.on(['app.record.edit.show', 'app.record.detail.show'], (event) => {
+  KT.on(['app.record.edit.show', 'app.record.detail.show'], (event) => {
     const record = event.record;
 
     // 處理簽核欄位的顯示邏輯
     getEnabledFields().forEach((field) => {
       const hasValue = record[field]?.value?.length > 0;
-      kintone.app.record.setFieldShown(field, hasValue);
+      KT.record().setFieldShown(field, hasValue);
     });
 
     // 處理其他一般欄位的顯示邏輯
@@ -1135,22 +1138,22 @@
     });
 
     // 手動設定簽核流程時不顯示會計單位
-    kintone.app.record.setFieldShown(F.ACCOUNTING_UNIT, record[F.MANUAL_FLOW]?.value?.length < 1);
+    KT.record().setFieldShown(F.ACCOUNTING_UNIT, record[F.MANUAL_FLOW]?.value?.length < 1);
 
     return event;
   });
 
   // 手動設定簽核流程勾選變更
-  kintone.events.on([`app.record.create.change.${F.MANUAL_FLOW}`, `app.record.edit.change.${F.MANUAL_FLOW}`], function (event) {
+  KT.on([`app.record.create.change.${F.MANUAL_FLOW}`, `app.record.edit.change.${F.MANUAL_FLOW}`], function (event) {
     const record = event.record;
     const isManual = isManualSigningMode(record);
 
     if (isManual) {
       // 啟用手動模式
       record[F.ACCOUNTING_UNIT].value = [];
-      kintone.app.record.setFieldShown(F.ACCOUNTING_UNIT, false);
+      KT.record().setFieldShown(F.ACCOUNTING_UNIT, false);
 
-      kintone.app.record.setGroupFieldOpen(F.SIGN_FLOW_GROUP, true);
+      KT.record().setGroupFieldOpen(F.SIGN_FLOW_GROUP, true);
       event.record = initManualSigningMode(record);
     } else {
       // 取消手動模式 - 需要確認
@@ -1171,7 +1174,7 @@
   });
 
   // 部門主管簽核人數變更
-  kintone.events.on(
+  KT.on(
     [`app.record.create.change.${COUNT_FIELDS.manager}`, `app.record.edit.change.${COUNT_FIELDS.manager}`],
     function (event) {
       const record = event.record;
@@ -1191,7 +1194,7 @@
   );
 
   // 部門次長簽核人數變更
-  kintone.events.on(
+  KT.on(
     [`app.record.create.change.${COUNT_FIELDS.deputy}`, `app.record.edit.change.${COUNT_FIELDS.deputy}`],
     function (event) {
       const record = event.record;
@@ -1211,7 +1214,7 @@
   );
 
   // 編輯/詳細頁面顯示（手動模式支援）
-  kintone.events.on(['app.record.edit.show', 'app.record.detail.show'], function (event) {
+  KT.on(['app.record.edit.show', 'app.record.detail.show'], function (event) {
     const record = event.record;
 
     if (isManualSigningMode(record)) {
@@ -1237,7 +1240,7 @@
       if (event.type === 'app.record.edit.show') {
         MANUAL_MODE_CONFIG.fixedFields.forEach((field) => {
           record[field].disabled = false;
-          kintone.app.record.setFieldShown(field, true);
+          KT.record().setFieldShown(field, true);
         });
       }
     }
@@ -1246,7 +1249,7 @@
   });
 
   // 儲存時檢查手動簽核流程的欄位值是否符合規定
-  kintone.events.on(['app.record.create.submit', 'app.record.edit.submit'], (event) => {
+  KT.on(['app.record.create.submit', 'app.record.edit.submit'], (event) => {
     const record = event.record;
     // VOID_FIELD 是 checkbox 欄位代碼，與 STATUS.VOID 流程狀態字串語意不同
     if (record[C.VOID_FIELD]?.value?.length > 0) {

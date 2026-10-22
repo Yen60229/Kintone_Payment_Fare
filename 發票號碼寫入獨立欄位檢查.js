@@ -1,6 +1,9 @@
 (() => {
   'use strict';
 
+  // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+  const KT = window.PR_KT;
+
   const F = window.PR_CONFIG.FIELDS;
   const TABLE_CODE = F.TRAFFIC_TABLE.CODE;
   const INVOICE_CODE = F.TRAFFIC_TABLE.COLS.INVOICE_NO;
@@ -26,7 +29,7 @@
     `app.record.edit.change.${INVOICE_CODE}`,
   ];
 
-  kintone.events.on(allEvents, (event) => {
+  KT.on(allEvents, (event) => {
     event.record[INVOICE_AGG_CODE].value = buildInvoiceAgg(event.record);
     return event;
   });

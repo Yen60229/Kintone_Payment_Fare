@@ -1,6 +1,9 @@
 (() => {
   'use strict';
 
+  // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+  const KT = window.PR_KT;
+
   // =============================================================================
   // 掛帳單位（費用歸屬）限費用所屬人部內
   //
@@ -209,14 +212,14 @@
   // ── 事件 ───────────────────────────────────────────────────────────────
 
   // 開畫面就先算好申請人是否在排除群組（存檔時直接用），組織樹也先在背景抓
-  kintone.events.on(['app.record.create.show', 'app.record.edit.show'], (event) => {
+  KT.on(['app.record.create.show', 'app.record.edit.show'], (event) => {
     ensureExempt(applicantCodeOf(event.record));
     loadOrgParents().catch((err) => console.warn('[費用歸屬部門限制] 預先載入組織樹失敗，存檔時再試:', err));
     return event;
   });
 
   // 申請人改了（只有管理員能改）→ 重查
-  kintone.events.on([`app.record.create.change.${F.APPLICANT}`, `app.record.edit.change.${F.APPLICANT}`], (event) => {
+  KT.on([`app.record.create.change.${F.APPLICANT}`, `app.record.edit.change.${F.APPLICANT}`], (event) => {
     ensureExempt(applicantCodeOf(event.record));
     return event;
   });

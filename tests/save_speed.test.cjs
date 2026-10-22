@@ -39,9 +39,11 @@ const loadSavingHint = () => {
     getPopup: () => ({ classList: { contains: (c) => swalState.popupClass === c } }),
     showLoading: () => {},
   };
+  const kintoneStub = { events: { on: (types, handler) => registered.push({ types, handler }) } };
   const sandbox = {
-    window: { Swal: fakeSwal },
-    kintone: { events: { on: (types, handler) => registered.push({ types, handler }) } },
+    // PR_KT 由 payment_request_config.js 提供；這裡只載提示模組，給一個桌面版的替身
+    window: { Swal: fakeSwal, PR_KT: { on: (types, handler) => kintoneStub.events.on(types, handler) } },
+    kintone: kintoneStub,
     setTimeout: (fn, ms) => {
       deferred.push({ fn, ms });
       return deferred.length;
@@ -118,9 +120,10 @@ const loadSavingHint = () => {
   await check('沒有載入 SweetAlert 時不報錯（什麼都不做）', () => {
     const registered = [];
     // eslint-disable-next-line no-new-func
+    const on = (types, handler) => registered.push({ types, handler });
     new Function('window', 'kintone', 'setTimeout', 'clearTimeout', readSrc('存檔等待提示_20260923.js'))(
-      {},
-      { events: { on: (types, handler) => registered.push({ types, handler }) } },
+      { PR_KT: { on } },
+      { events: { on } },
       () => 0,
       () => {},
     );
@@ -186,7 +189,7 @@ const loadSavingHint = () => {
 
   // ── 3. 互不相依的查詢同時送出 ────────────────────────────────────────────────
   await check('submit 驗證：費用歸屬代碼、發票、掛帳單位檢查同時進行，錯誤訊息順序固定（代碼載入 → 表單 → 交通費明細 → 發票 → 掛帳單位）', () => {
-    const handler = extract(submitSrc, /kintone\.events\.on\(\['app\.record\.create\.submit', 'app\.record\.edit\.submit'\][\s\S]*$/, 'submit handler');
+    const handler = extract(submitSrc, /KT\.on\(\['app\.record\.create\.submit', 'app\.record\.edit\.submit'\][\s\S]*$/, 'submit handler');
     assert.match(handler, /await Promise\.all\(\[costCentersTask, invoiceTask, scopeTask\]\)/);
     const order = ['allErrors.push(costCenters.error)', 'allErrors.push(...validateForm(record', 'trafficRules.validate(record)', 'allErrors.push(...invoiceErrors)', 'allErrors.push(...scopeErrors)'].map((s) => handler.indexOf(s));
     assert.ok(handler.indexOf('trafficRules.normalize(record)') < handler.indexOf('checkInvoiceDuplicate(record)'), '發票號碼記錄要先重算再查重複');

@@ -10,9 +10,67 @@
     //   其餘檔案才能透過 window.PR_CONFIG 取用。
     // =============================================================================
 
+    // ── 桌面版／手機版共用的 kintone 入口（window.PR_KT）────────────────────────
+    //   手機版打包（src/mobile.js）在載入本檔前先設 window.PR_BUILD_TARGET = 'mobile'；桌面版不設。
+    //   模組一律寫桌面版的事件名稱，API 走 PR_KT：
+    //     PR_KT.on('app.record.create.show', fn) → 手機版改註冊 'mobile.app.record.create.show'；
+    //       處理程式拿到的 event.type 仍是去掉「mobile.」的名稱，模組裡比對 event.type 不用分兩套。
+    //       手機版沒有的事件（列印、列表直接編輯／刪除）略過不註冊。
+    //     PR_KT.record()／PR_KT.app() → 手機版是 kintone.mobile.app.record／kintone.mobile.app。
+    //   呼叫當下才取 kintone 物件（測試替身換掉 kintone 也照樣生效）。
+    const IS_MOBILE = window.PR_BUILD_TARGET === 'mobile';
+    const MOBILE_UNSUPPORTED_EVENT = /^app\.record\.(print\.show|index\.edit\.|index\.delete\.)/;
+
+    /** 手機版：處理程式執行期間把 event.type 換成桌面版名稱，結束（含 Promise 結束）後換回來 */
+    const withDesktopType = (handler) => (event) => {
+      const mobileType = event.type;
+      const restore = () => {
+        event.type = mobileType;
+      };
+      event.type = String(mobileType).replace(/^mobile\./, '');
+      let result;
+      try {
+        result = handler(event);
+      } catch (err) {
+        restore();
+        throw err;
+      }
+      if (result && typeof result.then === 'function') {
+        return result.then(
+          (value) => {
+            restore();
+            return value;
+          },
+          (err) => {
+            restore();
+            throw err;
+          },
+        );
+      }
+      restore();
+      return result;
+    };
+
+    const PR_KT = Object.freeze({
+      IS_MOBILE,
+      /** 註冊事件（寫桌面版名稱）；桌面版原封不動交給 kintone.events.on */
+      on: (types, handler) => {
+        const list = [].concat(types);
+        if (!IS_MOBILE) return kintone.events.on(types, handler);
+        const mobileTypes = list.filter((t) => !MOBILE_UNSUPPORTED_EVENT.test(t)).map((t) => `mobile.${t}`);
+        if (mobileTypes.length === 0) return undefined;
+        return kintone.events.on(mobileTypes, withDesktopType(handler));
+      },
+      /** kintone.app.record（手機版 kintone.mobile.app.record） */
+      record: () => (IS_MOBILE ? kintone.mobile.app.record : kintone.app.record),
+      /** kintone.app（手機版 kintone.mobile.app） */
+      app: () => (IS_MOBILE ? kintone.mobile.app : kintone.app),
+    });
+    window.PR_KT = PR_KT;
+
     // ── App ID 對照 ─────────────────────────────────────────────────────────────
     const APPS = Object.freeze({
-      PAYMENT: kintone.app.getId(), // 本 App（交通費請款單），動態取得
+      PAYMENT: PR_KT.app().getId(), // 本 App（交通費請款單），動態取得
       COST_CENTER: 661, // 費用歸屬代碼（CostCenter）
       ACCOUNTING_MAP: 433, // 申請單位 → 會計單位／承辦人 對應
       APPROVAL_FLOW: 139, // 簽核流程主檔
@@ -254,6 +312,9 @@
 
   (() => {
 
+    // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+    const KT = window.PR_KT;
+
     // 按下儲存後，各模組要查好幾支 API（驗證、簽核人員、預計付款日…），畫面會靜止 1〜3 秒。
     // 這段期間顯示「儲存中，請稍候…」，避免使用者以為沒按到而重複按、或以為當掉。
     //
@@ -320,11 +381,11 @@
       return event;
     };
 
-    kintone.events.on(SUBMIT_EVENTS, onSubmitStart);
-    kintone.events.on(LEAVE_EVENTS, onLeave);
+    KT.on(SUBMIT_EVENTS, onSubmitStart);
+    KT.on(LEAVE_EVENTS, onLeave);
     // kintone 依註冊順序執行同一個事件的處理程式。所有模組都在載入時同步註冊，
     // 所以延到下一輪再註冊，這個處理程式就會排在所有存檔程式的最後面。
-    setTimeout(() => kintone.events.on(SUBMIT_EVENTS, onSubmitEnd), 0);
+    setTimeout(() => KT.on(SUBMIT_EVENTS, onSubmitEnd), 0);
 
     window.PR_SAVING_HINT = Object.freeze({ onSubmitStart, onSubmitEnd, onLeave, closeSaving, POPUP_CLASS, SAFETY_CLOSE_MS });
   })();
@@ -1121,6 +1182,9 @@
 
   (function () {
 
+    // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+    const KT = window.PR_KT;
+
     // =========================================================================
     // SECTION 1: 頂層常數與設定 (Config & Constants)
     // =========================================================================
@@ -1140,12 +1204,12 @@
     const COMPANY_NAME_NX = 'ＮＸ臺灣國際物流';
     const COMPANY_DEPT_PREFIX_LIANHAI = '聯海';
 
-    // 頁面說明文案（空白欄位 Space_Noti_1／2／3）
+    // 頁面說明文案（空白欄位 Space_Noti_1／2／3）；樣式在 styles/common.css（.pr-noti*）
     const INSTRUCTIONS = {
-      付款方式: `<span style="font-size: 20px; color: #333; font-weight: bold;">&ensp;※ 付款方式：</span><span style="font-size: 20px; color: #ff0000ff; font-weight: bold;">皆以電匯為主，除特殊情況才可使用現金</span>`,
-      付款原則: `<span style="font-size: 20px; color: #333; font-weight: bold;">&ensp;※ 付款原則：一般帳款２個月，特殊期限請標註日期</span>`,
-      交通費說明: `<span style="font-size: 20px; color: #333; font-weight: bold;">&ensp;※ 交通費請款：搭乘計程車請說明理由</span>`,
-      受款人員工: `<span style="font-size: 20px; color: #333; font-weight: bold;margin-top: 30px;display: inline-block;">&ensp;※ 受款人為員工 ➡︎ 員工編號＋中文姓名</span>`,
+      付款方式: `<span class="pr-noti">&ensp;※ 付款方式：</span><span class="pr-noti-red">皆以電匯為主，除特殊情況才可使用現金</span>`,
+      付款原則: `<span class="pr-noti">&ensp;※ 付款原則：一般帳款２個月，特殊期限請標註日期</span>`,
+      交通費說明: `<span class="pr-noti">&ensp;※ 交通費請款：搭乘計程車請說明理由</span>`,
+      受款人員工: `<span class="pr-noti pr-noti-payee">&ensp;※ 受款人為員工 ➡︎ 員工編號＋中文姓名</span>`,
     };
 
     const NOTIFICATIONS = Object.freeze({
@@ -1170,7 +1234,7 @@
      */
     const updateSpaceNotifications = () => {
       Object.entries(NOTIFICATIONS).forEach(([spaceId, html]) => {
-        const el = kintone.app.record.getSpaceElement(spaceId);
+        const el = KT.record().getSpaceElement(spaceId);
         if (el) el.innerHTML = html;
       });
     };
@@ -1205,37 +1269,7 @@
       return '';
     }
 
-    /**
-     * 載入費用歸屬部門提示 CSS 樣式
-     */
-    function addDepartmentHintStyles() {
-      if (document.getElementById('kintone-department-hint-style')) return;
-      const style = document.createElement('style');
-      style.id = 'kintone-department-hint-style';
-      style.textContent = `
-    .department-hint {
-      color: #28a745 !important;
-      font-size: 18px !important;
-      margin-top: 2px !important;
-      font-weight: bold !important;
-      position: relative !important;
-      z-index: 1000 !important;
-      white-space: pre-line !important;
-      text-align: center !important;
-    }
-
-    .department-error {
-      color: #dc3545 !important;
-      font-size: 12px !important;
-      margin-top: 2px !important;
-      font-weight: bold !important;
-      position: relative !important;
-      z-index: 1000 !important;
-      text-align: center !important;
-    }
-  `;
-      document.head.appendChild(style);
-    }
+    // 費用歸屬中文名稱（綠字）／代碼不存在（紅字）提示的樣式在 styles/desktop.css（.department-hint／.department-error）
 
     const clearCostFieldHints = () => {
       document.querySelectorAll('.department-hint, .department-error').forEach((hint) => hint.remove());
@@ -1245,7 +1279,6 @@
      * 在畫面上值等於 costValue 的費用歸屬輸入框下方，掛上中文名稱（綠字）或「代碼不存在」（紅字）
      */
     function findAndUpdateAllCostFields(costValue, departmentName, isError = false) {
-      addDepartmentHintStyles();
       setTimeout(() => {
         document.querySelectorAll('.subtable-gaia input[type="text"], table input[type="text"]').forEach((input) => {
           if (!input.value || input.value.toUpperCase() !== costValue.toUpperCase()) return;
@@ -1506,7 +1539,7 @@
      */
     function refreshAllCostCenterHints() {
       try {
-        const record = kintone.app.record.get()?.record;
+        const record = KT.record().get()?.record;
         if (!record) return;
 
         const rows = record[TRAFFIC.CODE]?.value;
@@ -1563,8 +1596,8 @@
         if (record[field]) record[field].disabled = true;
       });
 
-      kintone.app.record.setFieldShown(F.ACCOUNTING_STAFF, C.isAdmin());
-      kintone.app.record.setFieldShown(F.PERMISSION_STAFF, C.isAdmin());
+      KT.record().setFieldShown(F.ACCOUNTING_STAFF, C.isAdmin());
+      KT.record().setFieldShown(F.PERMISSION_STAFF, C.isAdmin());
       updateSpaceNotifications();
       loadCostCenterMaps().catch(() => {});
 
@@ -1587,7 +1620,7 @@
           if (status !== STATUS.REIMBURSEMENT_FILL && status !== STATUS.APPLY_START) {
             autoProcessAllTables();
           }
-          kintone.app.record.setFieldShown(F.MANUAL_FLOW, record[F.MANUAL_FLOW]?.value?.length > 0);
+          KT.record().setFieldShown(F.MANUAL_FLOW, record[F.MANUAL_FLOW]?.value?.length > 0);
           break;
         }
       }
@@ -1604,7 +1637,7 @@
     // -------------------------------------------------------------------------
 
     // 主要記錄顯示與編輯事件 (create/edit/detail/print)
-    kintone.events.on(['app.record.create.show', 'app.record.edit.show', 'app.record.detail.show', 'app.record.print.show'], (event) => {
+    KT.on(['app.record.create.show', 'app.record.edit.show', 'app.record.detail.show', 'app.record.print.show'], (event) => {
       return handleMainShowEditEvents(event);
     });
 
@@ -1613,14 +1646,14 @@
     // -------------------------------------------------------------------------
 
     // 費用所屬人部門變更 → 重算公司名稱
-    kintone.events.on([`app.record.create.change.${F.EXPENSE_OWNER_ORG}`, `app.record.edit.change.${F.EXPENSE_OWNER_ORG}`], (event) => {
+    KT.on([`app.record.create.change.${F.EXPENSE_OWNER_ORG}`, `app.record.edit.change.${F.EXPENSE_OWNER_ORG}`], (event) => {
       window.PR_COMPANY_NAME.apply(event.record);
       return event;
     });
 
     // 費用歸屬變更 → 轉大寫、顯示中文名稱／代碼不存在提示
     //   會計單位一律依費用所屬人部門，由 signing_personnel_manager 查會計對應主檔帶入，這裡不動
-    kintone.events.on([`app.record.create.change.${TRAFFIC.COLS.EXPENSE}`, `app.record.edit.change.${TRAFFIC.COLS.EXPENSE}`], (event) => {
+    KT.on([`app.record.create.change.${TRAFFIC.COLS.EXPENSE}`, `app.record.edit.change.${TRAFFIC.COLS.EXPENSE}`], (event) => {
       loadCostCenterMaps().catch(() => {});
       try {
         const rows = event.record[TRAFFIC.CODE]?.value || [];
@@ -1644,6 +1677,9 @@
   })();
 
   (function () {
+
+    // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+    const KT = window.PR_KT;
 
     // =========================================================================
     // SECTION 1: 頂層常數與設定 (Config & Constants)
@@ -1858,34 +1894,7 @@
     // =========================================================================
 
     // ── 驗證失敗視窗（字放大、逐條編號、每條一張卡片，年長同仁也看得清楚）──
-    const VALIDATION_STYLE_ID = 'pr-validation-popup-style';
-    const VALIDATION_CSS = `
-    .pr-validation-popup { width: min(760px, 95vw) !important; padding: 28px 28px 24px !important; }
-    .pr-validation-popup .swal2-title { font-size: 28px !important; font-weight: 800; color: #b71c1c; }
-    .pr-validation-popup .swal2-html-container { margin: 12px 0 0 !important; text-align: left !important; }
-    .pr-validation-lead { font-size: 19px; font-weight: 700; color: #333; margin: 0 0 14px; }
-    .pr-validation-list { list-style: none; margin: 0; padding: 0; max-height: 55vh; overflow-y: auto; }
-    .pr-validation-item { display: flex; gap: 14px; align-items: flex-start; margin: 0 0 12px; padding: 14px 16px;
-      background: #fff5f5; border: 1px solid #f5c2c2; border-left: 6px solid #d32f2f; border-radius: 8px; }
-    .pr-validation-no { flex: 0 0 34px; height: 34px; border-radius: 50%; background: #d32f2f; color: #fff;
-      font-size: 18px; font-weight: 800; line-height: 34px; text-align: center; }
-    .pr-validation-text { flex: 1; min-width: 0; line-height: 1.7; color: #1a1a1a; word-break: break-word; }
-    .pr-v-head { font-size: 20px; font-weight: 700; color: #1a1a1a; }
-    .pr-v-detail { margin-top: 6px; font-size: 17px; color: #555; }
-    .pr-v-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 2px; }
-    .pr-v-chip { display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 14px; background: #fff;
-      border: 2px solid #d32f2f; border-radius: 999px; }
-    .pr-v-chip-code { font-family: Consolas, 'Courier New', monospace; font-size: 20px; font-weight: 800; color: #b71c1c; letter-spacing: 0.5px; }
-    .pr-v-chip-note { font-size: 15px; color: #666; }
-    .pr-v-hint { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #f0b4b4; font-size: 16px; color: #5d4037; }
-    .pr-v-hint-tag { display: inline-block; margin-right: 8px; padding: 0 8px; border-radius: 4px; background: #ffe082;
-      color: #5d4037; font-size: 14px; font-weight: 800; }
-    .pr-hl { background: linear-gradient(transparent 55%, #ffe082 55%); color: #b71c1c; font-weight: 800; padding: 0 2px; }
-    .pr-field { color: #1565c0; font-weight: 800; }
-    .pr-row { display: inline-block; margin: 0 4px; padding: 0 8px; border-radius: 4px; background: #455a64; color: #fff;
-      font-size: 16px; font-weight: 700; line-height: 1.6; vertical-align: 1px; }
-    .pr-validation-popup .swal2-confirm { font-size: 20px !important; font-weight: 700; padding: 12px 40px !important; }
-  `;
+    //   樣式在 styles/common.css（.pr-validation-*、.pr-v-*），打包成獨立的 CSS 檔上傳
 
     const escapeValidationText = (text) =>
       String(text ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
@@ -1952,12 +1961,6 @@
     };
 
     const showValidationErrors = (title, errors) => {
-      if (!document.getElementById(VALIDATION_STYLE_ID)) {
-        const style = document.createElement('style');
-        style.id = VALIDATION_STYLE_ID;
-        style.textContent = VALIDATION_CSS;
-        document.head.appendChild(style);
-      }
       Swal.fire({
         icon: 'error',
         title,
@@ -1968,7 +1971,7 @@
       });
     };
 
-    kintone.events.on(['app.record.create.submit', 'app.record.edit.submit'], async (event) => {
+    KT.on(['app.record.create.submit', 'app.record.edit.submit'], async (event) => {
       if (event.record[C.VOID_FIELD]?.value?.length > 0) {
         return event;
       }
@@ -2036,6 +2039,9 @@
   })();
 
   (() => {
+
+    // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+    const KT = window.PR_KT;
 
     // =============================================================================
     // 掛帳單位（費用歸屬）限費用所屬人部內
@@ -2245,14 +2251,14 @@
     // ── 事件 ───────────────────────────────────────────────────────────────
 
     // 開畫面就先算好申請人是否在排除群組（存檔時直接用），組織樹也先在背景抓
-    kintone.events.on(['app.record.create.show', 'app.record.edit.show'], (event) => {
+    KT.on(['app.record.create.show', 'app.record.edit.show'], (event) => {
       ensureExempt(applicantCodeOf(event.record));
       loadOrgParents().catch((err) => console.warn('[費用歸屬部門限制] 預先載入組織樹失敗，存檔時再試:', err));
       return event;
     });
 
     // 申請人改了（只有管理員能改）→ 重查
-    kintone.events.on([`app.record.create.change.${F.APPLICANT}`, `app.record.edit.change.${F.APPLICANT}`], (event) => {
+    KT.on([`app.record.create.change.${F.APPLICANT}`, `app.record.edit.change.${F.APPLICANT}`], (event) => {
       ensureExempt(applicantCodeOf(event.record));
       return event;
     });
@@ -2277,6 +2283,9 @@
   })();
 
   (function () {
+
+    // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+    const KT = window.PR_KT;
 
     // =============================================================================
     // 簽核人員自動帶入
@@ -2427,7 +2436,7 @@
      */
     function updateSigningCount(record, field, count) {
       record[field].value = `${count}人`;
-      kintone.app.record.setFieldShown(field, count > 0);
+      KT.record().setFieldShown(field, count > 0);
     }
 
     /**
@@ -2615,7 +2624,7 @@
             type: 'USER_SELECT',
             disabled: true,
           };
-          kintone.app.record.setFieldShown(displayField, true);
+          KT.record().setFieldShown(displayField, true);
         } else {
           // 隱藏欄位並清空值
           record[displayField] = {
@@ -2623,7 +2632,7 @@
             type: 'USER_SELECT',
             disabled: true,
           };
-          kintone.app.record.setFieldShown(displayField, false);
+          KT.record().setFieldShown(displayField, false);
         }
       });
 
@@ -2675,7 +2684,7 @@
                 };
 
                 // 隱藏欄位
-                kintone.app.record.setFieldShown(managerField, false);
+                KT.record().setFieldShown(managerField, false);
               }
             }
 
@@ -2701,7 +2710,7 @@
               type: 'USER_SELECT',
               disabled: true,
             };
-            kintone.app.record.setFieldShown(field, false);
+            KT.record().setFieldShown(field, false);
           });
           updateSigningCount(updateRecord.record, COUNT_FIELDS.manager, 0);
 
@@ -2735,7 +2744,7 @@
                 disabled: true,
               };
 
-              kintone.app.record.setFieldShown(field, false);
+              KT.record().setFieldShown(field, false);
             }
 
             // 更新次長簽核人數
@@ -2758,7 +2767,7 @@
               type: 'USER_SELECT',
               disabled: true,
             };
-            kintone.app.record.setFieldShown(field, false);
+            KT.record().setFieldShown(field, false);
           });
           // 設定簽核人數為 0
           updateSigningCount(updateRecord.record, COUNT_FIELDS.manager, 0);
@@ -2766,7 +2775,7 @@
           break;
       }
 
-      kintone.app.record.set(updateRecord);
+      KT.record().set(updateRecord);
     }
 
     /**
@@ -2815,7 +2824,7 @@
           }
 
           const AccountData = resp.records[0];
-          const updateRecord = kintone.app.record.get();
+          const updateRecord = KT.record().get();
           // 手動設定簽核流程時，會計單位要維持空白（流程管理靠它分辨「送會計」與「送單位會計處理中」）。
           // API 回來時使用者可能剛勾選手動，所以看寫入當下的畫面資料，不看呼叫當時的狀態。
           const isManual = isManualSigningMode(updateRecord.record);
@@ -2859,8 +2868,8 @@
             type: 'USER_SELECT',
           };
 
-          kintone.app.record.setFieldShown(F.ACCOUNTING_UNIT, has_account && !isManual);
-          kintone.app.record.set(updateRecord);
+          KT.record().setFieldShown(F.ACCOUNTING_UNIT, has_account && !isManual);
+          KT.record().set(updateRecord);
         },
         function (error) {
           console.error('API錯誤:', error);
@@ -2890,7 +2899,7 @@
 
       // 先隱藏所有簽核相關欄位
       SIGNING_FIELDS_TO_HIDE.forEach((field) => {
-        kintone.app.record.setFieldShown(field, false);
+        KT.record().setFieldShown(field, false);
       });
 
       // 如果沒有選擇費用所屬人部門，清空所有簽核欄位
@@ -2954,7 +2963,7 @@
           'GET',
           params,
           function (resp) {
-            const updateRecord = kintone.app.record.get();
+            const updateRecord = KT.record().get();
 
             // API 回來前使用者可能已勾選手動設定簽核流程，那就不蓋掉他自選的人
             if (isManualSigningMode(updateRecord.record)) return;
@@ -2965,9 +2974,9 @@
             if (isSpecificDirector) {
               // 隱藏其餘欄位
               SIGNING_FIELDS_TO_HIDE.forEach((field) => {
-                kintone.app.record.setFieldShown(field, false);
+                KT.record().setFieldShown(field, false);
               });
-              kintone.app.record.set(updateRecord);
+              KT.record().set(updateRecord);
               console.log('台中支店長/營業戰略部長/總務部長/事業本部長，不帶入課/次/部長流程');
               return;
             }
@@ -2980,7 +2989,7 @@
             const managerData = resp.records[0];
 
             updateRecord.record = updateSigningFields(managerData, updateRecord.record, isSpecialDepartment);
-            kintone.app.record.set(updateRecord);
+            KT.record().set(updateRecord);
 
             // 計算主管人數
             let managerCount = 0;
@@ -3000,7 +3009,7 @@
             updateSigningCount(updateRecord.record, COUNT_FIELDS.manager, managerCount);
             updateSigningCount(updateRecord.record, COUNT_FIELDS.deputy, deputyCount);
 
-            kintone.app.record.set(updateRecord);
+            KT.record().set(updateRecord);
 
             // 六大簽核流程不需再運行下方程式
             if (isSpecialDepartment) return;
@@ -3036,26 +3045,26 @@
       record[MANUAL_MODE_CONFIG.countFields.manager].value = '0人';
       record[MANUAL_MODE_CONFIG.countFields.deputy].value = '0人';
 
-      kintone.app.record.setFieldShown(MANUAL_MODE_CONFIG.countFields.manager, true);
-      kintone.app.record.setFieldShown(MANUAL_MODE_CONFIG.countFields.deputy, true);
+      KT.record().setFieldShown(MANUAL_MODE_CONFIG.countFields.manager, true);
+      KT.record().setFieldShown(MANUAL_MODE_CONFIG.countFields.deputy, true);
 
       // B類：主管欄位先全部隱藏
       MANUAL_MODE_CONFIG.managerFields.forEach(({ field }) => {
         record[field].value = [];
         record[field].disabled = false;
-        kintone.app.record.setFieldShown(field, false);
+        KT.record().setFieldShown(field, false);
       });
 
       MANUAL_MODE_CONFIG.deputyFields.forEach(({ field }) => {
         record[field].value = [];
         record[field].disabled = false;
-        kintone.app.record.setFieldShown(field, false);
+        KT.record().setFieldShown(field, false);
       });
 
       // C類：固定欄位顯示
       MANUAL_MODE_CONFIG.fixedFields.forEach((field) => {
         record[field].disabled = false;
-        kintone.app.record.setFieldShown(field, true);
+        KT.record().setFieldShown(field, true);
       });
 
       console.log('手動簽核模式初始化完成');
@@ -3077,13 +3086,13 @@
 
         if (shouldShow) {
           record[field].disabled = false;
-          kintone.app.record.setFieldShown(field, true);
+          KT.record().setFieldShown(field, true);
 
           console.log(`顯示欄位: ${field}`);
         } else {
           record[field].value = [];
           record[field].disabled = false;
-          kintone.app.record.setFieldShown(field, false);
+          KT.record().setFieldShown(field, false);
 
           console.log(`隱藏欄位: ${field}`);
         }
@@ -3105,13 +3114,13 @@
 
         if (shouldShow) {
           record[field].disabled = false;
-          kintone.app.record.setFieldShown(field, true);
+          KT.record().setFieldShown(field, true);
 
           console.log(`顯示欄位: ${field}`);
         } else {
           record[field].value = [];
           record[field].disabled = false;
-          kintone.app.record.setFieldShown(field, false);
+          KT.record().setFieldShown(field, false);
 
           console.log(`隱藏欄位: ${field}`);
         }
@@ -3219,7 +3228,7 @@
     // =========================
 
     // 費用所屬人部門變更時的事件
-    kintone.events.on([`app.record.create.change.${F.EXPENSE_OWNER_ORG}`, `app.record.edit.change.${F.EXPENSE_OWNER_ORG}`], handleExpenseOwnerOrgChange);
+    KT.on([`app.record.create.change.${F.EXPENSE_OWNER_ORG}`, `app.record.edit.change.${F.EXPENSE_OWNER_ORG}`], handleExpenseOwnerOrgChange);
 
     /**
      * 申請人在「費用歸屬不限部門」群組（COST_SCOPE.EXEMPT_GROUP）→ 簽核人員自選：勾上手動設定簽核流程。
@@ -3228,8 +3237,8 @@
     function enterManualModeForExempt(record) {
       record[F.MANUAL_FLOW].value = [OPT.MANUAL_FLOW.ON];
       record[F.ACCOUNTING_UNIT].value = [];
-      kintone.app.record.setFieldShown(F.ACCOUNTING_UNIT, false);
-      if (typeof kintone.app.record.setGroupFieldOpen === 'function') kintone.app.record.setGroupFieldOpen(F.SIGN_FLOW_GROUP, true);
+      KT.record().setFieldShown(F.ACCOUNTING_UNIT, false);
+      if (typeof KT.record().setGroupFieldOpen === 'function') KT.record().setGroupFieldOpen(F.SIGN_FLOW_GROUP, true);
       initManualSigningMode(record);
     }
 
@@ -3271,7 +3280,7 @@
       return handleExpenseOwnerOrgChange(event);
     }
 
-    kintone.events.on('app.record.create.show', handleCreateShow);
+    KT.on('app.record.create.show', handleCreateShow);
 
     // ── 改費用所屬人後帶入費用所屬人部門並重排簽核人員（所有人適用）──
 
@@ -3365,7 +3374,7 @@
             warnNoOrg('費用所屬人');
             return;
           }
-          const currentCode = kintone.app.record.get().record[F.EXPENSE_OWNER_ORG]?.value?.[0]?.code;
+          const currentCode = KT.record().get().record[F.EXPENSE_OWNER_ORG]?.value?.[0]?.code;
           const currentValid = orgs.some((o) => o.organization.code === currentCode);
           if (keepIfValid && currentValid) return;
 
@@ -3377,28 +3386,28 @@
           });
           if (!picked || seq !== expenseOwnerChangeSeq) return;
 
-          const current = kintone.app.record.get();
+          const current = KT.record().get();
           current.record[F.EXPENSE_OWNER_ORG].value = [{ code: picked.organization.code, name: picked.organization.name }];
           current.record[F.EXPENSE_OWNER_ORG].disabled = true;
           // 程式寫入部門不會觸發 change 事件，公司名稱要在這裡跟著重算（推導規則在 main）
           window.PR_COMPANY_NAME?.apply(current.record);
-          kintone.app.record.set(current);
-          handleExpenseOwnerOrgChange({ record: kintone.app.record.get().record });
+          KT.record().set(current);
+          handleExpenseOwnerOrgChange({ record: KT.record().get().record });
         })
         .catch((err) => console.error('[簽核人員] 改費用所屬人後帶入費用所屬人部門失敗:', err));
       return event;
     }
 
-    kintone.events.on([`app.record.create.change.${F.EXPENSE_OWNER}`, `app.record.edit.change.${F.EXPENSE_OWNER}`], handleExpenseOwnerChange);
+    KT.on([`app.record.create.change.${F.EXPENSE_OWNER}`, `app.record.edit.change.${F.EXPENSE_OWNER}`], handleExpenseOwnerChange);
 
     // 表單編輯時，有顯示的繼續顯示，隱藏的繼續隱藏
-    kintone.events.on(['app.record.edit.show', 'app.record.detail.show'], (event) => {
+    KT.on(['app.record.edit.show', 'app.record.detail.show'], (event) => {
       const record = event.record;
 
       // 處理簽核欄位的顯示邏輯
       getEnabledFields().forEach((field) => {
         const hasValue = record[field]?.value?.length > 0;
-        kintone.app.record.setFieldShown(field, hasValue);
+        KT.record().setFieldShown(field, hasValue);
       });
 
       // 處理其他一般欄位的顯示邏輯
@@ -3412,22 +3421,22 @@
       });
 
       // 手動設定簽核流程時不顯示會計單位
-      kintone.app.record.setFieldShown(F.ACCOUNTING_UNIT, record[F.MANUAL_FLOW]?.value?.length < 1);
+      KT.record().setFieldShown(F.ACCOUNTING_UNIT, record[F.MANUAL_FLOW]?.value?.length < 1);
 
       return event;
     });
 
     // 手動設定簽核流程勾選變更
-    kintone.events.on([`app.record.create.change.${F.MANUAL_FLOW}`, `app.record.edit.change.${F.MANUAL_FLOW}`], function (event) {
+    KT.on([`app.record.create.change.${F.MANUAL_FLOW}`, `app.record.edit.change.${F.MANUAL_FLOW}`], function (event) {
       const record = event.record;
       const isManual = isManualSigningMode(record);
 
       if (isManual) {
         // 啟用手動模式
         record[F.ACCOUNTING_UNIT].value = [];
-        kintone.app.record.setFieldShown(F.ACCOUNTING_UNIT, false);
+        KT.record().setFieldShown(F.ACCOUNTING_UNIT, false);
 
-        kintone.app.record.setGroupFieldOpen(F.SIGN_FLOW_GROUP, true);
+        KT.record().setGroupFieldOpen(F.SIGN_FLOW_GROUP, true);
         event.record = initManualSigningMode(record);
       } else {
         // 取消手動模式 - 需要確認
@@ -3448,7 +3457,7 @@
     });
 
     // 部門主管簽核人數變更
-    kintone.events.on(
+    KT.on(
       [`app.record.create.change.${COUNT_FIELDS.manager}`, `app.record.edit.change.${COUNT_FIELDS.manager}`],
       function (event) {
         const record = event.record;
@@ -3468,7 +3477,7 @@
     );
 
     // 部門次長簽核人數變更
-    kintone.events.on(
+    KT.on(
       [`app.record.create.change.${COUNT_FIELDS.deputy}`, `app.record.edit.change.${COUNT_FIELDS.deputy}`],
       function (event) {
         const record = event.record;
@@ -3488,7 +3497,7 @@
     );
 
     // 編輯/詳細頁面顯示（手動模式支援）
-    kintone.events.on(['app.record.edit.show', 'app.record.detail.show'], function (event) {
+    KT.on(['app.record.edit.show', 'app.record.detail.show'], function (event) {
       const record = event.record;
 
       if (isManualSigningMode(record)) {
@@ -3514,7 +3523,7 @@
         if (event.type === 'app.record.edit.show') {
           MANUAL_MODE_CONFIG.fixedFields.forEach((field) => {
             record[field].disabled = false;
-            kintone.app.record.setFieldShown(field, true);
+            KT.record().setFieldShown(field, true);
           });
         }
       }
@@ -3523,7 +3532,7 @@
     });
 
     // 儲存時檢查手動簽核流程的欄位值是否符合規定
-    kintone.events.on(['app.record.create.submit', 'app.record.edit.submit'], (event) => {
+    KT.on(['app.record.create.submit', 'app.record.edit.submit'], (event) => {
       const record = event.record;
       // VOID_FIELD 是 checkbox 欄位代碼，與 STATUS.VOID 流程狀態字串語意不同
       if (record[C.VOID_FIELD]?.value?.length > 0) {
@@ -3545,6 +3554,9 @@
   })();
 
   (() => {
+
+    // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+    const KT = window.PR_KT;
 
     // =============================================================================
     // 申請人部門依申請人帶入（2026-10-22）
@@ -3590,7 +3602,7 @@
             picker.warnNoOrg('申請人');
             return;
           }
-          const currentCode = kintone.app.record.get().record[F.APPLICANT_ORG]?.value?.[0]?.code;
+          const currentCode = KT.record().get().record[F.APPLICANT_ORG]?.value?.[0]?.code;
           const currentValid = orgs.some((o) => o.organization.code === currentCode);
           if (keepIfValid && currentValid) return;
 
@@ -3601,22 +3613,25 @@
           });
           if (!picked || seq !== applicantSeq) return;
 
-          const current = kintone.app.record.get();
+          const current = KT.record().get();
           current.record[F.APPLICANT_ORG].value = [{ code: picked.organization.code, name: picked.organization.name }];
           current.record[F.APPLICANT_ORG].disabled = true;
-          kintone.app.record.set(current);
+          KT.record().set(current);
         })
         .catch((err) => console.error('[申請人部門] 帶入申請人部門失敗:', err));
       return event;
     };
 
-    kintone.events.on('app.record.create.show', (event) => syncApplicantOrg(event, { keepIfValid: true }));
-    kintone.events.on([`app.record.create.change.${F.APPLICANT}`, `app.record.edit.change.${F.APPLICANT}`], (event) => syncApplicantOrg(event));
+    KT.on('app.record.create.show', (event) => syncApplicantOrg(event, { keepIfValid: true }));
+    KT.on([`app.record.create.change.${F.APPLICANT}`, `app.record.edit.change.${F.APPLICANT}`], (event) => syncApplicantOrg(event));
 
     window.PR_APPLICANT_ORG = Object.freeze({ syncApplicantOrg });
   })();
 
   (() => {
+
+    // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+    const KT = window.PR_KT;
 
     // =============================================================================
     // 交通費明細規則（子表格「交通費請款單」與「是否有紙本憑證」「理由」）
@@ -3781,9 +3796,9 @@
         if (!label) return;
         const mark = document.createElement('span');
         mark.id = REQUIRED_MARK_ID;
-        mark.className = 'kintone-field-required';
+        // 樣式在 styles/common.css 的 .pr-required-mark
+        mark.className = 'kintone-field-required pr-required-mark';
         mark.textContent = '*';
-        mark.style.cssText = 'color:#e74c3c;margin-left:4px;font-weight:bold;';
         label.appendChild(mark);
       } catch (e) {
         console.warn('[交通費明細規則] 理由必填標示失敗', e);
@@ -3792,7 +3807,7 @@
 
     // ── 事件 ───────────────────────────────────────────────────────────────
 
-    kintone.events.on(['app.record.create.show', 'app.record.edit.show'], (event) => {
+    KT.on(['app.record.create.show', 'app.record.edit.show'], (event) => {
       applyRecordRules(event.record, false);
       updateReasonRequiredMark(hasTaxi(event.record));
       return event;
@@ -3803,7 +3818,7 @@
       `app.record.edit.change.${code}`,
     ]);
 
-    kintone.events.on(changeEvents, (event) => {
+    KT.on(changeEvents, (event) => {
       applyRecordRules(event.record, true);
       // 憑證種類改掉會清空發票號碼，發票號碼記錄要跟著重算（程式寫入不會觸發發票號碼的 change）
       const agg = window.PR_INVOICE_AGG;
@@ -3818,6 +3833,9 @@
   })();
 
   (() => {
+
+    // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+    const KT = window.PR_KT;
 
     // =============================================================================
     // 預計付款日（2026-10-20）
@@ -3956,7 +3974,7 @@
       return event;
     };
 
-    kintone.events.on(['app.record.create.submit', 'app.record.edit.submit'], handleSubmit);
+    KT.on(['app.record.create.submit', 'app.record.edit.submit'], handleSubmit);
 
     /**
      * 畫面：預計付款日鎖住，並在旁邊的空白欄位顯示付款說明。
@@ -3966,15 +3984,15 @@
       const field = record[F.EXPECTED_PAY_DATE];
       if (!field) return event;
       if (event.type !== 'app.record.detail.show' && event.type !== 'app.record.print.show') field.disabled = true;
-      const space = kintone.app.record.getSpaceElement(C.SPACES.EXPECTED_PAY_DATE_NOTE);
+      const space = KT.record().getSpaceElement(C.SPACES.EXPECTED_PAY_DATE_NOTE);
       if (space) {
         space.textContent = `※ ${CFG.NOTE}`;
-        space.style.cssText = 'color:#c62828; font-weight:bold; margin-top:30px; display:inline-block;';
+        space.classList.add('pr-expected-pay-note'); // 樣式在 styles/common.css
       }
       return event;
     };
 
-    kintone.events.on(['app.record.create.show', 'app.record.edit.show', 'app.record.detail.show', 'app.record.print.show'], handleShow);
+    KT.on(['app.record.create.show', 'app.record.edit.show', 'app.record.detail.show', 'app.record.print.show'], handleShow);
 
     window.PR_EXPECTED_PAY_DATE = Object.freeze({ calcExpectedPayDate, isWorkday, nextPayDayOnOrAfter, fetchHolidayMap, handleSubmit, handleShow });
   })();
@@ -4995,7 +5013,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       overlay.innerHTML = `
       <div class="loading-message">
         <button id="close-button" class="close-button">✕</button>
-        <div style="margin-bottom:15px;font-weight:bold;font-size:16px;">處理中...</div>
+        <div class="pr-loading-title">處理中...</div>
         <div class="progress-bar"><div id="progress-fill" class="progress-bar-fill"></div></div>
         <div id="result-message" class="result-message">準備中...</div>
       </div>
@@ -5011,202 +5029,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
         const headerMenuSpace = kintone.app.getHeaderMenuSpaceElement();
         if (!headerMenuSpace) throw new Error('找不到標頭菜單空間');
 
-        // 樣式（原樣保留）
-        const buttonStyle = document.createElement('style');
-        buttonStyle.innerHTML = `
-        #batch-download-container {
-          display: flex;
-          align-items: flex-start;
-          flex-wrap: nowrap;
-          gap: 10px;
-          margin-right: 15px;
-          position: relative;
-          max-width: 100%;
-          box-sizing: border-box;
-        }
-        .buttons-container {
-          display: flex;
-          align-items: center;
-          flex-shrink: 0;
-          white-space: nowrap;
-        }
-        .batch-download-button,
-        .batch-print-button {
-          background: linear-gradient(45deg, #4a90a4, #5ba0b4);
-          color: white;
-          padding: 8px 16px;
-          border-radius: 5px;
-          border: none;
-          font-weight: bold;
-          cursor: pointer;
-          margin-left: 15px;
-          font-size: 14px;
-          height: fit-content;
-          white-space: nowrap;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .batch-print-button {
-          background: linear-gradient(45deg,rgb(142, 107, 255),rgb(43, 70, 224));
-        }
-        .batch-download-button:hover,
-        .batch-print-button:hover {
-          box-shadow: 0 3px 6px rgba(0,0,0,0.15);
-        }
-        .batch-download-button:hover {
-          background: linear-gradient(45deg, #3a7d91, #4b8fa1);
-        }
-        .batch-print-button:hover {
-          background: linear-gradient(45deg, rgb(139, 113, 223), rgb(81, 103, 222));
-        }
-        .range-input-group {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-start;
-          margin-right: 15px;
-          background: white;
-          padding: 10px;
-          border-radius: 5px;
-          flex-shrink: 0;
-          min-width: max-content;
-          width: max-content;
-        }
-        .gaia-argoui-app-index-toolbar,
-        .gaia-argoui-app-toolbar-menu {
-          overflow: visible !important;
-          min-height: fit-content !important;
-          padding-bottom: 10px !important;
-        }
-        .contents-gaia.app-index-contents-gaia {
-          clear: both !important;
-          position: relative !important;
-          z-index: 1 !important;
-          margin-top: 10px !important;
-        }
-        .input-mode-selector {
-          display: flex;
-          align-items: center;
-          margin-bottom: 10px;
-          white-space: nowrap;
-        }
-        .input-mode-selector label {
-          margin-right: 15px;
-          font-weight: bold;
-          cursor: pointer;
-          font-size: 14px;
-          white-space: nowrap;
-        }
-        .input-mode-selector input[type="radio"] {
-          margin-right: 5px;
-        }
-        .range-inputs {
-          display: flex;
-          align-items: center;
-          white-space: nowrap;
-          flex-shrink: 0;
-        }
-        .specific-input {
-          display: none;
-          align-items: center;
-          white-space: nowrap;
-          flex-shrink: 0;
-        }
-        .range-input-label {
-          margin-right: 5px;
-          font-weight: bold;
-          font-size: 14px;
-          white-space: nowrap;
-        }
-        .range-input {
-          width: 80px;
-          padding: 5px;
-          border: 0.8px solid #000;
-          border-radius: 4px;
-          text-align: center;
-        }
-        .range-input-separator {
-          margin: 0 5px;
-        }
-        .specific-records-input {
-          width: 300px;
-          padding: 5px;
-          border: 0.8px solid #000;
-          border-radius: 4px;
-          font-size: 14px;
-        }
-        .loading-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background-color: rgba(0, 0, 0, 0.5);
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          align-items: center;
-          z-index: 9999;
-        }
-        .loading-message {
-          background: white;
-          padding: 25px;
-          border-radius: 8px;
-          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-          text-align: center;
-          min-width: 400px;
-          max-width: 90vw;
-          position: relative;
-        }
-        .close-button {
-          position: absolute;
-          top: 10px;
-          right: 15px;
-          background: #f0f0f0;
-          border: none;
-          border-radius: 50%;
-          width: 30px;
-          height: 30px;
-          cursor: pointer;
-          font-size: 18px;
-          font-weight: bold;
-          color: #666;
-          display: none;
-        }
-        .close-button:hover {
-          background: #e0e0e0;
-          color: #333;
-        }
-        .close-button.show {
-          display: block;
-        }
-        .progress-bar {
-          width: 80%;
-          min-width: 300px;
-          max-width: 500px;
-          height: 25px;
-          background-color: #f0f0f0;
-          border-radius: 12px;
-          margin: 15px auto 10px auto;
-          overflow: hidden;
-          box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .progress-bar-fill {
-          height: 100%;
-          background: linear-gradient(90deg, #4CAF50, #45a049);
-          width: 0%;
-          transition: width 0.5s ease-in-out;
-          border-radius: 12px;
-          box-shadow: 0 2px 4px rgba(76, 175, 80, 0.3);
-        }
-        .result-message {
-          margin-top: 10px;
-          font-weight: bold;
-          font-size: 13px;
-          color: #333;
-          white-space: pre-wrap;
-          text-align: left;
-        }
-      `;
-        document.head.appendChild(buttonStyle);
+        // 樣式在 styles/desktop.css（批次下載／列印按鈕、處理中視窗）
 
         // 容器
         const container = document.createElement('div');
@@ -5365,22 +5188,14 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
         const detailPrintButton = document.createElement('button');
         detailPrintButton.id = 'detail-print-pdflib-btn';
         detailPrintButton.textContent = '📄 下載此筆交通費請款單PDF';
-        detailPrintButton.style.background = 'linear-gradient(45deg,rgb(142, 107, 255),rgb(43, 70, 224))';
-        detailPrintButton.style.color = 'white';
-        detailPrintButton.style.padding = '8px 16px';
-        detailPrintButton.style.borderRadius = '5px';
-        detailPrintButton.style.border = 'none';
-        detailPrintButton.style.fontWeight = 'bold';
-        detailPrintButton.style.cursor = 'pointer';
-        detailPrintButton.style.fontSize = '14px';
-        detailPrintButton.style.marginLeft = '10px';
+        detailPrintButton.className = 'pr-detail-print-button'; // 樣式在 styles/desktop.css
 
         detailPrintButton.addEventListener('click', async function () {
           const recordId = event.record.$id.value;
 
           Swal.fire({
             title: '確認下載',
-            html: '即將下載「此筆交通費請款單」的 PDF 檔案。<br>確認要開始下載嗎？<br><span style="font-size: 0.9em; color: #1640b2ff;">（不會修改或影響表單內容）</span>',
+            html: '即將下載「此筆交通費請款單」的 PDF 檔案。<br>確認要開始下載嗎？<br><span class="pr-download-note">（不會修改或影響表單內容）</span>',
             icon: 'question',
             showCancelButton: true,
             confirmButtonText: '開始下載',
@@ -5723,6 +5538,9 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
 
   (() => {
 
+    // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+    const KT = window.PR_KT;
+
     const F = window.PR_CONFIG.FIELDS;
     const BUTTON_ID = 'same-applicant-btn';
 
@@ -5754,39 +5572,13 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       button.id = BUTTON_ID;
       button.textContent = '同申請人';
       button.type = 'button';
-
-      // 設定按鈕樣式（白色背景）
-      button.style.cssText = `
-      background-color: #3498db; 
-      color: #ffffff;              
-      border: 1px solid #2980b9; 
-      padding: 8px 16px;
-      font-size: 14px;
-      font-weight: 500;           
-      border-radius: 4px;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      margin-top: 30px;
-    `;
-
-      // 滑鼠懸停效果
-      button.addEventListener('mouseenter', function () {
-        this.style.backgroundColor = '#2980b9';
-        this.style.borderColor = '#21618c';
-        this.style.boxShadow = '0 3px 6px rgba(0,0,0,0.2)';
-      });
-
-      button.addEventListener('mouseleave', function () {
-        this.style.backgroundColor = '#3498db';
-        this.style.borderColor = '#2980b9';
-        this.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-      });
+      // 樣式（含滑鼠懸停效果）在 styles/common.css
+      button.className = 'pr-same-applicant-btn';
 
       // 按鈕點擊事件
       button.addEventListener('click', function () {
         // 取得當前記錄
-        const record = kintone.app.record.get().record;
+        const record = KT.record().get().record;
         const applicantInfo = getApplicantInfo(record);
 
         if (applicantInfo.error) {
@@ -5799,28 +5591,12 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
         record[F.PAYEE].value = applicantInfo.fullName;
 
         // 更新記錄
-        kintone.app.record.set({ record: record });
+        KT.record().set({ record: record });
 
-        // 顯示成功訊息（可選）
+        // 顯示成功訊息（淡出動畫在 styles/common.css 的 .pr-copied-msg）
         const successMsg = document.createElement('span');
         successMsg.textContent = ' ✓ 已複製';
-        successMsg.style.cssText = `
-        color: #28a745;
-        margin-left: 10px;
-        font-size: 12px;
-        animation: fadeOut 2s forwards;
-      `;
-
-        // 添加淡出動畫
-        const style = document.createElement('style');
-        style.textContent = `
-        @keyframes fadeOut {
-          0% { opacity: 1; }
-          70% { opacity: 1; }
-          100% { opacity: 0; }
-        }
-      `;
-        document.head.appendChild(style);
+        successMsg.className = 'pr-copied-msg';
 
         button.parentNode.appendChild(successMsg);
         setTimeout(() => {
@@ -5833,7 +5609,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
 
     // 在編輯和新增頁面顯示按鈕（已掛過就不重複掛）
     function handleShow(event) {
-      const spaceElement = kintone.app.record.getSpaceElement(window.PR_CONFIG.SPACES.APPLY_BUTTON);
+      const spaceElement = KT.record().getSpaceElement(window.PR_CONFIG.SPACES.APPLY_BUTTON);
       if (spaceElement && !document.getElementById(BUTTON_ID)) {
         spaceElement.appendChild(createSameApplicantButton());
       }
@@ -5849,13 +5625,16 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       return event;
     }
 
-    kintone.events.on('app.record.create.show', (event) => handleShow(autoFillPayee(event)));
-    kintone.events.on('app.record.edit.show', handleShow);
+    KT.on('app.record.create.show', (event) => handleShow(autoFillPayee(event)));
+    KT.on('app.record.edit.show', handleShow);
 
     window.PR_PAYEE = Object.freeze({ getApplicantInfo, handleShow, autoFillPayee });
   })();
 
   (function () {
+
+    // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+    const KT = window.PR_KT;
 
     // =============================================================================
     // 建單後自動推進流程狀態
@@ -6043,7 +5822,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
 
     // 新建單後自動推進。
     // silent = true：建單後頁面立即跳轉，請求可能被中斷；失敗時靜默，補償交由 detail.show 接手。
-    kintone.events.on('app.record.create.submit.success', async (event) => {
+    KT.on('app.record.create.submit.success', async (event) => {
       if (!CONFIG.ENABLED || isVoided(event.record)) return event;
 
       const creatorCode = kintone.getLoginUser()?.code || '';
@@ -6053,13 +5832,16 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
     });
 
     // SHOW handler 禁止 async（kintone 不等 Promise），須透過 setTimeout 脫離同步流程後再呼叫
-    kintone.events.on('app.record.detail.show', (event) => {
+    KT.on('app.record.detail.show', (event) => {
       setTimeout(() => compensateIfNeeded(event.record), 0);
       return event;
     });
   })();
 
   (function () {
+
+    // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+    const KT = window.PR_KT;
 
     const CONFIG = {
       ACTION_NAME: window.PR_CONFIG.ACTIONS.VOID,
@@ -6081,7 +5863,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       return actionName === CONFIG.ACTION_NAME || nextStatus === CONFIG.TARGET_STATE;
     }
 
-    kintone.events.on('app.record.detail.process.proceed', function (event) {
+    KT.on('app.record.detail.process.proceed', function (event) {
       if (!isVoidAction(event)) {
         return event;
       }
@@ -6106,14 +5888,15 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
         icon: 'warning',
         title: '請確認是否真的要作廢',
         html:
-          '<div style="text-align:left; line-height:1.8;">' +
-          '<div>您即將執行 <b style="color:#d4380d;">「' +
+          // 樣式在 styles/common.css（.pr-void-*）
+          '<div class="pr-void-confirm">' +
+          '<div>您即將執行 <b class="pr-void-action">「' +
           actionName +
           '」</b>。</div>' +
           '<div>目前狀態：<b>' +
           currentStatus +
           '</b></div>' +
-          '<div>變更後狀態：<b style="color:#cf1322;">' +
+          '<div>變更後狀態：<b class="pr-void-next">' +
           nextStatus +
           '</b></div>' +
           '<div>記錄號碼：<b>' +
@@ -6170,6 +5953,9 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
 
   (() => {
 
+    // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+    const KT = window.PR_KT;
+
     const F = window.PR_CONFIG.FIELDS;
     const TABLE_CODE = F.TRAFFIC_TABLE.CODE;
     const INVOICE_CODE = F.TRAFFIC_TABLE.COLS.INVOICE_NO;
@@ -6195,7 +5981,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       `app.record.edit.change.${INVOICE_CODE}`,
     ];
 
-    kintone.events.on(allEvents, (event) => {
+    KT.on(allEvents, (event) => {
       event.record[INVOICE_AGG_CODE].value = buildInvoiceAgg(event.record);
       return event;
     });
@@ -6257,7 +6043,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
 
           // 創建按鈕容器
           const buttonContainer = document.createElement('div');
-          buttonContainer.style.cssText = 'display: flex; align-items: center; gap: 10px; margin-top: 8px;';
+          buttonContainer.className = 'pr-tool-buttons'; // 樣式在 styles/desktop.css
 
           buttonContainer.appendChild(settingsButton);
           buttonContainer.appendChild(workflowButton);
@@ -6271,70 +6057,24 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
         }
       }, 100); // 延遲 100ms 確保下載容器已載入
 
-      // 添加CSS樣式
-      const style = document.createElement('style');
-      style.innerHTML = `
-        /* 黑色背景按鈕 */
-        .workflow-button {
-          background-color: #2c3e50; /* 黑色背景 */
-          color: #fff;
-          font-size: 16px;
-          font-weight: bold;
-          padding: 10px 20px;
-          border: none;
-          border-radius: 5px;
-          cursor: pointer;
-          margin-left: 10px;
-          margin-right: 10px; 
-          transition: all 0.3s ease;
-        }
-  
-        /* 金色背景按鈕 */
-        .settings-button {
-          background-color: #f39c12; /* 金色背景 */
-          color: #fff;
-          font-size: 16px;
-          font-weight: bold;
-          padding: 10px 20px;
-          border: none;
-          border-radius: 5px;
-          cursor: pointer;
-          margin-left: 10px;
-          margin-right: 10px; 
-          transition: all 0.3s ease;
-        }
-  
-        /* 按鈕 hover 和 active 效果 */
-        .workflow-button:hover {
-          background-color: #34495e; /* 當滑鼠懸停時變成深灰色 */
-        }
-  
-        .settings-button:hover {
-          background-color: #e67e22; /* 當滑鼠懸停時變成亮金色 */
-        }
-  
-        .workflow-button:active {
-          background-color: #2c3e50;
-          transform: scale(0.98);
-        }
-  
-        .settings-button:active {
-          background-color: #d35400;
-          transform: scale(0.98);
-        }
-      `;
-      document.head.appendChild(style);
+      // 樣式在 styles/desktop.css（.workflow-button／.settings-button）
 
       return event;
     });
   })();
 
-  const events = ['app.record.create.show', 'app.record.edit.show', 'app.record.detail.show'];
+  (() => {
 
-  kintone.events.on(events, function (event) {
-    kintone.app.record.setFieldShown(window.PR_CONFIG.FIELDS.DEV_ONLY_DATA, window.PR_CONFIG.ADMIN_USERS.includes(kintone.getLoginUser().code));
-    return event;
-  });
+    // 「帶入的資料_開發人員用」群組欄位只給 ADMIN_USERS 看
+    // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+    const KT = window.PR_KT;
+    const C = window.PR_CONFIG;
+
+    KT.on(['app.record.create.show', 'app.record.edit.show', 'app.record.detail.show'], (event) => {
+      KT.record().setFieldShown(C.FIELDS.DEV_ONLY_DATA, C.ADMIN_USERS.includes(kintone.getLoginUser().code));
+      return event;
+    });
+  })();
 
   (() => {
 
@@ -6354,23 +6094,8 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
           const voidFieldLabel = kintone.app.record.getFieldElement(window.PR_CONFIG.VOID_FIELD);
 
           if (voidFieldLabel) {
-            // 為標籤添加自訂樣式
-            voidFieldLabel.style.textAlign = 'center';
-            voidFieldLabel.style.color = '#ff0000'; // 紅色文字
-            voidFieldLabel.style.fontWeight = 'bold'; // 粗體
-            voidFieldLabel.style.fontSize = '18px'; // 放大字體
-            //voidFieldLabel.style.backgroundColor = '#ffcccc'; // 淺紅色背景
-            voidFieldLabel.style.padding = '5px 10px'; // 內邊距
-            voidFieldLabel.style.borderRadius = '5px'; // 圓角
-            voidFieldLabel.style.left = '5px';
-            voidFieldLabel.style.border = '2px solid #ff0000'; // 紅色邊框
-
-            // 為核取方塊本身添加樣式
-            const checkboxElement = voidFieldLabel.querySelector('input[type="checkbox"]');
-            if (checkboxElement) {
-              checkboxElement.style.transform = 'scale(1.5)'; // 放大核取方塊
-              checkboxElement.style.accentColor = '#ff0000'; // 紅色勾選框（現代瀏覽器）
-            }
+            // 標籤與核取方塊放大、紅框（樣式在 styles/desktop.css 的 .pr-void-field）
+            voidFieldLabel.classList.add('pr-void-field');
           }
         }, 100);
       }
@@ -6607,16 +6332,13 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
 
           // 創建預覽按鈕
           const previewButton = document.createElement('a');
-          previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview';
+          previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview pr-preview-button'; // 樣式在 styles/desktop.css
           previewButton.title = '預覽';
-          previewButton.style.marginLeft = '8px';
           previewButton.href = 'javascript:void(0)';
 
           // 創建放大鏡圖示
           const magnifierIcon = document.createElement('i');
           magnifierIcon.className = 'fa fa-search gaia-attachment-file-action-preview-image';
-          magnifierIcon.style.color = '#2c2c2c';
-          magnifierIcon.style.fontSize = '16px';
           previewButton.appendChild(magnifierIcon);
 
           // 點擊事件
@@ -6708,16 +6430,13 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
           }
 
           const previewButton = document.createElement('a');
-          previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview';
+          previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview pr-preview-button'; // 樣式在 styles/desktop.css
           previewButton.title = '預覽';
-          previewButton.style.marginLeft = '8px';
           previewButton.href = 'javascript:void(0)';
 
           // 創建放大鏡圖示
           const magnifierIcon = document.createElement('i');
           magnifierIcon.className = 'fa fa-search gaia-attachment-file-action-preview-image';
-          magnifierIcon.style.color = '#2c2c2c';
-          magnifierIcon.style.fontSize = '16px';
           previewButton.appendChild(magnifierIcon);
 
           // 添加點擊事件
@@ -6843,8 +6562,8 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
           const button = span.closest('button') || span.parentElement;
 
           if (button) {
-            // 往右移動按鈕
-            button.style.marginLeft = '30px';
+            // 往右移動按鈕（樣式在 styles/desktop.css）
+            button.classList.add('pr-transfer-button');
           }
         }
       });
@@ -6859,4 +6578,4 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
   });
 
 })();
-//# sourceMappingURL=payment_request_bundle.min.js.map
+//# sourceMappingURL=payment_request_desktop.js.map

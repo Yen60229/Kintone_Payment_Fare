@@ -1,6 +1,9 @@
 (() => {
   'use strict';
 
+  // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+  const KT = window.PR_KT;
+
   // 按下儲存後，各模組要查好幾支 API（驗證、簽核人員、預計付款日…），畫面會靜止 1〜3 秒。
   // 這段期間顯示「儲存中，請稍候…」，避免使用者以為沒按到而重複按、或以為當掉。
   //
@@ -67,11 +70,11 @@
     return event;
   };
 
-  kintone.events.on(SUBMIT_EVENTS, onSubmitStart);
-  kintone.events.on(LEAVE_EVENTS, onLeave);
+  KT.on(SUBMIT_EVENTS, onSubmitStart);
+  KT.on(LEAVE_EVENTS, onLeave);
   // kintone 依註冊順序執行同一個事件的處理程式。所有模組都在載入時同步註冊，
   // 所以延到下一輪再註冊，這個處理程式就會排在所有存檔程式的最後面。
-  setTimeout(() => kintone.events.on(SUBMIT_EVENTS, onSubmitEnd), 0);
+  setTimeout(() => KT.on(SUBMIT_EVENTS, onSubmitEnd), 0);
 
   window.PR_SAVING_HINT = Object.freeze({ onSubmitStart, onSubmitEnd, onLeave, closeSaving, POPUP_CLASS, SAFETY_CLOSE_MS });
 })();

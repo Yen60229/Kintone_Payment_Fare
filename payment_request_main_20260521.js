@@ -1,6 +1,9 @@
 (function () {
   'use strict';
 
+  // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+  const KT = window.PR_KT;
+
   // =========================================================================
   // SECTION 1: 頂層常數與設定 (Config & Constants)
   // =========================================================================
@@ -20,12 +23,12 @@
   const COMPANY_NAME_NX = 'ＮＸ臺灣國際物流';
   const COMPANY_DEPT_PREFIX_LIANHAI = '聯海';
 
-  // 頁面說明文案（空白欄位 Space_Noti_1／2／3）
+  // 頁面說明文案（空白欄位 Space_Noti_1／2／3）；樣式在 styles/common.css（.pr-noti*）
   const INSTRUCTIONS = {
-    付款方式: `<span style="font-size: 20px; color: #333; font-weight: bold;">&ensp;※ 付款方式：</span><span style="font-size: 20px; color: #ff0000ff; font-weight: bold;">皆以電匯為主，除特殊情況才可使用現金</span>`,
-    付款原則: `<span style="font-size: 20px; color: #333; font-weight: bold;">&ensp;※ 付款原則：一般帳款２個月，特殊期限請標註日期</span>`,
-    交通費說明: `<span style="font-size: 20px; color: #333; font-weight: bold;">&ensp;※ 交通費請款：搭乘計程車請說明理由</span>`,
-    受款人員工: `<span style="font-size: 20px; color: #333; font-weight: bold;margin-top: 30px;display: inline-block;">&ensp;※ 受款人為員工 ➡︎ 員工編號＋中文姓名</span>`,
+    付款方式: `<span class="pr-noti">&ensp;※ 付款方式：</span><span class="pr-noti-red">皆以電匯為主，除特殊情況才可使用現金</span>`,
+    付款原則: `<span class="pr-noti">&ensp;※ 付款原則：一般帳款２個月，特殊期限請標註日期</span>`,
+    交通費說明: `<span class="pr-noti">&ensp;※ 交通費請款：搭乘計程車請說明理由</span>`,
+    受款人員工: `<span class="pr-noti pr-noti-payee">&ensp;※ 受款人為員工 ➡︎ 員工編號＋中文姓名</span>`,
   };
 
   const NOTIFICATIONS = Object.freeze({
@@ -50,7 +53,7 @@
    */
   const updateSpaceNotifications = () => {
     Object.entries(NOTIFICATIONS).forEach(([spaceId, html]) => {
-      const el = kintone.app.record.getSpaceElement(spaceId);
+      const el = KT.record().getSpaceElement(spaceId);
       if (el) el.innerHTML = html;
     });
   };
@@ -85,37 +88,7 @@
     return '';
   }
 
-  /**
-   * 載入費用歸屬部門提示 CSS 樣式
-   */
-  function addDepartmentHintStyles() {
-    if (document.getElementById('kintone-department-hint-style')) return;
-    const style = document.createElement('style');
-    style.id = 'kintone-department-hint-style';
-    style.textContent = `
-    .department-hint {
-      color: #28a745 !important;
-      font-size: 18px !important;
-      margin-top: 2px !important;
-      font-weight: bold !important;
-      position: relative !important;
-      z-index: 1000 !important;
-      white-space: pre-line !important;
-      text-align: center !important;
-    }
-
-    .department-error {
-      color: #dc3545 !important;
-      font-size: 12px !important;
-      margin-top: 2px !important;
-      font-weight: bold !important;
-      position: relative !important;
-      z-index: 1000 !important;
-      text-align: center !important;
-    }
-  `;
-    document.head.appendChild(style);
-  }
+  // 費用歸屬中文名稱（綠字）／代碼不存在（紅字）提示的樣式在 styles/desktop.css（.department-hint／.department-error）
 
   const clearCostFieldHints = () => {
     document.querySelectorAll('.department-hint, .department-error').forEach((hint) => hint.remove());
@@ -125,7 +98,6 @@
    * 在畫面上值等於 costValue 的費用歸屬輸入框下方，掛上中文名稱（綠字）或「代碼不存在」（紅字）
    */
   function findAndUpdateAllCostFields(costValue, departmentName, isError = false) {
-    addDepartmentHintStyles();
     setTimeout(() => {
       document.querySelectorAll('.subtable-gaia input[type="text"], table input[type="text"]').forEach((input) => {
         if (!input.value || input.value.toUpperCase() !== costValue.toUpperCase()) return;
@@ -386,7 +358,7 @@
    */
   function refreshAllCostCenterHints() {
     try {
-      const record = kintone.app.record.get()?.record;
+      const record = KT.record().get()?.record;
       if (!record) return;
 
       const rows = record[TRAFFIC.CODE]?.value;
@@ -443,8 +415,8 @@
       if (record[field]) record[field].disabled = true;
     });
 
-    kintone.app.record.setFieldShown(F.ACCOUNTING_STAFF, C.isAdmin());
-    kintone.app.record.setFieldShown(F.PERMISSION_STAFF, C.isAdmin());
+    KT.record().setFieldShown(F.ACCOUNTING_STAFF, C.isAdmin());
+    KT.record().setFieldShown(F.PERMISSION_STAFF, C.isAdmin());
     updateSpaceNotifications();
     loadCostCenterMaps().catch(() => {});
 
@@ -467,7 +439,7 @@
         if (status !== STATUS.REIMBURSEMENT_FILL && status !== STATUS.APPLY_START) {
           autoProcessAllTables();
         }
-        kintone.app.record.setFieldShown(F.MANUAL_FLOW, record[F.MANUAL_FLOW]?.value?.length > 0);
+        KT.record().setFieldShown(F.MANUAL_FLOW, record[F.MANUAL_FLOW]?.value?.length > 0);
         break;
       }
     }
@@ -484,7 +456,7 @@
   // -------------------------------------------------------------------------
 
   // 主要記錄顯示與編輯事件 (create/edit/detail/print)
-  kintone.events.on(['app.record.create.show', 'app.record.edit.show', 'app.record.detail.show', 'app.record.print.show'], (event) => {
+  KT.on(['app.record.create.show', 'app.record.edit.show', 'app.record.detail.show', 'app.record.print.show'], (event) => {
     return handleMainShowEditEvents(event);
   });
 
@@ -493,14 +465,14 @@
   // -------------------------------------------------------------------------
 
   // 費用所屬人部門變更 → 重算公司名稱
-  kintone.events.on([`app.record.create.change.${F.EXPENSE_OWNER_ORG}`, `app.record.edit.change.${F.EXPENSE_OWNER_ORG}`], (event) => {
+  KT.on([`app.record.create.change.${F.EXPENSE_OWNER_ORG}`, `app.record.edit.change.${F.EXPENSE_OWNER_ORG}`], (event) => {
     window.PR_COMPANY_NAME.apply(event.record);
     return event;
   });
 
   // 費用歸屬變更 → 轉大寫、顯示中文名稱／代碼不存在提示
   //   會計單位一律依費用所屬人部門，由 signing_personnel_manager 查會計對應主檔帶入，這裡不動
-  kintone.events.on([`app.record.create.change.${TRAFFIC.COLS.EXPENSE}`, `app.record.edit.change.${TRAFFIC.COLS.EXPENSE}`], (event) => {
+  KT.on([`app.record.create.change.${TRAFFIC.COLS.EXPENSE}`, `app.record.edit.change.${TRAFFIC.COLS.EXPENSE}`], (event) => {
     loadCostCenterMaps().catch(() => {});
     try {
       const rows = event.record[TRAFFIC.CODE]?.value || [];

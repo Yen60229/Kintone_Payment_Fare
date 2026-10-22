@@ -13,8 +13,8 @@ function adjustTransferButtonsPosition() {
         const button = span.closest('button') || span.parentElement;
 
         if (button) {
-          // 往右移動按鈕
-          button.style.marginLeft = '30px';
+          // 往右移動按鈕（樣式在 styles/desktop.css）
+          button.classList.add('pr-transfer-button');
         }
       }
     });
