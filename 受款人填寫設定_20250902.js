@@ -35,7 +35,7 @@
     button.id = BUTTON_ID;
     button.textContent = '同申請人';
     button.type = 'button';
-    // 樣式（含滑鼠懸停效果）在 styles/common.css
+    // 樣式（含滑鼠懸停效果）在 payment_request.css
     button.className = 'pr-same-applicant-btn';
 
     // 按鈕點擊事件
@@ -56,7 +56,7 @@
       // 更新記錄
       KT.record().set({ record: record });
 
-      // 顯示成功訊息（淡出動畫在 styles/common.css 的 .pr-copied-msg）
+      // 顯示成功訊息（淡出動畫在 payment_request.css 的 .pr-copied-msg）
       const successMsg = document.createElement('span');
       successMsg.textContent = ' ✓ 已複製';
       successMsg.className = 'pr-copied-msg';

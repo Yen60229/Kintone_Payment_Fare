@@ -17,7 +17,7 @@
         const voidFieldLabel = kintone.app.record.getFieldElement(window.PR_CONFIG.VOID_FIELD);
 
         if (voidFieldLabel) {
-          // 標籤與核取方塊放大、紅框（樣式在 styles/desktop.css 的 .pr-void-field）
+          // 標籤與核取方塊放大、紅框（樣式在 payment_request.css 的 .pr-void-field）
           voidFieldLabel.classList.add('pr-void-field');
         }
       }, 100);

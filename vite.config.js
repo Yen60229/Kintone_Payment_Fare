@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 
 // 一次打包兩套（package.json 的 build：先 desktop 再 mobile）：
-//   vite build --mode desktop → dist/payment_request_desktop.js ＋ .css（入口 src/index.js）
-//   vite build --mode mobile  → dist/payment_request_mobile.js  ＋ .css（入口 src/mobile.js）
-// JS 與 CSS 分開輸出：模組裡 import 的 styles/*.css 會抽成獨立的 CSS 檔，不會塞進 JS。
+//   vite build --mode desktop → dist/payment_request_desktop.js（入口 src/index.js）
+//   vite build --mode mobile  → dist/payment_request_mobile.js （入口 src/mobile.js）
+// 只打包 JS。樣式（payment_request.css）與 coding_tools.js、SetFieldWidth_4_20251206.js 放在專案最外層，
+// 不經過打包、直接上傳（見 README 的上傳清單）。
 const TARGETS = {
   desktop: { input: 'src/index.js', name: 'payment_request_desktop' },
   mobile: { input: 'src/mobile.js', name: 'payment_request_mobile' },
@@ -21,17 +22,12 @@ export default defineConfig(({ mode }) => {
       // 轉成 var _a 暫存變數的舊寫法（怕舊瀏覽器不支援），但 kintone 客製化 JS 只會在現代瀏覽器執行，
       // 用不到這層相容性，故關閉，順便讓打包後的程式碼跟原始碼一樣全是 const/let，沒有 var。
       target: 'esnext',
-      cssCodeSplit: false,
       // 開啟 Source Map：讓瀏覽器報錯時，能精準指引到原本的 .js 檔案與正確行號（.map 不用上傳 kintone）
       sourcemap: true,
       rollupOptions: {
         input: target.input,
         output: {
           entryFileNames: `${target.name}.js`,
-          assetFileNames: (assetInfo) => {
-            if (assetInfo.name && assetInfo.name.endsWith('.css')) return `${target.name}.css`;
-            return assetInfo.name || 'asset';
-          },
           format: 'iife',
         },
       },

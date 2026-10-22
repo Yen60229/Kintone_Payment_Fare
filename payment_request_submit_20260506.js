@@ -217,7 +217,7 @@
   // =========================================================================
 
   // ── 驗證失敗視窗（字放大、逐條編號、每條一張卡片，年長同仁也看得清楚）──
-  //   樣式在 styles/common.css（.pr-validation-*、.pr-v-*），打包成獨立的 CSS 檔上傳
+  //   樣式在 payment_request.css（.pr-validation-*、.pr-v-*）（不經過打包，直接上傳）
 
   const escapeValidationText = (text) =>
     String(text ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);

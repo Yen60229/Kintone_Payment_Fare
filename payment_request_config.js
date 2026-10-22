@@ -208,6 +208,31 @@
     }),
   });
 
+  // ── 交通費明細子表格的版面（詳細頁／列印頁的欄寬用，payment_request_main 的 layoutTrafficTable）────
+  //   來源：kintone MCP 讀 749 表單 rev 1798（form_snapshots/749_rev1798_traffic_table.json，測試會比對）。
+  //   COLUMNS 依畫面上的欄位順序；label＝表頭文字（用來找出畫面上是哪一欄），type／unit 決定顯示文字怎麼算。
+  //   表單改了子表格欄位（順序、標籤、型別）→ 用 MCP 重讀、更新快照與這裡。
+  const TRAFFIC_TABLE_LAYOUT = Object.freeze({
+    COLUMNS: Object.freeze(
+      [
+        { code: FIELDS.TRAFFIC_TABLE.COLS.DATE, label: '憑證日期', type: 'DATE' },
+        { code: FIELDS.TRAFFIC_TABLE.COLS.VEHICLE, label: '交通工具', type: 'DROP_DOWN' },
+        { code: FIELDS.TRAFFIC_TABLE.COLS.RECEIPT_TYPE, label: '憑證種類', type: 'DROP_DOWN' },
+        { code: FIELDS.TRAFFIC_TABLE.COLS.ROUTE, label: '起訖點', type: 'SINGLE_LINE_TEXT' },
+        { code: FIELDS.TRAFFIC_TABLE.COLS.VISIT_CUSTOMER, label: '拜訪客戶（目的）', type: 'SINGLE_LINE_TEXT' },
+        { code: FIELDS.TRAFFIC_TABLE.COLS.AMOUNT, label: '金額（含稅）', type: 'NUMBER', unit: '元' },
+        { code: FIELDS.TRAFFIC_TABLE.COLS.EXPENSE, label: '費用歸屬', type: 'SINGLE_LINE_TEXT' },
+        { code: FIELDS.TRAFFIC_TABLE.COLS.INVOICE_NO, label: '發票號碼／票號', type: 'SINGLE_LINE_TEXT' },
+        { code: FIELDS.TRAFFIC_TABLE.COLS.SELLER_TAX_ID, label: '賣方統編', type: 'SINGLE_LINE_TEXT' },
+        { code: FIELDS.TRAFFIC_TABLE.COLS.FORMAT, label: '格式', type: 'SINGLE_LINE_TEXT' },
+        { code: FIELDS.TRAFFIC_TABLE.COLS.TAX, label: '稅額', type: 'NUMBER', unit: '元' },
+        { code: FIELDS.TRAFFIC_TABLE.COLS.NOTE, label: '備註', type: 'SINGLE_LINE_TEXT' },
+      ].map(Object.freeze),
+    ),
+    // 欄寬＝文字單位數（中文 2、英數 1）× PX_PER_UNIT ＋ PADDING_PX，限制在 MIN～MAX；表頭文字也算進去
+    WIDTH: Object.freeze({ PX_PER_UNIT: 8, PADDING_PX: 32, MIN_PX: 64, MAX_PX: 320 }),
+  });
+
   // ── 流程狀態字串註冊表（query 內拼字錯誤會「靜默查不到」，故一併收斂）──────
   //   注意：STATUS.VOID 是「流程狀態值」，VOID_FIELD 是「欄位代碼」，
   //   兩者字串相同（'表單作廢'）但語意不同，刻意分開兩個常數，不可互換使用。
@@ -298,6 +323,7 @@
     VOID_FIELD,
     SPACES,
     FIELDS,
+    TRAFFIC_TABLE_LAYOUT,
     STATUS,
     ACTIONS,
     AUTO_ADVANCE,

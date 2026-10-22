@@ -2,14 +2,17 @@
 // kintone 交通費請款單 桌面版入口檔 (src/index.js)
 // 打包工具 Vite 會從此檔開始，依序讀入所有模組，輸出
 //   dist/payment_request_desktop.js   → kintone「JavaScript 自訂（PC）」
-//   dist/payment_request_desktop.css  → kintone「CSS 自訂（PC）」
 // 手機版入口是 src/mobile.js（模組是本檔的子集，順序必須一致）。
+//
+// 不經過打包、放在專案最外層直接上傳的檔（上傳清單見 README）：
+//   payment_request.css            全部樣式（PC、手機都上傳同一個檔）
+//   coding_tools.js                列表頁「JS 自定義設定」「流程管理」按鈕（排在 bundle 後面）
+//   SetFieldWidth_4_20251206.js    欄位依內容自動調寬（排在 bundle 後面）
 //
 // 依賴順序說明：
 //   ①  Config 常數檔必須排最前（其他模組在執行時會存取 window.PR_CONFIG、window.PR_KT）
 //   ②  依賴 Config 的模組
 //   ③  無 Config 依賴的獨立工具檔，順序不影響
-//   ④  樣式（打包成獨立的 CSS 檔，不會塞進 JS）
 // =========================================================================
 
 // ① Config 常數檔（必須排最前）────────────────────────────────────────────
@@ -36,15 +39,9 @@ import '../流程自動推進_20260810.js';
 import '../作廢防呆_20260506.js';
 import '../print.show顯示單據編號_請款單據編號.js';
 import '../發票號碼寫入獨立欄位檢查.js';
-import '../coding_tools.js';
 import '../開發人員用群組欄位.js';
 import '../請款單作廢_style_20260506.js';
-import '../SetFieldWidth_4_20251206.js';
 
 // ③ 無 Config 依賴的獨立工具檔（順序不影響）──────────────────────────────
 import '../file_reader.js';
 import '../轉至其他會計單位按鈕處理_20250723.js';
-
-// ④ 樣式（共用＋桌面版專用）─────────────────────────────────────────────
-import '../styles/common.css';
-import '../styles/desktop.css';

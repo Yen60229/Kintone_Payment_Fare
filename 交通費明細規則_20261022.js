@@ -167,7 +167,7 @@
       if (!label) return;
       const mark = document.createElement('span');
       mark.id = REQUIRED_MARK_ID;
-      // 樣式在 styles/common.css 的 .pr-required-mark
+      // 樣式在 payment_request.css 的 .pr-required-mark
       mark.className = 'kintone-field-required pr-required-mark';
       mark.textContent = '*';
       label.appendChild(mark);

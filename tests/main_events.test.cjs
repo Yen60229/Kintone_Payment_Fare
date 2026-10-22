@@ -6,7 +6,7 @@
 //      會計單位承辦人／權限開放人員只有管理員看得到、手動簽核欄位在詳細頁有勾才顯示
 //   3. 費用歸屬變更：轉大寫；不動會計單位（會計單位只依費用所屬人部門，由簽核人員程式帶入）
 //   4. 費用歸屬中文名稱（綠字）／代碼不存在（紅字）提示
-//   5. 詳細頁／列印頁的 autoProcessAllTables、新增頁的取消按鈕重綁
+//   5. 詳細頁／列印頁的交通費明細欄寬（依 MCP 讀的版面＋記錄值、換頁太快的防護）、新增頁的取消按鈕重綁
 //   6. 稅額不自動算、已刪的 723 功能不再註冊事件
 // 單獨執行：node tests/main_events.test.cjs
 
@@ -202,51 +202,217 @@ check('空白列不產生提示；變更時先清掉畫面上舊的提示', asyn
   assert.strictEqual(env.timers.length, 0, '沒有任何列有值，就不排提示');
 });
 
-// ── 5. 詳細頁／列印頁表格處理、取消按鈕 ─────────────────────────────────────
-const autoProcessRan = (env) => {
+// ── 5. 詳細頁／列印頁：交通費明細子表格欄寬（資料驅動）、取消按鈕 ─────────────
+const tableRan = (env) => {
   env.documentCalls.querySelectorAll.length = 0;
   env.flushTimers();
   return env.documentCalls.querySelectorAll.some((s) => s.includes('subtable-row-gaia'));
 };
+const DONE = '單位會計處理中(台北)'; // 會調欄寬的狀態
 
-check('詳細頁：狀態不是「報銷人填單」「申請開始」才跑 autoProcessAllTables', async () => {
+/** 子表格一列：{ 欄位代碼: 值 } */
+const tableRow = (values) => ({ value: Object.fromEntries(Object.entries(values).map(([code, v]) => [code, { value: v }])) });
+const recordWithRows = (F, rows, status = DONE) => {
+  const r = baseRecord(F, { status });
+  r[F.TRAFFIC_TABLE.CODE] = { value: rows };
+  return r;
+};
+/** 每一欄都有值的一列（欄寬測試用） */
+const fullRow = (F) => {
+  const c = F.TRAFFIC_TABLE.COLS;
+  return tableRow({
+    [c.DATE]: '2026-10-01',
+    [c.VEHICLE]: '高鐵',
+    [c.RECEIPT_TYPE]: '高鐵票',
+    [c.ROUTE]: '台北→台中',
+    [c.VISIT_CUSTOMER]: '台中營業部-綜合物流營業課',
+    [c.AMOUNT]: '1490',
+    [c.EXPENSE]: 'AJ30',
+    [c.INVOICE_NO]: 'AB12345678',
+    [c.SELLER_TAX_ID]: '00000000',
+    [c.FORMAT]: '22',
+    [c.TAX]: '71',
+    [c.NOTE]: '回程',
+  });
+};
+
+/**
+ * 畫面上一張子表格的替身：表頭依 labels，rowCount 列；editMode＝格子裡有輸入框（編輯畫面）
+ */
+const fakeTable = (labels, { editMode = false, rowCount = 1 } = {}) => {
+  const cell = (textContent = '') => {
+    const el = {
+      textContent,
+      style: {},
+      attrs: {},
+      setAttribute: (k, v) => (el.attrs[k] = v),
+      removeAttribute: (k) => delete el.attrs[k],
+    };
+    return el;
+  };
+  const headers = labels.map((l) => cell(l));
+  const rows = Array.from({ length: rowCount }, () => {
+    const tds = labels.map(() => cell());
+    return { tds, querySelectorAll: (sel) => (sel === 'td' ? tds : []) };
+  });
+  const container = {
+    querySelector: (sel) => (sel === 'input, select, textarea' && editMode ? {} : null),
+    querySelectorAll: (sel) => {
+      if (sel === 'thead th.subtable-label-gaia') return headers;
+      if (sel === 'tbody tr') return rows;
+      return [];
+    },
+  };
+  const cells = [...headers, ...rows.flatMap((r) => r.tds)];
+  const col = (label) => {
+    const i = labels.indexOf(label);
+    return { th: headers[i], tds: rows.map((r) => r.tds[i]) };
+  };
+  return { container, headers, rows, cells, col, marked: () => cells.filter((c) => c.attrs['data-pr-auto-width']) };
+};
+const useTables = (env, ...tables) =>
+  env.setQuerySelectorAll((sel) => {
+    if (sel.includes('subtable-row-gaia')) return tables.map((t) => t.container);
+    if (sel === '[data-pr-auto-width]') return tables.flatMap((t) => t.marked());
+    return [];
+  });
+const labelsOf = (C) => C.TRAFFIC_TABLE_LAYOUT.COLUMNS.map((c) => c.label);
+const SIGN_LABELS = ['日期與時間', '變更前的狀態', '動作', '變更後的狀態', '簽核人員', '經過的時間(分)'];
+
+check('planTrafficTable：整欄沒有值就藏；有值依最長顯示文字與表頭文字算寬；數值加千分位與單位、0 當沒有值', async () => {
+  const { env, F, C } = await loadMain();
+  const T = env.window.PR_TABLE_LAYOUT;
+  const c = F.TRAFFIC_TABLE.COLS;
+  const plan = T.planTrafficTable([tableRow({ [c.AMOUNT]: '1490', [c.TAX]: '0', [c.ROUTE]: '台北→台中' }), tableRow({ [c.AMOUNT]: '12345', [c.TAX]: '' })]);
+  const byCode = Object.fromEntries(plan.map((p) => [p.code, p]));
+  assert.deepStrictEqual(plan.map((p) => p.code), C.TRAFFIC_TABLE_LAYOUT.COLUMNS.map((col) => col.code), '依版面順序');
+  assert.strictEqual(byCode[c.TAX].hidden, true, '稅額全是 0／空白 → 藏');
+  assert.strictEqual(byCode[c.NOTE].hidden, true, '備註沒填 → 藏');
+  // 金額：顯示「12,345元」7 單位 < 表頭「金額（含稅）」12 單位 → 12 × 8 ＋ 32
+  assert.strictEqual(T.displayText({ value: '12345' }, { type: 'NUMBER', unit: '元' }), '12,345元');
+  assert.strictEqual(byCode[c.AMOUNT].width, '128px');
+  // 起訖點：「台北→台中」4 個中文 8 ＋ → 1 ＝ 9 單位 > 表頭 6 單位 → 9 × 8 ＋ 32 ＝ 104，但最小 64 → 104
+  assert.strictEqual(byCode[c.ROUTE].width, '104px');
+  assert.strictEqual(T.textUnits('（AB）'), 6);
+});
+
+check('planTrafficTable：寬度限制在 MIN～MAX；沒有任何列 → 全部藏', async () => {
+  const { env, F, C } = await loadMain();
+  const T = env.window.PR_TABLE_LAYOUT;
+  const c = F.TRAFFIC_TABLE.COLS;
+  const W = C.TRAFFIC_TABLE_LAYOUT.WIDTH;
+  const plan = T.planTrafficTable([tableRow({ [c.VISIT_CUSTOMER]: '很長的客戶名稱'.repeat(20), [c.FORMAT]: '2' })]);
+  const byCode = Object.fromEntries(plan.map((p) => [p.code, p]));
+  assert.strictEqual(byCode[c.VISIT_CUSTOMER].width, `${W.MAX_PX}px`);
+  assert.strictEqual(byCode[c.FORMAT].width, `${Math.max(W.MIN_PX, 4 * W.PX_PER_UNIT + W.PADDING_PX)}px`, '「格式」表頭 4 單位');
+  assert.ok(T.planTrafficTable([]).every((p) => p.hidden));
+  assert.ok(T.planTrafficTable(undefined).every((p) => p.hidden));
+});
+
+check('詳細頁：狀態不是「報銷人填單」「申請開始」才調欄寬', async () => {
   const { env, F, C } = await loadMain();
   for (const status of [C.STATUS.REIMBURSEMENT_FILL, C.STATUS.APPLY_START]) {
     await env.fire('app.record.detail.show', { record: baseRecord(F, { status }) });
-    assert.strictEqual(autoProcessRan(env), false, `狀態 ${status} 不處理`);
+    assert.strictEqual(tableRan(env), false, `狀態 ${status} 不處理`);
   }
-  for (const status of ['單位會計處理中(台北)', C.STATUS.VOID, '請款流程結束']) {
+  for (const status of [DONE, C.STATUS.VOID, '請款流程結束']) {
     await env.fire('app.record.detail.show', { record: baseRecord(F, { status }) });
-    assert.strictEqual(autoProcessRan(env), true, `狀態 ${status} 要處理`);
+    assert.strictEqual(tableRan(env), true, `狀態 ${status} 要處理`);
   }
 });
 
-check('列印頁一律跑 autoProcessAllTables；新增／編輯畫面不跑', async () => {
+check('列印頁一律調欄寬；新增／編輯畫面不排延遲處理', async () => {
   const { env, F } = await loadMain();
   await env.fire('app.record.print.show', { record: baseRecord(F, { status: '請款流程結束' }) });
-  assert.strictEqual(autoProcessRan(env), true);
+  assert.strictEqual(tableRan(env), true);
   await env.fire('app.record.create.show', { record: baseRecord(F) });
   assert.strictEqual(env.timers.some((t) => t.ms === 1000), false);
 });
 
-check('autoProcessAllTables 不處理簽核記錄表（標題等於簽核記錄表代碼）', async () => {
-  const { env, F } = await loadMain();
-  const processed = [];
-  const table = (title) => ({
-    classList: ['subtable-row-gaia', 'subtable-row-12'],
-    offsetParent: {},
-    querySelector: (sel) => (sel.includes('label-text') ? { textContent: title } : null),
-    getAttribute: () => 'x',
-    closest: () => null,
-    querySelectorAll: (sel) => {
-      if (sel.includes('thead')) processed.push(title);
-      return [];
-    },
-  });
-  env.setQuerySelectorAll((sel) => (sel.includes('subtable-row-gaia') ? [table(F.SIGN_TABLE.CODE), table(F.TRAFFIC_TABLE.CODE)] : []));
-  await env.fire('app.record.print.show', { record: baseRecord(F) });
+check('詳細頁：依記錄的值定寬、沒有值的欄藏起來；只設 width／min-width，不設 max-width（內容長只會撐開，不會溢出）', async () => {
+  const { env, F, C } = await loadMain();
+  const c = F.TRAFFIC_TABLE.COLS;
+  const t = fakeTable(labelsOf(C), { rowCount: 2 });
+  useTables(env, t);
+  const row1 = fullRow(F);
+  row1.value[c.NOTE].value = '';
+  const row2 = fullRow(F);
+  row2.value[c.NOTE].value = '';
+  await env.fire('app.record.detail.show', { record: recordWithRows(F, [row1, row2]) });
   env.flushTimers();
-  assert.ok(processed.length > 0 && processed.every((t) => t === F.TRAFFIC_TABLE.CODE), JSON.stringify(processed));
+  const visit = t.col('拜訪客戶（目的）');
+  assert.strictEqual(visit.th.style.width, `${'台中營業部-綜合物流營業課'.length * 2 * 8 - 8 + 32}px`, '12 個中文 ＋ 1 個「-」');
+  assert.deepStrictEqual(visit.tds.map((td) => td.style.minWidth), [visit.th.style.width, visit.th.style.width]);
+  assert.ok(t.cells.every((cell) => !cell.style.maxWidth), '不設 max-width');
+  const note = t.col('備註');
+  assert.strictEqual(note.th.style.display, 'none');
+  assert.ok(note.tds.every((td) => td.style.display === 'none'));
+  assert.strictEqual(t.marked().length, t.cells.length, '每一格都有記號（可還原）');
+});
+
+check('依表頭文字對欄位：順序不同也對得上、表頭的必填 * 不影響、對不到的欄不動', async () => {
+  const { env, F, C } = await loadMain();
+  const labels = [...labelsOf(C)].reverse();
+  labels[labels.indexOf('憑證日期')] = '憑證日期 *';
+  labels.push('不明欄位');
+  const t = fakeTable(labels);
+  useTables(env, t);
+  await env.fire('app.record.detail.show', { record: recordWithRows(F, [fullRow(F)]) });
+  env.flushTimers();
+  assert.ok(t.col('憑證日期 *').th.style.width, '去掉 * 後對得上');
+  assert.strictEqual(t.col('金額（含稅）').th.style.width, '128px', '反過來的順序也找到正確的欄');
+  assert.deepStrictEqual(t.col('不明欄位').th.style, {}, '對不到的欄不動');
+});
+
+check('表頭對不上交通費明細的子表格（簽核記錄）整張不動', async () => {
+  const { env, F, C } = await loadMain();
+  const traffic = fakeTable(labelsOf(C));
+  const sign = fakeTable(SIGN_LABELS, { rowCount: 3 });
+  useTables(env, sign, traffic);
+  await env.fire('app.record.detail.show', { record: recordWithRows(F, [fullRow(F)]) });
+  env.flushTimers();
+  assert.strictEqual(sign.marked().length, 0);
+  assert.ok(traffic.marked().length > 0);
+});
+
+check('換頁太快：詳細頁還沒處理就按編輯 → 延遲的欄寬處理作廢，不會在編輯畫面上定寬（截圖的表格畸形）', async () => {
+  const { env, F, C } = await loadMain();
+  const t = fakeTable(labelsOf(C));
+  useTables(env, t);
+  await env.fire('app.record.detail.show', { record: recordWithRows(F, [fullRow(F)]) });
+  await env.fire('app.record.edit.show', { record: recordWithRows(F, [fullRow(F)]) });
+  env.flushTimers();
+  assert.strictEqual(t.marked().length, 0, '編輯畫面的格子不能被定寬或藏起來');
+});
+
+check('表格裡有輸入框（已經是編輯畫面）→ 不處理，即使計時器還算同一個畫面', async () => {
+  const { env, F, C } = await loadMain();
+  const t = fakeTable(labelsOf(C), { editMode: true });
+  useTables(env, t);
+  await env.fire('app.record.detail.show', { record: recordWithRows(F, [fullRow(F)]) });
+  env.flushTimers();
+  assert.strictEqual(t.marked().length, 0);
+});
+
+check('進新增／編輯畫面：把詳細頁調過的格子寬度與隱藏還原、拿掉記號', async () => {
+  const { env, F, C } = await loadMain();
+  for (const type of ['edit', 'create']) {
+    const t = fakeTable(labelsOf(C));
+    useTables(env, t);
+    await env.fire('app.record.detail.show', { record: recordWithRows(F, [tableRow({ [F.TRAFFIC_TABLE.COLS.ROUTE]: '台北→台中' })]) });
+    env.flushTimers();
+    assert.strictEqual(t.col('備註').th.style.display, 'none', '沒有值的欄位在詳細頁藏起來');
+    assert.ok(t.col('起訖點').th.style.width);
+    await env.fire(`app.record.${type}.show`, { record: baseRecord(F) });
+    assert.ok(t.cells.every((cell) => !cell.style.display && !cell.style.width && !cell.style.minWidth), type);
+    assert.strictEqual(t.marked().length, 0, type);
+  }
+});
+
+check('原始碼：不再從畫面抓文字猜欄寬（getCellValue／processTableByContainer 已刪）', () => {
+  const src = readSrc('payment_request_main_20260521.js');
+  ['getCellValue', 'processTableByContainer', 'autoProcessAllTables', 'auto_table_'].forEach((s) => assert.ok(!src.includes(s), s));
+  assert.ok(src.includes('C.TRAFFIC_TABLE_LAYOUT'));
 });
 
 check('新增畫面：取消按鈕重綁成回到本 App 列表', async () => {

@@ -13,7 +13,7 @@ function adjustTransferButtonsPosition() {
         const button = span.closest('button') || span.parentElement;
 
         if (button) {
-          // 往右移動按鈕（樣式在 styles/desktop.css）
+          // 往右移動按鈕（樣式在 payment_request.css）
           button.classList.add('pr-transfer-button');
         }
       }

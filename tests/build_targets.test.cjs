@@ -1,13 +1,13 @@
 'use strict';
 
-// 測試：桌面版／手機版兩套打包與 CSS 分離
+// 測試：桌面版／手機版兩套打包、單一 CSS 檔、不打包的獨立檔
 //   1. PR_KT（payment_request_config.js）：桌面版原封不動；手機版改註冊 mobile.* 事件、
 //      處理程式看到的 event.type 是桌面版名稱、結束後換回；略過手機版沒有的事件；record()/app() 改走 kintone.mobile
 //   2. 入口檔：手機版（src/mobile.js）是桌面版（src/index.js）的子集且順序一致；mobile_target 排第一；
-//      根目錄每支模組都接在桌面版；桌面版專用的模組不進手機版
+//      根目錄每支模組都接在桌面版（coding_tools、SetFieldWidth 不打包，PC 單獨上傳）；桌面版專用的模組不進手機版
 //   3. 手機版用到的模組不直接呼叫 kintone.events.on／kintone.app.*（都走 PR_KT）
-//   4. CSS 分開：JS 裡沒有 <style> 注入、cssText、HTML style 屬性；JS 用到的 pr-* class 在 CSS 裡都有定義，
-//      手機版模組用到的 class 在 common.css
+//   4. CSS 全在 payment_request.css 一個檔、不經過打包：JS 裡沒有 <style> 注入、cssText、HTML style 屬性；
+//      JS 用到的 pr-* class 在 payment_request.css 都有定義
 //   5. 手機版模組整組載入（kintone.mobile 替身）並觸發 mobile.* 事件不會出錯
 // 單獨執行：node tests/build_targets.test.cjs
 
@@ -36,13 +36,13 @@ const DESKTOP_ONLY = [
   '帳號權限設定_20260722.js',
   '檔案批次_6版_PDFLib向量版_20260716.js',
   '批次整理資料.js',
-  'coding_tools.js',
   'print.show顯示單據編號_請款單據編號.js',
   '請款單作廢_style_20260506.js',
-  'SetFieldWidth_4_20251206.js',
   'file_reader.js',
   '轉至其他會計單位按鈕處理_20250723.js',
 ];
+// 放在專案最外層、不打包，PC 單獨上傳（排在 bundle 後面）
+const STANDALONE = ['coding_tools.js', 'SetFieldWidth_4_20251206.js'];
 const MOBILE_MODULES = MOBILE.js.filter((f) => f !== 'src/mobile_target.js');
 
 /**
@@ -120,11 +120,19 @@ check('手機版：處理程式執行時 event.type 是桌面版名稱，回傳�
 });
 
 // ── 2. 入口檔 ───────────────────────────────────────────────────────────────
-check('桌面版入口：根目錄每支模組（config 以外）都有接，config 排第一', () => {
+check('桌面版入口：根目錄每支模組都有接（不打包的 coding_tools、SetFieldWidth 除外），config 排第一', () => {
   const rootJs = fs.readdirSync(rootDir).filter((f) => f.endsWith('.js') && f !== 'vite.config.js');
   assert.strictEqual(DESKTOP.js[0], 'payment_request_config.js');
-  rootJs.forEach((f) => assert.ok(DESKTOP.js.includes(f), `src/index.js 沒有接 ${f}`));
-  assert.strictEqual(DESKTOP.js.length, rootJs.length);
+  rootJs.filter((f) => !STANDALONE.includes(f)).forEach((f) => assert.ok(DESKTOP.js.includes(f), `src/index.js 沒有接 ${f}`));
+  assert.strictEqual(DESKTOP.js.length, rootJs.length - STANDALONE.length);
+});
+
+check('coding_tools、SetFieldWidth 放在專案最外層、不進任何打包（PC 單獨上傳）', () => {
+  STANDALONE.forEach((f) => {
+    assert.ok(fs.existsSync(path.join(rootDir, f)), `${f} 要在專案最外層`);
+    assert.ok(!DESKTOP.js.includes(f) && !MOBILE.js.includes(f), `${f} 不應打包`);
+    assert.ok(readSrc(f).includes('window.PR_CONFIG'), `${f} 靠 bundle 提供的 PR_CONFIG，上傳時要排在 bundle 後面`);
+  });
 });
 
 check('手機版入口：mobile_target 排第一、config 第二；其餘是桌面版的子集且順序一致；桌面版專用模組不進來', () => {
@@ -138,16 +146,20 @@ check('手機版入口：mobile_target 排第一、config 第二；其餘是桌�
   DESKTOP.js.forEach((f) => assert.ok(covered.has(f), `${f} 沒決定要不要進手機版（加進 src/mobile.js 或本測試的 DESKTOP_ONLY）`));
 });
 
-check('樣式：桌面版載 common＋desktop，手機版只載 common', () => {
-  assert.deepStrictEqual(DESKTOP.css, ['styles/common.css', 'styles/desktop.css']);
-  assert.deepStrictEqual(MOBILE.css, ['styles/common.css']);
+check('樣式：全部在專案最外層的 payment_request.css 一個檔，入口檔不 import CSS（不經過打包）', () => {
+  assert.deepStrictEqual(DESKTOP.css, []);
+  assert.deepStrictEqual(MOBILE.css, []);
+  assert.ok(fs.existsSync(path.join(rootDir, 'payment_request.css')));
+  assert.ok(!fs.existsSync(path.join(rootDir, 'styles')), 'styles/ 已併進 payment_request.css');
+  const cssFiles = fs.readdirSync(rootDir).filter((f) => f.endsWith('.css'));
+  assert.deepStrictEqual(cssFiles, ['payment_request.css'], '只有一個 CSS 檔');
 });
 
-check('vite 與 npm：兩套各自輸出 JS 與 CSS，npm run build 一次打兩套', () => {
+check('vite 與 npm：兩套只輸出 JS，npm run build 一次打兩套', () => {
   const vite = readSrc('vite.config.js');
   assert.ok(vite.includes("input: 'src/index.js', name: 'payment_request_desktop'"));
   assert.ok(vite.includes("input: 'src/mobile.js', name: 'payment_request_mobile'"));
-  assert.ok(/cssCodeSplit:\s*false/.test(vite));
+  assert.ok(!/cssCodeSplit|assetFileNames/.test(vite));
   const pkg = JSON.parse(readSrc('package.json'));
   assert.strictEqual(pkg.scripts.build, 'vite build --mode desktop && vite build --mode mobile');
 });
@@ -161,9 +173,9 @@ check('手機版用到的模組不直接呼叫 kintone.events.on／kintone.app.*
   });
 });
 
-// ── 4. CSS 分開 ─────────────────────────────────────────────────────────────
-const commonCss = readSrc('styles/common.css');
-const desktopCss = readSrc('styles/desktop.css');
+// ── 4. CSS 與 JS 分開 ───────────────────────────────────────────────────────
+const css = readSrc('payment_request.css');
+const ALL_JS = [...DESKTOP.js, ...STANDALONE];
 const classesUsedIn = (src) => {
   const out = new Set();
   [/className = '([^']+)'/g, /class="([^"]+)"/g, /classList\.add\('([^']+)'\)/g].forEach((re) => {
@@ -171,10 +183,10 @@ const classesUsedIn = (src) => {
   });
   return out;
 };
-const definedIn = (css, cls) => new RegExp(`\\.${cls.replace(/-/g, '\\-')}(?![\\w-])`).test(css);
+const definedIn = (cssText, cls) => new RegExp(`\\.${cls.replace(/-/g, '\\-')}(?![\\w-])`).test(cssText);
 
 check('JS 裡沒有寫死的樣式：沒有 <style> 注入、cssText、HTML style 屬性', () => {
-  DESKTOP.js.forEach((f) => {
+  ALL_JS.forEach((f) => {
     const src = readSrc(f);
     assert.ok(!/createElement\(['"]style['"]\)/.test(src), `${f} 不應再注入 <style>`);
     assert.ok(!/cssText/.test(src), `${f} 不應用 cssText`);
@@ -182,15 +194,14 @@ check('JS 裡沒有寫死的樣式：沒有 <style> 注入、cssText、HTML styl
   });
 });
 
-check('JS 用到的 pr-* class 都在 CSS 有定義；手機版模組用到的在 common.css', () => {
-  DESKTOP.js.forEach((f) => {
-    const css = MOBILE_MODULES.includes(f) ? commonCss : `${commonCss}\n${desktopCss}`;
-    classesUsedIn(readSrc(f)).forEach((cls) => assert.ok(definedIn(css, cls), `${f} 用到的 .${cls} 沒有定義${MOBILE_MODULES.includes(f) ? '在 common.css' : ''}`));
+check('JS 用到的 pr-* class 都在 payment_request.css 有定義', () => {
+  ALL_JS.forEach((f) => {
+    classesUsedIn(readSrc(f)).forEach((cls) => assert.ok(definedIn(css, cls), `${f} 用到的 .${cls} 沒有定義在 payment_request.css`));
   });
-  ['pr-validation-popup', 'pr-same-applicant-btn', 'pr-required-mark', 'pr-expected-pay-note', 'pr-noti'].forEach((cls) =>
-    assert.ok(definedIn(commonCss, cls), cls),
+  ['pr-validation-popup', 'pr-same-applicant-btn', 'pr-required-mark', 'pr-expected-pay-note', 'pr-noti', 'pr-auto-width', 'department-hint'].forEach((cls) =>
+    assert.ok(definedIn(css, cls), cls),
   );
-  assert.ok(/@keyframes pr-fade-out/.test(commonCss));
+  assert.ok(/@keyframes pr-fade-out/.test(css));
 });
 
 // ── 5. 手機版整組載入 ───────────────────────────────────────────────────────

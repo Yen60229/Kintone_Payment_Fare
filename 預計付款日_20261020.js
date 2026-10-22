@@ -154,7 +154,7 @@
     const space = KT.record().getSpaceElement(C.SPACES.EXPECTED_PAY_DATE_NOTE);
     if (space) {
       space.textContent = `※ ${CFG.NOTE}`;
-      space.classList.add('pr-expected-pay-note'); // 樣式在 styles/common.css
+      space.classList.add('pr-expected-pay-note'); // 樣式在 payment_request.css
     }
     return event;
   };

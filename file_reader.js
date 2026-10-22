@@ -36,7 +36,7 @@
 
         // 創建預覽按鈕
         const previewButton = document.createElement('a');
-        previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview pr-preview-button'; // 樣式在 styles/desktop.css
+        previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview pr-preview-button'; // 樣式在 payment_request.css
         previewButton.title = '預覽';
         previewButton.href = 'javascript:void(0)';
 
@@ -134,7 +134,7 @@
         }
 
         const previewButton = document.createElement('a');
-        previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview pr-preview-button'; // 樣式在 styles/desktop.css
+        previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview pr-preview-button'; // 樣式在 payment_request.css
         previewButton.title = '預覽';
         previewButton.href = 'javascript:void(0)';
 

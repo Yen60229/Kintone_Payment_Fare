@@ -1031,7 +1031,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       const headerMenuSpace = kintone.app.getHeaderMenuSpaceElement();
       if (!headerMenuSpace) throw new Error('找不到標頭菜單空間');
 
-      // 樣式在 styles/desktop.css（批次下載／列印按鈕、處理中視窗）
+      // 樣式在 payment_request.css（批次下載／列印按鈕、處理中視窗）
 
       // 容器
       const container = document.createElement('div');
@@ -1190,7 +1190,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       const detailPrintButton = document.createElement('button');
       detailPrintButton.id = 'detail-print-pdflib-btn';
       detailPrintButton.textContent = '📄 下載此筆交通費請款單PDF';
-      detailPrintButton.className = 'pr-detail-print-button'; // 樣式在 styles/desktop.css
+      detailPrintButton.className = 'pr-detail-print-button'; // 樣式在 payment_request.css
 
       detailPrintButton.addEventListener('click', async function () {
         const recordId = event.record.$id.value;

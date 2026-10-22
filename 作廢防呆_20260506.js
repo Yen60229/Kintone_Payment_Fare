@@ -49,7 +49,7 @@
       icon: 'warning',
       title: '請確認是否真的要作廢',
       html:
-        // 樣式在 styles/common.css（.pr-void-*）
+        // 樣式在 payment_request.css（.pr-void-*）
         '<div class="pr-void-confirm">' +
         '<div>您即將執行 <b class="pr-void-action">「' +
         actionName +

@@ -53,7 +53,7 @@
 
         // 創建按鈕容器
         const buttonContainer = document.createElement('div');
-        buttonContainer.className = 'pr-tool-buttons'; // 樣式在 styles/desktop.css
+        buttonContainer.className = 'pr-tool-buttons'; // 樣式在 payment_request.css
 
         buttonContainer.appendChild(settingsButton);
         buttonContainer.appendChild(workflowButton);
@@ -67,7 +67,7 @@
       }
     }, 100); // 延遲 100ms 確保下載容器已載入
 
-    // 樣式在 styles/desktop.css（.workflow-button／.settings-button）
+    // 樣式在 payment_request.css（.workflow-button／.settings-button）
 
     return event;
   });

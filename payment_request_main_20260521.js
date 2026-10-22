@@ -23,7 +23,7 @@
   const COMPANY_NAME_NX = 'ＮＸ臺灣國際物流';
   const COMPANY_DEPT_PREFIX_LIANHAI = '聯海';
 
-  // 頁面說明文案（空白欄位 Space_Noti_1／2／3）；樣式在 styles/common.css（.pr-noti*）
+  // 頁面說明文案（空白欄位 Space_Noti_1／2／3）；樣式在 payment_request.css（.pr-noti*）
   const INSTRUCTIONS = {
     付款方式: `<span class="pr-noti">&ensp;※ 付款方式：</span><span class="pr-noti-red">皆以電匯為主，除特殊情況才可使用現金</span>`,
     付款原則: `<span class="pr-noti">&ensp;※ 付款原則：一般帳款２個月，特殊期限請標註日期</span>`,
@@ -58,37 +58,7 @@
     });
   };
 
-  /**
-   * 取得表格內欄位值
-   */
-  function getCellValue(dataCell) {
-    const valueContent = dataCell.querySelector('.control-value-content-gaia');
-    if (valueContent) return valueContent.textContent.trim();
-
-    const dropdownValue = dataCell.querySelector('.control-value-gaia[class*="value-"]');
-    if (dropdownValue) return dropdownValue.textContent.trim();
-
-    const checkboxSpans = dataCell.querySelectorAll('.control-value-gaia .control-value-content-gaia');
-    if (checkboxSpans.length > 0) {
-      const values = Array.from(checkboxSpans).map((span) => span.textContent.trim());
-      return values.filter((v) => v).join(', ');
-    }
-
-    const multilineDiv = dataCell.querySelector('.control-value-gaia > div');
-    if (multilineDiv) return multilineDiv.textContent.trim();
-
-    const controlValue = dataCell.querySelector('.control-value-gaia');
-    if (controlValue) {
-      const text = controlValue.textContent.trim();
-      if (!text.includes('選擇') && !text.includes('清除') && !text.includes('Browse')) {
-        return text;
-      }
-    }
-
-    return '';
-  }
-
-  // 費用歸屬中文名稱（綠字）／代碼不存在（紅字）提示的樣式在 styles/desktop.css（.department-hint／.department-error）
+  // 費用歸屬中文名稱（綠字）／代碼不存在（紅字）提示的樣式在 payment_request.css（.department-hint／.department-error）
 
   const clearCostFieldHints = () => {
     document.querySelectorAll('.department-hint, .department-error').forEach((hint) => hint.remove());
@@ -128,125 +98,135 @@
     else findAndUpdateAllCostFields(costValue, '', true);
   };
 
-  /**
-   * 自動偵測並處理所有符合條件的表格顯示與欄寬
-   */
-  function autoProcessAllTables() {
-    setTimeout(() => {
-      const foundTables = [];
-      const outerContainers = document.querySelectorAll('.subtable-row-gaia[class*="subtable-row-"]');
+  // ── 詳細頁／列印頁：交通費明細子表格的欄寬（資料驅動）─────────────────────
+  //   欄位順序、表頭文字、型別來自 config 的 TRAFFIC_TABLE_LAYOUT（kintone MCP 讀 749 表單，form_snapshots/ 有快照），
+  //   值來自 event.record，不再從畫面上抓文字猜：
+  //     整欄都沒有值 → 藏起來；有值 → 依最長的顯示文字（和表頭文字）算寬度。
+  //     只設 width／min-width、不設 max-width：內容再長也只會把欄撐開，不會被鎖窄而溢出蓋到隔壁欄。
+  //   畫面上靠「表頭文字」找出是哪一欄，對不到的欄不動；表頭對不上的子表格（簽核記錄）整張不動。
+  //
+  // 【換頁太快會畸形的防護】（2026-10-22）
+  //   處理是延遲 1 秒才做（等畫面畫好）。使用者在這之前就按「編輯」，舊的計時器會在編輯畫面上跑，
+  //   把格子鎖成詳細頁的寬度，組織／人員選擇器縮不進去就溢出蓋到隔壁欄（表格畸形）。
+  //   三道防護：① 每次 show 畫面序號 +1，計時器到時序號不同就不做；② 表格裡有輸入框（編輯畫面）就不處理；
+  //   ③ 被調過的格子都做記號，進新增／編輯畫面時把記號格子的寬度、隱藏還原。
+  const TABLE_LAYOUT = C.TRAFFIC_TABLE_LAYOUT;
+  const TABLE_DELAY_MS = 1000;
+  const AUTO_WIDTH_ATTR = 'data-pr-auto-width';
+  let tableViewSeq = 0;
 
-      outerContainers.forEach((container) => {
-        const classList = Array.from(container.classList);
-        const hasNumberCode = classList.some((cls) => /subtable-row-\d+/.test(cls));
-        if (hasNumberCode) foundTables.push(container);
-      });
-
-      foundTables.forEach((tableContainer, index) => {
-        const isVisible =
-          tableContainer.offsetParent !== null &&
-          getComputedStyle(tableContainer).display !== 'none' &&
-          getComputedStyle(tableContainer).visibility !== 'hidden';
-
-        if (!isVisible) return;
-
-        const titleElement = tableContainer.querySelector('.subtable-row-label-text-gaia, .subtable-label-gaia, .control-label-text-gaia');
-        if (titleElement) {
-          const tableName = titleElement.textContent.trim();
-          if (tableName === F.SIGN_TABLE.CODE) return;
-        }
-
-        let fieldCode = tableContainer.getAttribute('data-field-code');
-
-        if (!fieldCode) {
-          const parentWithFieldCode = tableContainer.closest('[data-field-code]');
-          if (parentWithFieldCode) fieldCode = parentWithFieldCode.getAttribute('data-field-code');
-        }
-
-        if (!fieldCode) {
-          const classList = Array.from(tableContainer.classList);
-          const subtableClass = classList.find(
-            (cls) => (cls.startsWith('subtable-') && cls !== 'subtable-gaia' && cls !== 'subtable-row-gaia') || cls.startsWith('subtable-row-'),
-          );
-          if (subtableClass) {
-            fieldCode = subtableClass.startsWith('subtable-row-') ? subtableClass.replace('subtable-row-', '') : subtableClass.replace('subtable-', '');
-          }
-        }
-
-        if (!fieldCode) fieldCode = `auto_table_${index}`;
-
-        processTableByContainer(tableContainer, fieldCode);
-      });
-    }, 1000);
-  }
+  /** 文字的寬度單位：中文與全形符號 2、其餘 1 */
+  const textUnits = (text) => {
+    let units = 0;
+    for (const char of String(text || '')) units += /[⺀-鿿　-〿＀-￯]/.test(char) ? 2 : 1;
+    return units;
+  };
 
   /**
-   * 直接針對表格容器進行處理的函數
+   * 一格在詳細頁上顯示的文字（空字串＝沒有值）。數值 0 當作沒有值；數值加千分位與單位。
+   * @param {Object} cell 子表格一列裡的欄位 { value }
+   * @param {{ type: string, unit?: string }} column
+   * @returns {string}
    */
-  function processTableByContainer(tableContainer, fieldCode) {
-    let headerCells = null;
-    let dataRows = null;
-
-    const table = tableContainer.querySelector('table');
-    if (table) {
-      headerCells = table.querySelectorAll('thead th.subtable-label-gaia');
-      dataRows = table.querySelectorAll('tbody tr');
+  const displayText = (cell, column) => {
+    const value = cell?.value;
+    if (value === null || value === undefined) return '';
+    if (column.type === 'NUMBER') {
+      const n = Number(value);
+      if (value === '' || !Number.isFinite(n) || n === 0) return '';
+      return `${n.toLocaleString('en-US')}${column.unit || ''}`;
     }
+    return String(value).trim();
+  };
 
-    if (!headerCells || headerCells.length === 0) {
-      headerCells = tableContainer.querySelectorAll('thead th.subtable-label-gaia');
-      dataRows = tableContainer.querySelectorAll('tbody tr');
-    }
-
-    if (!headerCells || headerCells.length === 0) {
-      const subtableContainers = tableContainer.querySelectorAll('.subtable-gaia, .subtable-row-gaia');
-      for (const container of subtableContainers) {
-        headerCells = container.querySelectorAll('thead th.subtable-label-gaia');
-        dataRows = container.querySelectorAll('tbody tr');
-        if (headerCells.length > 0) break;
-      }
-    }
-
-    if (!headerCells || headerCells.length === 0) return;
-
-    headerCells.forEach((headerCell, columnIndex) => {
-      let maxLength = 0;
-      let hasValue = false;
-
-      dataRows.forEach((row) => {
-        const dataCells = row.querySelectorAll('td');
-        if (dataCells[columnIndex]) {
-          const cellText = getCellValue(dataCells[columnIndex]);
-          if (cellText !== '' && cellText !== '0' && cellText !== 'null' && cellText !== 'undefined') {
-            hasValue = true;
-            maxLength = Math.max(maxLength, cellText.length);
-          }
-        }
-      });
-
-      if (!hasValue) {
-        headerCell.style.display = 'none';
-        dataRows.forEach((row) => {
-          const dataCells = row.querySelectorAll('td');
-          if (dataCells[columnIndex]) dataCells[columnIndex].style.display = 'none';
-        });
-      } else {
-        const width = maxLength * 12 + 40 + 'px';
-        headerCell.style.width = width;
-        headerCell.style.minWidth = width;
-        headerCell.style.maxWidth = width;
-
-        dataRows.forEach((row) => {
-          const dataCells = row.querySelectorAll('td');
-          if (dataCells[columnIndex]) {
-            dataCells[columnIndex].style.width = width;
-            dataCells[columnIndex].style.minWidth = width;
-            dataCells[columnIndex].style.maxWidth = width;
-          }
-        });
-      }
+  /**
+   * 依記錄的值決定每一欄要藏起來還是多寬（純函式）。
+   * @param {Array} rows 子表格的列（record[子表格].value）
+   * @returns {Array<{ code: string, label: string, hidden: boolean, width: string|null }>}
+   */
+  const planTrafficTable = (rows) => {
+    const { PX_PER_UNIT, PADDING_PX, MIN_PX, MAX_PX } = TABLE_LAYOUT.WIDTH;
+    return TABLE_LAYOUT.COLUMNS.map((column) => {
+      const texts = (rows || []).map((row) => displayText(row?.value?.[column.code], column)).filter(Boolean);
+      if (texts.length === 0) return { code: column.code, label: column.label, hidden: true, width: null };
+      const units = Math.max(textUnits(column.label), ...texts.map(textUnits));
+      const px = Math.min(Math.max(units * PX_PER_UNIT + PADDING_PX, MIN_PX), MAX_PX);
+      return { code: column.code, label: column.label, hidden: false, width: `${px}px` };
     });
-  }
+  };
+
+  /** 表頭格的文字（去掉必填的 *） */
+  const headerLabel = (th) => String(th?.textContent || '').replace(/\*/g, '').trim();
+
+  /** 把格子設成指定寬度（width＝null 就藏起來），並做記號以便還原 */
+  const markCell = (cell, width) => {
+    if (width === null) cell.style.display = 'none';
+    else {
+      cell.style.width = width;
+      cell.style.minWidth = width;
+    }
+    cell.setAttribute(AUTO_WIDTH_ATTR, '1');
+  };
+
+  /** 還原所有被調過的格子 */
+  const resetAutoTableWidths = () => {
+    document.querySelectorAll(`[${AUTO_WIDTH_ATTR}]`).forEach((cell) => {
+      cell.style.width = '';
+      cell.style.minWidth = '';
+      cell.style.maxWidth = '';
+      cell.style.display = '';
+      cell.removeAttribute(AUTO_WIDTH_ATTR);
+    });
+  };
+
+  /**
+   * 把計畫套到畫面上的一張子表格。表頭對不上交通費明細（例如簽核記錄）或已是編輯畫面就不動。
+   * @param {Element} container 子表格外框
+   * @param {Array} plan planTrafficTable 的結果
+   * @returns {boolean} 有沒有套用
+   */
+  const applyTablePlan = (container, plan) => {
+    // 表格裡有輸入框＝編輯／新增畫面，不處理
+    if (container.querySelector('input, select, textarea')) return false;
+    const headers = Array.from(container.querySelectorAll('thead th.subtable-label-gaia'));
+    const planByLabel = new Map(plan.map((p) => [p.label, p]));
+    const matched = headers.map((th) => planByLabel.get(headerLabel(th)) || null);
+    // 一半以上的表頭對得上才算交通費明細
+    if (matched.filter(Boolean).length * 2 < headers.length || headers.length === 0) return false;
+
+    const rows = Array.from(container.querySelectorAll('tbody tr'));
+    matched.forEach((p, index) => {
+      if (!p) return;
+      const width = p.hidden ? null : p.width;
+      markCell(headers[index], width);
+      rows.forEach((row) => {
+        const td = row.querySelectorAll('td')[index];
+        if (td) markCell(td, width);
+      });
+    });
+    return true;
+  };
+
+  /**
+   * 詳細頁／列印頁：等畫面畫好後，依記錄的值調整交通費明細子表格的欄寬。
+   * @param {Object} record event.record
+   * @param {number} seq 呼叫當下的畫面序號；到時已換畫面就不做
+   */
+  const layoutTrafficTable = (record, seq) => {
+    setTimeout(() => {
+      if (seq !== tableViewSeq) return;
+      const plan = planTrafficTable(record[TRAFFIC.CODE]?.value);
+      document.querySelectorAll('.subtable-row-gaia[class*="subtable-row-"]').forEach((container) => {
+        try {
+          applyTablePlan(container, plan);
+        } catch (err) {
+          console.warn('[交通費明細欄寬] 調整失敗，維持原樣', err);
+        }
+      });
+    }, TABLE_DELAY_MS);
+  };
+
+  window.PR_TABLE_LAYOUT = Object.freeze({ textUnits, displayText, planTrafficTable, applyTablePlan });
 
   /**
    * 重新綁定取消按鈕事件
@@ -420,24 +400,29 @@
     updateSpaceNotifications();
     loadCostCenterMaps().catch(() => {});
 
+    // 換畫面：還沒執行的子表格欄寬處理一律作廢（見 layoutTrafficTable 上方說明）
+    const seq = ++tableViewSeq;
+
     switch (event.type) {
       case 'app.record.print.show':
-        autoProcessAllTables();
+        layoutTrafficTable(record, seq);
         break;
 
       case 'app.record.create.show':
+        resetAutoTableWidths();
         window.PR_COMPANY_NAME.apply(record);
         rebindCancelButton();
         break;
 
       case 'app.record.edit.show':
+        resetAutoTableWidths();
         if (record[F.COMPANY_NAME]) record[F.COMPANY_NAME].disabled = true;
         break;
 
       case 'app.record.detail.show': {
         const status = record[F.STATUS_FIELD]?.value;
         if (status !== STATUS.REIMBURSEMENT_FILL && status !== STATUS.APPLY_START) {
-          autoProcessAllTables();
+          layoutTrafficTable(record, seq);
         }
         KT.record().setFieldShown(F.MANUAL_FLOW, record[F.MANUAL_FLOW]?.value?.length > 0);
         break;

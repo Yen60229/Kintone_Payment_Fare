@@ -35,16 +35,16 @@ const isDeepFrozen = (obj) =>
 console.log('config.test.cjs');
 
 // ── 整體結構 ────────────────────────────────────────────────────────────────
-check('PR_CONFIG 的頂層鍵恰為這 18 個（多了或少了都要有意識地改這裡）', () => {
+check('PR_CONFIG 的頂層鍵恰為這 19 個（多了或少了都要有意識地改這裡）', () => {
   assert.deepStrictEqual(
     Object.keys(c).sort(),
-    ['ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'COST_SCOPE', 'EXPECTED_PAY_DATE', 'FIELDS', 'OPTIONS', 'REF_FIELDS', 'SEP', 'SIGNING', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'TRAFFIC_RULES', 'VOID_FIELD', 'isAdmin'].sort(),
+    ['ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'COST_SCOPE', 'EXPECTED_PAY_DATE', 'FIELDS', 'OPTIONS', 'REF_FIELDS', 'SEP', 'SIGNING', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'TRAFFIC_RULES', 'TRAFFIC_TABLE_LAYOUT', 'VOID_FIELD', 'isAdmin'].sort(),
   );
 });
 
 check('PR_CONFIG 與各註冊表皆為凍結物件（不會被其他模組意外改寫）', () => {
   assert.ok(Object.isFrozen(c));
-  ['APPS', 'ACCOUNTING', 'SIGNING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'OPTIONS', 'TRAFFIC_RULES', 'COST_SCOPE'].forEach((key) => {
+  ['APPS', 'ACCOUNTING', 'SIGNING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'TRAFFIC_TABLE_LAYOUT', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'OPTIONS', 'TRAFFIC_RULES', 'COST_SCOPE'].forEach((key) => {
     assert.ok(isDeepFrozen(c[key]), `${key} 應為深層凍結`);
   });
 });
@@ -56,6 +56,16 @@ check('已刪除的 723 設定鍵全部不存在（頂層）', () => {
     'COST_CENTER_SCOPE', 'PAYEE_EDITABLE_TYPES', 'SOURCE_FIELDS', 'ENT_NOTE_LEGEND', 'TAX', 'ATTACHMENT_TEXT', 'isTransfer', 'isCompany',
     'detailPathOf', 'fetchOriginalData', 'applyTableLabels', 'ENTERTAINMENT_APP_BY_PAYMENT',
   ].forEach((key) => assert.ok(!(key in c), `不應存在 ${key}`));
+});
+
+// ── 子表格版面（MCP 快照）───────────────────────────────────────────────────
+check('TRAFFIC_TABLE_LAYOUT.COLUMNS 和 MCP 讀出的 749 表單快照一致（順序、代碼、標籤、型別、單位），且涵蓋子表格全部欄位', () => {
+  const snap = JSON.parse(fs.readFileSync(path.join(rootDir, 'form_snapshots', '749_rev1798_traffic_table.json'), 'utf8'));
+  assert.strictEqual(snap.subtable, c.FIELDS.TRAFFIC_TABLE.CODE);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(c.TRAFFIC_TABLE_LAYOUT.COLUMNS)), snap.columns);
+  assert.deepStrictEqual(c.TRAFFIC_TABLE_LAYOUT.COLUMNS.map((col) => col.code).sort(), Object.values(c.FIELDS.TRAFFIC_TABLE.COLS).sort());
+  const w = c.TRAFFIC_TABLE_LAYOUT.WIDTH;
+  assert.ok(w.MIN_PX > 0 && w.MIN_PX < w.MAX_PX);
 });
 
 // ── APPS ────────────────────────────────────────────────────────────────────
