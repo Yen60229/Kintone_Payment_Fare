@@ -271,11 +271,9 @@ check('COST_SCOPE：排除群組「費用歸屬不限部門」、組織樹快取
 });
 
 // ── ACCOUNTING／SIGNING ─────────────────────────────────────────────────────
-check('ACCOUNTING.MAP 六個據點對應，機場／海運特殊代碼', () => {
+check('ACCOUNTING 只剩 MAP 六個會計群組；依費用歸屬據點判斷的機場／海運特殊代碼已刪（會計單位只依費用所屬人部門）', () => {
   assert.deepStrictEqual({ ...c.ACCOUNTING.MAP }, { TPE: 'ACC_TPE', TPE海運: 'ACC_TPE海運', CKS: 'ACC_CKS', KHH: 'ACC_KHH', TEPZ: 'ACC_TEPZ', NEXT: 'ACC_NEXT' });
-  assert.deepStrictEqual([...c.ACCOUNTING.SPECIAL_CODES_AIRPORT], ['AJA2', 'AJA3', 'AJA8', 'AJA9']);
-  assert.deepStrictEqual([...c.ACCOUNTING.SPECIAL_CODES_MARINE], ['AJI1', 'AJI3', 'AJJ1', 'AJJ3', 'AJ63']);
-  assert.ok(!('ALLOC_SHEET_CONDITIONS' in c.ACCOUNTING));
+  assert.deepStrictEqual(Object.keys(c.ACCOUNTING), ['MAP']);
 });
 
 check('SIGNING：組織名稱分隔字元、「所／中心 → 部」三筆對應；ORG_PARENT_MAP 不含「聯海通運股份有限公司」', () => {
@@ -287,9 +285,9 @@ check('SIGNING：組織名稱分隔字元、「所／中心 → 部」三筆對�
 });
 
 // ── REF_FIELDS／EXPECTED_PAY_DATE ───────────────────────────────────────────
-check('REF_FIELDS 只剩費用歸屬、會計對應、行事曆三份；費用歸屬主檔有代碼／據點／中文名稱／使用狀況／所屬部門五個欄位', () => {
+check('REF_FIELDS 只剩費用歸屬、會計對應、行事曆三份；費用歸屬主檔有代碼／中文名稱／使用狀況／所屬部門四個欄位（據點不再讀）', () => {
   assert.deepStrictEqual(Object.keys(c.REF_FIELDS).sort(), ['ACCOUNTING_MAP', 'COST_CENTER', 'HOLIDAY_CALENDAR']);
-  assert.deepStrictEqual({ ...c.REF_FIELDS.COST_CENTER }, { CODE: 'CostCenter', LOCATION: 'LOCATION', NAME: '中文名稱', IN_USE: '使用狀況', DEPT: '所屬部門' });
+  assert.deepStrictEqual({ ...c.REF_FIELDS.COST_CENTER }, { CODE: 'CostCenter', NAME: '中文名稱', IN_USE: '使用狀況', DEPT: '所屬部門' });
   assert.deepStrictEqual(
     { ...c.REF_FIELDS.ACCOUNTING_MAP },
     { APPLY_UNIT: '申請單位', ACCOUNTING_UNIT: '請款會計單位', ACCOUNTING_STAFF: '請款會計人員', PERMISSION_USER: '權限開放人員' },
@@ -321,7 +319,7 @@ check('main／submit 沒有把 FIELDS 已註冊的欄位代碼再寫死成字面
 });
 
 check('main／submit 沒有引用已刪的 config 鍵', () => {
-  const removed = ['C.TYPE', 'C.TYPES', 'TRANSFER_TYPES', 'COMPANY_TYPES', 'ENT_SIGN', 'SLOT3_RELOCATION', 'APPLICANT_SWITCH', 'COST_CENTER_SCOPE', 'PAYEE_EDITABLE_TYPES', 'SOURCE_FIELDS', 'C.TAX', 'ATTACHMENT_TEXT', 'OPT.'];
+  const removed = ['C.TYPE', 'C.TYPES', 'TRANSFER_TYPES', 'COMPANY_TYPES', 'ENT_SIGN', 'SLOT3_RELOCATION', 'APPLICANT_SWITCH', 'COST_CENTER_SCOPE', 'PAYEE_EDITABLE_TYPES', 'SOURCE_FIELDS', 'C.TAX', 'ATTACHMENT_TEXT', 'OPT.', 'SPECIAL_CODES', 'LOCATION', 'determineAllocation'];
   ['payment_request_main_20260521.js', 'payment_request_submit_20260506.js'].forEach((file) => {
     const text = fs.readFileSync(path.join(rootDir, file), 'utf8');
     removed.forEach((key) => assert.ok(!text.includes(key), `${file} 不應引用 ${key}`));

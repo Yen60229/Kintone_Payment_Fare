@@ -35,10 +35,9 @@
   });
 
   // 模組層級變數/快取（費用歸屬主檔，一次載入）
-  let LOCATION_CODE_MAP = {}; // 代號（大寫）→ 據點，會計單位判定用
   let NAME_OF_CODE = {}; // 代號（大寫）→ 中文名稱，畫面提示用
   let VALID_COST_CENTER_CODES = new Set(); // 「使用中」代碼（原始大小寫），給存檔驗證共用
-  let DEPT_OF_CODE = {}; // 代號（大寫）→ 所屬部門的組織代碼，掛帳單位限部內用
+  let DEPT_OF_CODE = {}; // 代號（大寫）→ 所屬部門的組織代碼陣列（同代號可屬多個部門，例如總公司代碼），掛帳單位限部內用
   let DEPT_NAMES = {}; // 所屬部門組織代碼 → 名稱（錯誤訊息用）
   let _costCenterLoadPromise = null;
 
@@ -300,10 +299,9 @@
 
   /**
    * 從費用歸屬代碼主檔（APPS.COST_CENTER）載入「使用中」的代碼，一次建好三份對照：
-   *   LOCATION_CODE_MAP        代號 → 據點（會計單位判定用）
    *   NAME_OF_CODE             代號 → 中文名稱（畫面提示用）
    *   VALID_COST_CENTER_CODES  「使用中」代碼集合（存檔驗證用）
-   *   DEPT_OF_CODE             代號 → 所屬部門組織代碼（掛帳單位限部內用）
+   *   DEPT_OF_CODE             代號 → 所屬部門組織代碼陣列（掛帳單位限部內用；同代號多筆記錄各屬不同部門時全部保留）
    */
   const loadCostCenterMaps = () => {
     if (_costCenterLoadPromise) return _costCenterLoadPromise;
@@ -312,19 +310,18 @@
       const CC = C.REF_FIELDS.COST_CENTER;
       const params = {
         app: COST_CENTER_APP_ID,
-        fields: [CC.CODE, CC.LOCATION, CC.NAME, CC.DEPT],
+        fields: [CC.CODE, CC.NAME, CC.DEPT],
         query: `${CC.IN_USE} in ("使用中")`,
         size: 500,
       };
 
       const cursor = await kintone.api(kintone.api.url('/k/v1/records/cursor', true), 'POST', params);
 
-      const locMap = {};
       const nameMap = {};
       const deptMap = {};
       const deptNames = {};
       const validCodes = new Set(); // 原始大小寫，給存檔驗證用（和 submit 自己查時的比對方式一致）
-      const fieldConflicts = { loc: {}, nm: {} };
+      const nameConflicts = {};
 
       let hasNext = true;
       while (hasNext) {
@@ -334,27 +331,23 @@
           if (!rawCode) return;
           validCodes.add(rawCode);
           const code = rawCode.toUpperCase();
-          const loc = r[CC.LOCATION]?.value?.trim();
           const name = r[CC.NAME]?.value?.trim();
-          const dept = r[CC.DEPT]?.value?.[0];
-          if (dept?.code) {
-            if (!deptMap[code]) deptMap[code] = dept.code;
+          // 同代號可建多筆記錄、各屬不同部門（例如總公司代碼由好幾個部共用），所屬部門全部收進來
+          (r[CC.DEPT]?.value || []).forEach((dept) => {
+            if (!dept?.code) return;
+            const depts = (deptMap[code] = deptMap[code] || []);
+            if (!depts.includes(dept.code)) depts.push(dept.code);
             deptNames[dept.code] = dept.name || dept.code;
-          }
-          // 同代號可建多筆記錄：據點／中文名稱保留第一筆非空值，值不同就點名代號提醒管理者
-          if (loc) {
-            if (!locMap[code]) locMap[code] = loc;
-            else if (locMap[code] !== loc) (fieldConflicts.loc[code] = fieldConflicts.loc[code] || new Set()).add(loc);
-          }
+          });
+          // 同代號可建多筆記錄：中文名稱保留第一筆非空值，值不同就點名代號提醒管理者
           if (name) {
             if (!nameMap[code]) nameMap[code] = name;
-            else if (nameMap[code] !== name) (fieldConflicts.nm[code] = fieldConflicts.nm[code] || new Set()).add(name);
+            else if (nameMap[code] !== name) (nameConflicts[code] = nameConflicts[code] || new Set()).add(name);
           }
         });
         hasNext = resp.next;
       }
 
-      LOCATION_CODE_MAP = locMap;
       NAME_OF_CODE = nameMap;
       VALID_COST_CENTER_CODES = validCodes;
       DEPT_OF_CODE = deptMap;
@@ -362,12 +355,8 @@
 
       console.log(`✅ 已載入 ${validCodes.size} 筆費用歸屬代碼`);
 
-      Object.keys(fieldConflicts).forEach((kind) => {
-        Object.keys(fieldConflicts[kind]).forEach((code) => {
-          const label = kind === 'loc' ? '據點' : '名稱';
-          const first = kind === 'loc' ? locMap[code] : nameMap[code];
-          console.warn(`⚠️ [費用歸屬] 代號「${code}」在費用歸屬主檔的多筆記錄中有不同的${label}，已採用第一筆「${first}」；請回主檔統一`, [...fieldConflicts[kind][code]]);
-        });
+      Object.keys(nameConflicts).forEach((code) => {
+        console.warn(`⚠️ [費用歸屬] 代號「${code}」在費用歸屬主檔的多筆記錄中有不同的名稱，已採用第一筆「${nameMap[code]}」；請回主檔統一`, [...nameConflicts[code]]);
       });
 
       refreshAllCostCenterHints();
@@ -386,8 +375,8 @@
     ensureLoaded: () => loadCostCenterMaps(),
     /** 「使用中」的費用歸屬代碼（原始大小寫）（呼叫前需先 await ensureLoaded()） */
     getValidCodes: () => VALID_COST_CENTER_CODES,
-    /** 代號（大寫）→ 所屬部門組織代碼（呼叫前需先 await ensureLoaded()） */
-    getDeptOfCode: () => DEPT_OF_CODE,
+    /** 代號（大寫）→ 所屬部門組織代碼陣列（呼叫前需先 await ensureLoaded()） */
+    getDeptsOfCode: () => DEPT_OF_CODE,
     /** 所屬部門組織代碼 → 名稱 */
     getDeptNames: () => DEPT_NAMES,
   });
@@ -410,52 +399,6 @@
       // 頁面未完全渲染完畢時靜默相容
     }
   }
-
-  const getLocationForCode = (code) => LOCATION_CODE_MAP[code] || null;
-
-  /**
-   * 判斷費用歸屬據點
-   * @param {string[]} costAllocations 各列費用歸屬代號（大寫）
-   * @param {string} applicationUnit 費用所屬人部門名稱（桃園機場特殊代碼判斷用）
-   * @returns {string} ACCOUNTING.MAP 的鍵
-   */
-  const determineAllocation = (costAllocations, applicationUnit) => {
-    const SpecialCodes_1 = costAllocations.every((code) => C.ACCOUNTING.SPECIAL_CODES_AIRPORT.includes(code));
-    if (SpecialCodes_1) {
-      const unitString = String(applicationUnit || '');
-      const hasTaoyuan = unitString.indexOf('桃園機場', 0) !== -1;
-      return hasTaoyuan ? 'CKS' : 'TPE';
-    }
-
-    const SpecialCodes_2 = costAllocations.some((code) => C.ACCOUNTING.SPECIAL_CODES_MARINE.includes(code));
-    if (SpecialCodes_2) {
-      return 'TPE海運';
-    }
-
-    const locations = costAllocations.map((code) => getLocationForCode(code));
-    const uniqueLocations = [...new Set(locations.filter((l) => l))];
-
-    return uniqueLocations.length === 1 ? uniqueLocations[0] : 'TPE';
-  };
-
-  /**
-   * 更新會計單位欄位
-   */
-  const updateAccountingDepartment = (record, allocation) => {
-    const accCode = C.ACCOUNTING.MAP[allocation];
-    if (accCode) {
-      record[F.ACCOUNTING_UNIT] = {
-        value: [
-          {
-            code: accCode,
-            name: accCode,
-          },
-        ],
-        type: 'GROUP_SELECT',
-        disabled: true,
-      };
-    }
-  };
 
   /**
    * 依費用所屬人部門推導公司名稱：部門代碼開頭為「聯海」→ 聯海通運；其餘（含尚未選擇）→ ＮＸ臺灣國際物流。
@@ -490,9 +433,14 @@
     // 帳號權限設定模組先載入，這裡最後套用，以這裡為準。
     // -------------------------------------------------------------------------
     record[F.PAYMENT_DATE].disabled = true;
-    // 申請人、申請人部門、受款人：只有管理員可改（費用所屬人、費用所屬人部門開放所有人改）
-    [F.APPLICANT, F.APPLICANT_ORG, F.PAYEE].forEach((field) => {
+    // 申請人、受款人：只有管理員可改（費用所屬人開放所有人改）
+    [F.APPLICANT, F.PAYEE].forEach((field) => {
       if (record[field]) record[field].disabled = !C.isAdmin();
+    });
+    // 申請人部門、費用所屬人部門：一律鎖住（含管理員），只能依申請人／費用所屬人帶入
+    //   （申請人部門帶入_20261022.js、signing_personnel_manager 的改費用所屬人流程）
+    [F.APPLICANT_ORG, F.EXPENSE_OWNER_ORG].forEach((field) => {
+      if (record[field]) record[field].disabled = true;
     });
 
     kintone.app.record.setFieldShown(F.ACCOUNTING_STAFF, C.isAdmin());
@@ -550,29 +498,21 @@
     return event;
   });
 
-  // 費用歸屬變更 → 轉大寫、顯示中文名稱／代碼不存在提示，並依據點判斷會計單位
+  // 費用歸屬變更 → 轉大寫、顯示中文名稱／代碼不存在提示
+  //   會計單位一律依費用所屬人部門，由 signing_personnel_manager 查會計對應主檔帶入，這裡不動
   kintone.events.on([`app.record.create.change.${TRAFFIC.COLS.EXPENSE}`, `app.record.edit.change.${TRAFFIC.COLS.EXPENSE}`], (event) => {
     loadCostCenterMaps().catch(() => {});
     try {
-      const record = event.record;
-      const rows = record[TRAFFIC.CODE]?.value || [];
+      const rows = event.record[TRAFFIC.CODE]?.value || [];
 
       clearCostFieldHints();
-      const costAllocations = rows.map((row) => {
+      rows.forEach((row) => {
         const cell = row?.value?.[TRAFFIC.COLS.EXPENSE];
         const costValue = cell?.value?.trim().toUpperCase();
-        if (!costValue) return '';
+        if (!costValue) return;
         cell.value = costValue;
         showCostCenterHint(costValue);
-        return costValue;
       });
-
-      // 手動設定簽核流程時，會計單位由使用者自己選，不自動更動
-      if (record[F.MANUAL_FLOW]?.value?.length > 0) return event;
-
-      const applicationUnit = record[F.EXPENSE_OWNER_ORG]?.value?.[0]?.name || '';
-      const allocation = determineAllocation(costAllocations, applicationUnit);
-      updateAccountingDepartment(record, allocation);
 
       return event;
     } catch (error) {

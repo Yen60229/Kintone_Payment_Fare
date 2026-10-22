@@ -20,11 +20,11 @@
     HOLIDAY_CALENDAR: 620, // 行事曆（國定假日、週末、補行上班日），預計付款日用
   });
 
-  // ── 會計單位對應 ───────────────────────────────────────────────────────────
+  // ── 會計單位（kintone 群組）───────────────────────────────────────────────
+  //   會計單位一律依費用所屬人部門查會計對應主檔（APPS.ACCOUNTING_MAP）帶入；
+  //   這裡列出全部會計群組，給流程管理檢查（process_management）比對用。
   const ACCOUNTING = Object.freeze({
     MAP: Object.freeze({ TPE: 'ACC_TPE', TPE海運: 'ACC_TPE海運', CKS: 'ACC_CKS', KHH: 'ACC_KHH', TEPZ: 'ACC_TEPZ', NEXT: 'ACC_NEXT' }),
-    SPECIAL_CODES_AIRPORT: Object.freeze(['AJA2', 'AJA3', 'AJA8', 'AJA9']), // 桃園機場→CKS，否則 TPE
-    SPECIAL_CODES_MARINE: Object.freeze(['AJI1', 'AJI3', 'AJJ1', 'AJJ3', 'AJ63']), // → TPE海運
   });
 
   // ── 簽核人員程式（signing_personnel_manager）──────────────────────────────
@@ -59,7 +59,6 @@
   const REF_FIELDS = Object.freeze({
     COST_CENTER: Object.freeze({
       CODE: 'CostCenter',
-      LOCATION: 'LOCATION',
       NAME: '中文名稱',
       IN_USE: '使用狀況', // 值 '使用中'；query 篩選用
       // ORGANIZATION_SELECT（單選），值一律為「部」層級。掛帳單位限部內（COST_SCOPE）靠它判斷代碼屬於哪個部門

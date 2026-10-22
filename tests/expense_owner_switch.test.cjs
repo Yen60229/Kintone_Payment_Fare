@@ -160,6 +160,7 @@ const check = async (label, fn) => {
   const origLog = console.log;
   console.log = () => {};
   console.error = () => {};
+  console.warn = () => {};
 
   await check('事件註冊：新增、編輯畫面的費用所屬人 change 都掛上同一支；沒有申請人（員工姓名）事件', () => {
     assert.strictEqual(typeof handler, 'function');
@@ -193,11 +194,28 @@ const check = async (label, fn) => {
     assert.ok(!(out instanceof Promise));
   });
 
-  await check('清空費用所屬人：不查、不改', async () => {
+  await check('清空費用所屬人：不查單位，費用所屬人部門跟著清空（部門只依費用所屬人帶入），簽核與會計單位清空', async () => {
     reset();
-    handler(changeEvent(null));
+    env.live[SLOTS[0]].value = [U('m1')];
+    env.live[F.ACCOUNTING_UNIT].value = [{ code: 'ACC_TPE', name: 'ACC_TPE' }];
+    const out = handler(changeEvent(null));
     await flush();
     assert.strictEqual(env.apiCalls.length, 0);
+    assert.strictEqual(env.setCount, 0, '直接改 event.record，不用 set()');
+    assert.deepStrictEqual(out.record[F.EXPENSE_OWNER_ORG].value, []);
+    assert.deepStrictEqual(out.record[SLOTS[0]].value, []);
+    assert.deepStrictEqual(out.record[F.ACCOUNTING_UNIT].value, []);
+  });
+
+  await check('清空費用所屬人時，還在查的上一次結果不再寫回', async () => {
+    reset();
+    env.orgs.u1 = [ORG_A];
+    env.orgDelay.u1 = 20;
+    handler(changeEvent('u1'));
+    handler(changeEvent(null));
+    await wait(40);
+    await flush();
+    assert.deepStrictEqual(orgValue(), [U('OLD', '原部門')], 'live 沒被慢回來的 u1 結果蓋掉');
     assert.strictEqual(env.setCount, 0);
   });
 
@@ -209,7 +227,8 @@ const check = async (label, fn) => {
     assert.strictEqual(env.swalCalls.length, 1);
     assert.strictEqual(env.swalCalls[0].icon, 'warning');
     assert.strictEqual(env.swalCalls[0].title, '此費用所屬人沒有所屬單位');
-    assert.match(env.swalCalls[0].text, /費用所屬人部門/);
+    assert.match(env.swalCalls[0].text, /改選其他費用所屬人/);
+    assert.ok(!/手動選/.test(env.swalCalls[0].text), '部門已鎖住，不能再叫使用者手動選部門');
     assert.deepStrictEqual(orgValue(), [U('OLD', '原部門')]);
     assert.strictEqual(env.setCount, 0);
     assert.strictEqual(approvalQueries().length, 0);
@@ -257,7 +276,7 @@ const check = async (label, fn) => {
     }
   });
 
-  await check('多個單位：跳 radio 視窗（主要單位預選、可取消、職稱附註），選哪個就帶哪個並用它重排', async () => {
+  await check('多個單位：跳 radio 視窗（主要單位預選、職稱附註），選哪個就帶哪個並用它重排；原部門不是新費用所屬人的單位 → 不給取消', async () => {
     reset({ swalAnswer: { isConfirmed: true, value: '2' } });
     env.orgs.u2 = ORGS;
     handler(changeEvent('u2', '王小明'));
@@ -266,13 +285,31 @@ const check = async (label, fn) => {
     const opts = env.swalCalls[0];
     assert.strictEqual(opts.input, 'radio');
     assert.strictEqual(opts.inputValue, '1', '預選主要單位');
-    assert.strictEqual(opts.showCancelButton, true);
+    assert.strictEqual(opts.showCancelButton, false, '部門鎖住，不能留著別人的部門');
+    assert.strictEqual(opts.allowEscapeKey, false);
     assert.strictEqual(opts.inputOptions[1], '總務部-資訊課（課員）　★主要單位');
-    assert.match(opts.title, /費用所屬人部門/);
-    assert.match(opts.text, /王小明 有 3 個所屬單位/);
-    assert.match(opts.cancelButtonText, /保留原本的部門/);
+    assert.strictEqual(opts.title, '請選擇費用所屬人部門');
+    assert.match(opts.text, /王小明 有 3 個所屬單位，簽核人員會依選的部門排/);
     assert.deepStrictEqual(orgValue(), [U('C', '總務部')]);
     assert.deepStrictEqual(approvalQueries(), ['簽核流程名稱 = "總務部"']);
+  });
+
+  await check('多個單位、原部門也是新費用所屬人的單位 → 可以取消保留', async () => {
+    reset({ swalAnswer: { isConfirmed: true, value: '2' } });
+    env.orgs.u2 = ORGS;
+    env.live[F.EXPENSE_OWNER_ORG].value = [U('B', '總務部-資訊課')];
+    handler(changeEvent('u2'));
+    await flush();
+    assert.strictEqual(env.swalCalls[0].showCancelButton, true);
+    assert.match(env.swalCalls[0].cancelButtonText, /保留原本的部門/);
+  });
+
+  await check('程式帶入的部門保持鎖住（disabled）', async () => {
+    reset();
+    env.orgs.u1 = [ORG_A];
+    handler(changeEvent('u1'));
+    await flush();
+    assert.strictEqual(env.live[F.EXPENSE_OWNER_ORG].disabled, true);
   });
 
   await check('多個單位、沒有 Swal：直接帶主要單位', async () => {
@@ -283,9 +320,9 @@ const check = async (label, fn) => {
     assert.deepStrictEqual(orgValue(), [U('B', '總務部-資訊課')]);
   });
 
-  await check('多個單位按取消：費用所屬人部門保留原值、不寫回、不重排', async () => {
+  await check('多個單位按取消（原部門也是他的單位）：費用所屬人部門保留原值、不寫回、不重排', async () => {
     reset({ swalAnswer: { isConfirmed: false } });
-    env.orgs.u2 = ORGS;
+    env.orgs.u2 = [...ORGS, org('OLD', '原部門', '課員')];
     handler(changeEvent('u2'));
     await flush();
     assert.strictEqual(env.swalCalls.length, 1);
@@ -362,11 +399,12 @@ const check = async (label, fn) => {
     assert.deepStrictEqual(orgValue(), [U('C', '總務部')]);
   });
 
-  await check('create.show：多個單位按取消 → 部門維持空白', async () => {
+  await check('create.show：部門空白、多個單位 → 視窗不給取消；萬一沒選（視窗被關掉）部門維持空白', async () => {
     reset({ swalAnswer: { isConfirmed: false } });
     env.orgs.u2 = ORGS;
     showHandler(showEvent('u2', []));
     await flush();
+    assert.strictEqual(env.swalCalls[0].showCancelButton, false);
     assert.deepStrictEqual(orgValue(), []);
   });
 
@@ -380,13 +418,41 @@ const check = async (label, fn) => {
     assert.deepStrictEqual(orgValue(), []);
   });
 
-  await check('create.show：部門已有值 → 不查單位、維持現狀', async () => {
+  await check('create.show：部門已有值且是費用所屬人的單位 → 不跳視窗、維持現狀', async () => {
     reset({ swalAnswer: { isConfirmed: true, value: '2' } });
     env.orgs.u1 = ORGS;
-    showHandler(showEvent('u1', [U('OLD', '原部門')]));
+    showHandler(showEvent('u1', [U('B', '總務部-資訊課')]));
     await flush();
     assert.strictEqual(env.swalCalls.length, 0, '不該跳選部門視窗');
-    assert.deepStrictEqual(orgValue(), [U('OLD', '原部門')]);
+    assert.strictEqual(env.setCount > 0, true, '照原部門排簽核');
+    assert.deepStrictEqual(orgValue(), [U('B', '總務部-資訊課')]);
+  });
+
+  await check('create.show：部門不是費用所屬人的單位（例如複製別人的單）→ 重新帶入（1 個單位直接帶、多個跳視窗且不給取消）', async () => {
+    reset();
+    env.orgs.u1 = [ORG_A];
+    showHandler(showEvent('u1', [U('OLD', '原部門')]));
+    await flush();
+    assert.deepStrictEqual(orgValue(), [U('A', ORG_A.organization.name)]);
+    assert.ok(approvalQueries().includes(`簽核流程名稱 = "${ORG_A.organization.name}"`));
+    assert.strictEqual(env.alerts.length, 0, '不再跳「請選取費用所屬人正確所在的部門」');
+
+    reset({ swalAnswer: { isConfirmed: true, value: '0' } });
+    env.orgs.u2 = ORGS;
+    showHandler(showEvent('u2', [U('OLD', '原部門')]));
+    await flush();
+    assert.strictEqual(env.swalCalls.length, 1);
+    assert.strictEqual(env.swalCalls[0].showCancelButton, false);
+    assert.deepStrictEqual(orgValue(), [U('A', ORG_A.organization.name)]);
+  });
+
+  await check('create.show：費用所屬人空白但部門有值 → 部門清空', async () => {
+    reset();
+    const ev = showEvent(null, [U('OLD', '原部門')]);
+    const out = showHandler(ev);
+    await flush();
+    assert.deepStrictEqual(out.record[F.EXPENSE_OWNER_ORG].value, []);
+    assert.strictEqual(env.apiCalls.length, 0);
   });
 
   await check('create.show：費用所屬人也空白 → 不查單位；部門空白時簽核欄位照舊被清空', async () => {

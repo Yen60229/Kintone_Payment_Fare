@@ -38,8 +38,9 @@ const makeElement = () => {
  * @param {number} [opts.appId=749]
  * @param {string} [opts.loginCode='24136'] 登入者代碼（24136 在管理員名單內）
  * @param {Function} [opts.api] 替身 kintone.api(url, method, params)
+ * @param {Object|Function} [opts.swalAnswer] 有給才讓 Swal.fire 回傳 Promise（視窗的回答；函式時以 opts 決定）
  */
-const createEnv = ({ appId = 749, loginCode = '24136', api } = {}) => {
+const createEnv = ({ appId = 749, loginCode = '24136', api, swalAnswer } = {}) => {
   const handlers = [];
   const timers = [];
   const logs = { log: [], warn: [], error: [] };
@@ -72,6 +73,10 @@ const createEnv = ({ appId = 749, loginCode = '24136', api } = {}) => {
       getId: () => appId,
       record: {
         get: () => ({ record: env.currentRecord }),
+        set: (r) => {
+          env.setCalls.push(r);
+          env.currentRecord = r.record;
+        },
         getSpaceElement: (id) => {
           spaces[id] = spaces[id] || makeElement();
           return spaces[id];
@@ -90,7 +95,13 @@ const createEnv = ({ appId = 749, loginCode = '24136', api } = {}) => {
     window: { location: { href: '' } },
     kintone: kintoneStub,
     document: documentStub,
-    Swal: { fire: (opts) => swalCalls.push(opts) },
+    Swal: {
+      fire: (opts) => {
+        const n = swalCalls.push(opts);
+        if (swalAnswer === undefined) return n;
+        return Promise.resolve(typeof swalAnswer === 'function' ? swalAnswer(opts) : swalAnswer);
+      },
+    },
     console: {
       log: (...a) => logs.log.push(a.join(' ')),
       warn: (...a) => logs.warn.push(a.join(' ')),
@@ -115,6 +126,7 @@ const createEnv = ({ appId = 749, loginCode = '24136', api } = {}) => {
     swalCalls,
     handlers,
     currentRecord: null,
+    setCalls: [],
     /** 換掉 document.querySelectorAll／querySelector 的回傳（仍會記錄被查詢的選擇器） */
     setQuerySelectorAll: (fn) => {
       overrides.querySelectorAll = fn;

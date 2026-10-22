@@ -140,7 +140,8 @@ const run = async ({ orgName, title, queryName = orgName, master = masterOf(FULL
   env.alerts.length = 0;
   env.shown = {};
   env.master = master ? { [queryName]: master } : {};
-  env.orgs = { [owner]: [{ organization: { code: 'ORG', name: orgName, primary: true }, title: { name: title } }] };
+  // title 給 null＝這個人在該單位沒有職稱（kintone 回 title: null）
+  env.orgs = { [owner]: [{ organization: { code: 'ORG', name: orgName, primary: true }, title: title === null ? null : { name: title } }] };
   env.live = makeLive({ orgName, owner });
   fire(eventType);
   await settle();
@@ -283,17 +284,32 @@ const NAME = '航空貨物部-台北營業課';
     }
   });
 
-  await check('費用所屬人不屬於所選部門：提醒去選費用所屬人正確所在的部門，不排人', async () => {
+  await check('沒有職稱（title 是 null）：不清任何一層，主檔有值的六格全部排上', async () => {
+    await run({ orgName: NAME, title: null });
+    assert.deepStrictEqual(filledSlots(), SLOTS);
+    assert.deepStrictEqual(counts(), ['3人', '2人']);
+    assert.strictEqual(approvalCall().params.query, `簽核流程名稱 = "${NAME}"`);
+  });
+
+  await check('沒有職稱且費用所屬人自己就在主管格：照樣全部排上（沒有職稱就不清）', async () => {
+    await run({ orgName: NAME, title: null, master: masterOf({ ...FULL, 單位主管2: 'OWN' }) });
+    assert.deepStrictEqual(filledSlots(), SLOTS);
+  });
+
+  await check('費用所屬人不屬於這個部門（部門鎖住，只會發生在複製別人的單）：不跳 alert、不排人，等重新帶入部門', async () => {
     env.orgs = { OWN: [{ organization: { code: 'X', name: '別的部門', primary: true }, title: { name: '課長' } }] };
     env.master = { [NAME]: masterOf(FULL) };
     env.apiCalls.length = 0;
     env.alerts.length = 0;
     env.live = makeLive({ orgName: NAME });
+    const origWarn = console.warn;
+    const warns = [];
+    console.warn = (m) => warns.push(m);
     fire(ORG_EVENT);
     await settle();
-    assert.strictEqual(env.alerts.length, 1);
-    assert.match(env.alerts[0], /費用所屬人正確所在的部門/);
-    assert.ok(!/單位/.test(env.alerts[0]), '提醒文字不再指向申請單位');
+    console.warn = origWarn;
+    assert.strictEqual(env.alerts.length, 0, '部門不能手選，不再叫使用者去選部門');
+    assert.ok(warns.some((m) => /不是費用所屬人的所屬單位/.test(m)), warns.join('\n'));
     assert.deepStrictEqual(filledSlots(), []);
     assert.strictEqual(approvalCall(), undefined, '沒查簽核流程主檔');
   });

@@ -29,7 +29,9 @@ const APP_IDS = [...sliceBetween('const APPS', 'const ACCOUNTING').matchAll(/:\s
 const STATUS = extractQuoted(sliceBetween('const STATUS', 'const ACTIONS'));
 const OPTIONS = extractQuoted(sliceBetween('const OPTIONS', '// ── 共用工具'));
 const ADMINS = extractQuoted(sliceBetween('const ADMIN_USERS', 'const SUPER_ADMIN'));
-const ACC_CODES = extractQuoted(cfgSrc.slice(cfgSrc.indexOf('MAP: Object.freeze'), cfgSrc.indexOf('SPECIAL_CODES_AIRPORT')));
+const accMapBlock = /MAP: Object\.freeze\(\{([^}]*)\}\)/.exec(sliceBetween('const ACCOUNTING', 'const SIGNING'));
+if (!accMapBlock) throw new Error('scan_hardcoded：config 的 ACCOUNTING.MAP 找不到，請同步更新本檔');
+const ACC_CODES = extractQuoted(accMapBlock[1]);
 
 const results = {};
 const add = (file, cat, line, text) => {

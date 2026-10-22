@@ -2,9 +2,9 @@
 
 // 測試：payment_request_main_20260521.js 的畫面事件（749 交通費請款單）
 //   1. 說明文字 Space_Noti_1/2/3（不再依類型切換）
-//   2. 欄位鎖定：請款日期鎖、申請人／申請人部門／受款人只有管理員能改、會計單位承辦人／權限開放人員只有管理員看得到、
-//      手動簽核欄位在詳細頁有勾才顯示
-//   3. 費用歸屬變更：轉大寫、依 LOCATION 判斷會計單位（機場／海運特殊代碼、單一據點、多據點回 TPE、手動簽核不動）
+//   2. 欄位鎖定：請款日期鎖、申請人／受款人只有管理員能改、申請人部門／費用所屬人部門一律鎖（依人員帶入）、
+//      會計單位承辦人／權限開放人員只有管理員看得到、手動簽核欄位在詳細頁有勾才顯示
+//   3. 費用歸屬變更：轉大寫；不動會計單位（會計單位只依費用所屬人部門，由簽核人員程式帶入）
 //   4. 費用歸屬中文名稱（綠字）／代碼不存在（紅字）提示
 //   5. 詳細頁／列印頁的 autoProcessAllTables、新增頁的取消按鈕重綁
 //   6. 稅額不自動算、已刪的 723 功能不再註冊事件
@@ -17,7 +17,7 @@ const { check, done } = createRunner('main_events.test.cjs');
 
 const plain = (v) => JSON.parse(JSON.stringify(v));
 
-/** 載入 main；costCenters 為費用歸屬主檔記錄 [{code, loc, name}] */
+/** 載入 main；costCenters 為費用歸屬主檔記錄 [{code, name}] */
 const loadMain = async ({ loginCode = 'someone', costCenters = [] } = {}) => {
   const env = createEnv({
     appId: 749,
@@ -26,7 +26,7 @@ const loadMain = async ({ loginCode = 'someone', costCenters = [] } = {}) => {
       if (method === 'POST') return Promise.resolve({ id: 'c' });
       const CC = env.window.PR_CONFIG.REF_FIELDS.COST_CENTER;
       return Promise.resolve({
-        records: costCenters.map((c) => ({ [CC.CODE]: { value: c.code }, [CC.LOCATION]: { value: c.loc || '' }, [CC.NAME]: { value: c.name || '' } })),
+        records: costCenters.map((c) => ({ [CC.CODE]: { value: c.code }, [CC.NAME]: { value: c.name || '' } })),
         next: false,
       });
     },
@@ -56,7 +56,6 @@ const baseRecord = (F, { orgCode = '總務部-總務課', orgName = '總務部-�
 };
 
 const fireCost = (env, F, record, phase = 'create') => env.fire(`app.record.${phase}.change.${F.TRAFFIC_TABLE.COLS.EXPENSE}`, { record });
-const accountingCode = (ev, F) => ev.record[F.ACCOUNTING_UNIT].value?.[0]?.code;
 
 // ── 1. 說明文字 ─────────────────────────────────────────────────────────────
 check('Space_Noti_1 空白；Space_Noti_2 為付款方式／付款原則／交通費請款三行；Space_Noti_3 為受款人說明', async () => {
@@ -84,7 +83,7 @@ check('說明文字在新增／編輯／詳細／列印四種畫面都有套用�
 });
 
 // ── 2. 欄位鎖定 ─────────────────────────────────────────────────────────────
-check('一般使用者：請款日期、申請人、申請人部門、受款人鎖住；費用所屬人與其部門不鎖', async () => {
+check('一般使用者：請款日期、申請人、受款人、申請人部門、費用所屬人部門鎖住；費用所屬人不鎖', async () => {
   const { env, F } = await loadMain({ loginCode: 'someone' });
   for (const type of ['create', 'edit']) {
     const ev = await env.fire(`app.record.${type}.show`, { record: baseRecord(F) });
@@ -93,17 +92,20 @@ check('一般使用者：請款日期、申請人、申請人部門、受款人�
     assert.strictEqual(ev.record[F.APPLICANT_ORG].disabled, true);
     assert.strictEqual(ev.record[F.PAYEE].disabled, true);
     assert.ok(!ev.record[F.EXPENSE_OWNER].disabled);
-    assert.ok(!ev.record[F.EXPENSE_OWNER_ORG].disabled);
+    assert.strictEqual(ev.record[F.EXPENSE_OWNER_ORG].disabled, true);
   }
 });
 
-check('管理員：請款日期仍鎖住，但申請人、申請人部門、受款人可改', async () => {
+check('管理員：申請人、受款人可改；請款日期、申請人部門、費用所屬人部門照樣鎖（部門只依人員帶入）', async () => {
   const { env, F } = await loadMain({ loginCode: '24136' });
-  const ev = await env.fire('app.record.create.show', { record: baseRecord(F) });
-  assert.strictEqual(ev.record[F.PAYMENT_DATE].disabled, true);
-  assert.strictEqual(ev.record[F.APPLICANT].disabled, false);
-  assert.strictEqual(ev.record[F.APPLICANT_ORG].disabled, false);
-  assert.strictEqual(ev.record[F.PAYEE].disabled, false);
+  for (const type of ['create', 'edit']) {
+    const ev = await env.fire(`app.record.${type}.show`, { record: baseRecord(F) });
+    assert.strictEqual(ev.record[F.PAYMENT_DATE].disabled, true);
+    assert.strictEqual(ev.record[F.APPLICANT].disabled, false);
+    assert.strictEqual(ev.record[F.PAYEE].disabled, false);
+    assert.strictEqual(ev.record[F.APPLICANT_ORG].disabled, true);
+    assert.strictEqual(ev.record[F.EXPENSE_OWNER_ORG].disabled, true);
+  }
 });
 
 check('會計單位承辦人、權限開放人員：只有管理員看得到', async () => {
@@ -128,75 +130,43 @@ check('詳細頁：「手動設定簽核流程」有勾才顯示，沒勾就隱�
   assert.strictEqual(env.shown[F.MANUAL_FLOW], false);
 });
 
-// ── 3. 費用歸屬 → 會計單位 ──────────────────────────────────────────────────
+// ── 3. 費用歸屬變更 ─────────────────────────────────────────────────────────
 const CENTERS = [
-  { code: 'TPE1', loc: 'TPE', name: '台北一課' },
-  { code: 'TPE2', loc: 'TPE', name: '台北二課' },
-  { code: 'KHH1', loc: 'KHH', name: '高雄一課' },
-  { code: 'CKS1', loc: 'CKS', name: '桃園一課' },
-  { code: 'AJA2', loc: 'TPE', name: '機場特殊' },
-  { code: 'AJA3', loc: 'TPE', name: '機場特殊3' },
-  { code: 'AJI1', loc: 'TPE', name: '海運特殊' },
+  { code: 'TPE1', name: '台北一課' },
+  { code: 'KHH1', name: '高雄一課' },
+  { code: 'AJA2', name: '機場特殊' },
+  { code: 'AJI1', name: '海運特殊' },
 ];
 
-check('單一據點 → 該據點的會計單位（KHH → ACC_KHH）', async () => {
+check('費用歸屬變更不動會計單位（會計單位只依費用所屬人部門）；自動、手動簽核都一樣', async () => {
   const { env, F, C } = await loadMain({ costCenters: CENTERS });
-  const ev = await fireCost(env, F, baseRecord(F, { codes: ['khh1'] }));
-  assert.strictEqual(accountingCode(ev, F), C.ACCOUNTING.MAP.KHH);
-  assert.strictEqual(ev.record[F.ACCOUNTING_UNIT].disabled, true);
-  assert.strictEqual(ev.record[F.ACCOUNTING_UNIT].type, 'GROUP_SELECT');
-});
-
-check('多列同一據點 → 該據點；多列不同據點 → 回 TPE', async () => {
-  const { env, F, C } = await loadMain({ costCenters: CENTERS });
-  const same = await fireCost(env, F, baseRecord(F, { codes: ['KHH1', 'KHH1'] }));
-  assert.strictEqual(accountingCode(same, F), C.ACCOUNTING.MAP.KHH);
-  const multi = await fireCost(env, F, baseRecord(F, { codes: ['KHH1', 'TPE1', 'CKS1'] }));
-  assert.strictEqual(accountingCode(multi, F), C.ACCOUNTING.MAP.TPE);
-});
-
-check('機場特殊代碼：費用所屬人部門含「桃園機場」→ CKS，否則 TPE', async () => {
-  const { env, F, C } = await loadMain({ costCenters: CENTERS });
-  const taoyuan = await fireCost(env, F, baseRecord(F, { codes: ['AJA2', 'AJA3'], orgCode: 'TYA', orgName: '航空貨物部-桃園機場營業所' }));
-  assert.strictEqual(accountingCode(taoyuan, F), C.ACCOUNTING.MAP.CKS);
-  const other = await fireCost(env, F, baseRecord(F, { codes: ['AJA2'], orgName: '總務部-總務課' }));
-  assert.strictEqual(accountingCode(other, F), C.ACCOUNTING.MAP.TPE);
-});
-
-check('機場特殊代碼要「每一列」都是特殊代碼才算；混入一般代碼就照據點判斷', async () => {
-  const { env, F, C } = await loadMain({ costCenters: CENTERS });
-  const mixed = await fireCost(env, F, baseRecord(F, { codes: ['AJA2', 'KHH1'], orgName: '桃園機場營業所' }));
-  assert.strictEqual(accountingCode(mixed, F), C.ACCOUNTING.MAP.TPE, '據點 TPE（AJA2）與 KHH 不同 → 回 TPE');
-});
-
-check('海運特殊代碼：任何一列有 → TPE海運', async () => {
-  const { env, F, C } = await loadMain({ costCenters: CENTERS });
-  const ev = await fireCost(env, F, baseRecord(F, { codes: ['KHH1', 'AJI1'] }));
-  assert.strictEqual(accountingCode(ev, F), C.ACCOUNTING.MAP.TPE海運);
-});
-
-check('費用歸屬主檔查不到據點 → 回 TPE（不是 undefined）', async () => {
-  const { env, F, C } = await loadMain({ costCenters: CENTERS });
-  const ev = await fireCost(env, F, baseRecord(F, { codes: ['ZZZZ'] }));
-  assert.strictEqual(accountingCode(ev, F), C.ACCOUNTING.MAP.TPE);
-});
-
-check('手動設定簽核流程：不動會計單位', async () => {
-  const { env, F, C } = await loadMain({ costCenters: CENTERS });
-  const record = baseRecord(F, { codes: ['KHH1'] });
-  record[F.MANUAL_FLOW] = { value: [C.OPTIONS.MANUAL_FLOW.ON] };
-  const ev = await fireCost(env, F, record);
+  const acc = [{ code: C.ACCOUNTING.MAP.TPE, name: C.ACCOUNTING.MAP.TPE }];
+  for (const codes of [['khh1'], ['AJA2', 'AJA2'], ['KHH1', 'AJI1'], ['ZZZZ']]) {
+    const record = baseRecord(F, { codes, orgName: '航空貨物部-桃園機場營業所' });
+    record[F.ACCOUNTING_UNIT] = { value: acc };
+    const ev = await fireCost(env, F, record);
+    assert.deepStrictEqual(plain(ev.record[F.ACCOUNTING_UNIT].value), acc, codes.join(','));
+  }
+  const manual = baseRecord(F, { codes: ['KHH1'] });
+  manual[F.MANUAL_FLOW] = { value: [C.OPTIONS.MANUAL_FLOW.ON] };
+  const ev = await fireCost(env, F, manual);
   assert.deepStrictEqual(plain(ev.record[F.ACCOUNTING_UNIT].value), []);
 });
 
-check('費用歸屬欄位轉大寫並去掉前後空白；空白列不影響其他列的判斷', async () => {
-  const { env, F, C } = await loadMain({ costCenters: CENTERS });
+check('main 不再依費用歸屬據點判斷會計單位（據點對照、特殊代碼已刪）', () => {
+  const src = readSrc('payment_request_main_20260521.js');
+  ['determineAllocation', 'updateAccountingDepartment', 'LOCATION', 'SPECIAL_CODES', 'ACCOUNTING_UNIT'].forEach((s_) => {
+    assert.ok(!src.includes(s_), `不應殘留 ${s_}`);
+  });
+});
+
+check('費用歸屬欄位轉大寫並去掉前後空白；空白列維持空白', async () => {
+  const { env, F } = await loadMain({ costCenters: CENTERS });
   const record = baseRecord(F, { codes: [' khh1 ', ''] });
   const ev = await fireCost(env, F, record, 'edit');
   const rows = ev.record[F.TRAFFIC_TABLE.CODE].value;
   assert.strictEqual(rows[0].value[F.TRAFFIC_TABLE.COLS.EXPENSE].value, 'KHH1');
   assert.strictEqual(rows[1].value[F.TRAFFIC_TABLE.COLS.EXPENSE].value, '');
-  assert.strictEqual(accountingCode(ev, F), C.ACCOUNTING.MAP.KHH);
 });
 
 check('新增與編輯畫面都有註冊費用歸屬變更事件', async () => {

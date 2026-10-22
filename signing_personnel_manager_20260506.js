@@ -500,7 +500,8 @@
    */
   const classifyOwner = (orgName, orgs, matchedIndex) => {
     const org = orgs[matchedIndex];
-    const title = org.title.name;
+    // 沒有職稱（title 是 null）→ 不清任何一層，簽核流程主檔有值的欄位全部排上
+    const title = org.title?.name || '';
     const orgNameOfTitle = org.organization.name;
     return {
       title,
@@ -649,8 +650,9 @@
       // 取得匹配的組織索引
       const matchedIndex = getMatchedOrgIndex(orgs, orgName);
 
+      // 費用所屬人部門鎖住、只依費用所屬人帶入；不一致（例如複製別人的單）由 handleExpenseOwnerChange 重新帶入部門後再排
       if (matchedIndex === -1) {
-        alert('請選取費用所屬人正確所在的部門，才可帶入簽核流程');
+        console.warn(`[簽核人員] 費用所屬人部門「${orgName}」不是費用所屬人的所屬單位，等重新帶入部門後再排簽核人員`);
         return;
       }
 
@@ -955,29 +957,41 @@
   }
 
   /**
-   * 新增畫面：先確認申請人是否在排除群組（PR_COST_SCOPE），在的話切手動模式，再帶入簽核人員／會計單位。
+   * 新增畫面：先確認申請人是否在排除群組（PR_COST_SCOPE），在的話切手動模式，再帶入費用所屬人部門與簽核人員／會計單位。
    */
   function handleCreateShow(event) {
     const scope = window.PR_COST_SCOPE;
-    if (!scope) return fillOwnerOrgIfMissing(handleExpenseOwnerOrgChange(event));
+    if (!scope) return syncOwnerOrgOnCreate(event);
     return scope.ensureExempt(scope.applicantCodeOf(event.record)).then((exempt) => {
       if (exempt && !isManualSigningMode(event.record)) enterManualModeForExempt(event.record);
-      return fillOwnerOrgIfMissing(handleExpenseOwnerOrgChange(event));
+      return syncOwnerOrgOnCreate(event);
     });
   }
 
   /**
-   * 新增畫面已有費用所屬人但費用所屬人部門空白 → 走和「改費用所屬人」同一套流程補上部門。
-   * 排在 handleExpenseOwnerOrgChange 之後：部門空白時它會先清空簽核欄位；
-   * 補部門的查詢是非同步的，回來後 handleExpenseOwnerChange 會再重排簽核人員，兩者不會互相覆蓋。
-   * 部門已有值就維持現狀。
+   * 新增畫面：費用所屬人部門一律依費用所屬人（部門鎖住，不能手選）。
+   *   - 沒有費用所屬人 → 部門清空、簽核欄位清空
+   *   - 部門有值 → 先照它排簽核人員；同時查費用所屬人的單位，部門不是他的單位（例如複製別人的單）就重新帶入
+   *   - 部門空白 → 簽核欄位清空，查單位帶入部門（同改費用所屬人）
+   * 查單位是非同步的，帶入部門後 handleExpenseOwnerChange 會再重排簽核人員，兩者不會互相覆蓋。
    */
-  function fillOwnerOrgIfMissing(event) {
+  function syncOwnerOrgOnCreate(event) {
     const record = event.record;
     const hasOwner = record[F.EXPENSE_OWNER]?.value?.length > 0;
-    const hasOrg = record[F.EXPENSE_OWNER_ORG]?.value?.length > 0;
-    if (hasOwner && !hasOrg) handleExpenseOwnerChange(event);
+    if (!hasOwner) return clearOwnerOrg(event);
+    handleExpenseOwnerOrgChange(event);
+    handleExpenseOwnerChange(event, { keepIfValid: true });
     return event;
+  }
+
+  /** 沒有費用所屬人 → 部門跟著清空（部門只依費用所屬人帶入），公司名稱重算、簽核欄位清空 */
+  function clearOwnerOrg(event) {
+    const orgField = event.record[F.EXPENSE_OWNER_ORG];
+    if (orgField?.value?.length > 0) {
+      orgField.value = [];
+      window.PR_COMPANY_NAME?.apply(event.record);
+    }
+    return handleExpenseOwnerOrgChange(event);
   }
 
   kintone.events.on('app.record.create.show', handleCreateShow);
@@ -999,28 +1013,57 @@
     return { options, defaultIndex: String(primaryIndex >= 0 ? primaryIndex : 0) };
   };
 
+  // 選單位的視窗一次只開一個（申請人、費用所屬人同時要選時排隊，SweetAlert 開第二個會把第一個關掉）
+  let orgDialogQueue = Promise.resolve();
+
   /**
-   * 決定要帶入哪個單位：只有一個就直接用；多個跳視窗讓使用者選，按取消回傳 null（保留原本的費用所屬人部門）。
+   * 決定要帶入哪個單位：只有一個就直接用；多個跳視窗讓使用者選。按取消回傳 null。
+   * 部門欄位鎖住、只能依人員帶入，所以目前的部門不是這個人的單位時（keepable＝false）不給取消，一定要選。
+   * @param {Array} orgs  /v1/user/organizations.json 的 organizationTitles
+   * @param {string} userName
+   * @param {{ subject?: string, hint?: string, keepable?: boolean, isCurrent?: Function }} [opts]
+   *   subject：「費用所屬人」或「申請人」；isCurrent：排隊輪到時再確認這次查詢還算數（使用者已改人就不開視窗）
    * @returns {Promise<Object|null>} organizationTitles 的其中一筆
    */
-  const pickOwnerOrg = async (orgs, ownerName) => {
-    if (orgs.length <= 1) return orgs[0] || null;
+  const pickOrg = (orgs, userName, { subject = '費用所屬人', hint = '', keepable = true, isCurrent = () => true } = {}) => {
+    if (orgs.length <= 1) return Promise.resolve(orgs[0] || null);
     const { options, defaultIndex } = buildOwnerOrgOptions(orgs);
-    if (typeof Swal === 'undefined') return orgs[Number(defaultIndex)];
-    const result = await Swal.fire({
-      title: '請選擇費用所屬人部門',
-      text: `${ownerName} 有 ${orgs.length} 個所屬單位，簽核人員會依選的部門排。`,
-      input: 'radio',
-      inputOptions: options,
-      inputValue: defaultIndex,
-      showCancelButton: true,
-      confirmButtonText: '帶入',
-      cancelButtonText: '取消（保留原本的部門）',
-      allowOutsideClick: false,
-    });
-    if (!result.isConfirmed) return null;
-    return orgs[Number(result.value)] || null;
+    if (typeof Swal === 'undefined') return Promise.resolve(orgs[Number(defaultIndex)]);
+    const open = async () => {
+      if (!isCurrent()) return null;
+      const result = await Swal.fire({
+        title: `請選擇${subject}部門`,
+        text: `${userName} 有 ${orgs.length} 個所屬單位${hint ? `，${hint}` : '。'}`,
+        input: 'radio',
+        inputOptions: options,
+        inputValue: defaultIndex,
+        showCancelButton: keepable,
+        confirmButtonText: '帶入',
+        cancelButtonText: '取消（保留原本的部門）',
+        allowOutsideClick: false,
+        allowEscapeKey: keepable,
+      });
+      if (!result.isConfirmed) return null;
+      return orgs[Number(result.value)] || null;
+    };
+    const picked = orgDialogQueue.then(open, open);
+    orgDialogQueue = picked.catch(() => null);
+    return picked;
   };
+
+  /** 查使用者的所屬單位（organizationTitles） */
+  const fetchUserOrgs = (userCode) => kintone.api(kintone.api.url(USER_API, true), 'GET', { code: userCode }).then((resp) => resp.organizationTitles || []);
+
+  /** 人員沒有任何所屬單位時的提醒 */
+  const warnNoOrg = (subject) => {
+    const title = `此${subject}沒有所屬單位`;
+    const text = `請改選其他${subject}，或請管理員到 kintone 設定他的所屬組織。`;
+    if (typeof Swal !== 'undefined') Swal.fire({ icon: 'warning', title, text });
+    else alert(`${title}\n${text}`);
+  };
+
+  // 申請人部門（申請人部門帶入_20261022.js）共用同一套查單位與選單位視窗
+  window.PR_ORG_PICKER = Object.freeze({ fetchUserOrgs, pickOrg, warnNoOrg });
 
   // 連續改費用所屬人時，只讓最後一次的查詢結果寫回畫面
   let expenseOwnerChangeSeq = 0;
@@ -1030,28 +1073,36 @@
    * change 事件不可 async，查詢與寫回放在 .then() 裡用 get()/set()。
    * 費用所屬人部門由程式寫入不一定會觸發 change，所以寫完直接呼叫 handleExpenseOwnerOrgChange 重排；
    * 部門沒變（同部門換人）也要重排，因為簽核人員的職稱清除會因人而異。
+   * @param {Object} event
+   * @param {{ keepIfValid?: boolean }} [opts] keepIfValid：目前的部門就是這個人的單位時不動（新增畫面用）
    */
-  function handleExpenseOwnerChange(event) {
+  function handleExpenseOwnerChange(event, { keepIfValid = false } = {}) {
     const owner = event.record[F.EXPENSE_OWNER]?.value?.[0];
-    if (!owner?.code) return event;
-
     const seq = ++expenseOwnerChangeSeq;
-    kintone
-      .api(kintone.api.url(USER_API, true), 'GET', { code: owner.code })
-      .then(async (resp) => {
+    if (!owner?.code) return clearOwnerOrg(event);
+
+    fetchUserOrgs(owner.code)
+      .then(async (orgs) => {
         if (seq !== expenseOwnerChangeSeq) return;
-        const orgs = resp.organizationTitles || [];
         if (orgs.length === 0) {
-          const text = '請改選其他費用所屬人，或手動選費用所屬人部門。';
-          if (typeof Swal !== 'undefined') Swal.fire({ icon: 'warning', title: '此費用所屬人沒有所屬單位', text });
-          else alert(`此費用所屬人沒有所屬單位\n${text}`);
+          warnNoOrg('費用所屬人');
           return;
         }
-        const picked = await pickOwnerOrg(orgs, owner.name || owner.code);
+        const currentCode = kintone.app.record.get().record[F.EXPENSE_OWNER_ORG]?.value?.[0]?.code;
+        const currentValid = orgs.some((o) => o.organization.code === currentCode);
+        if (keepIfValid && currentValid) return;
+
+        const picked = await pickOrg(orgs, owner.name || owner.code, {
+          subject: '費用所屬人',
+          hint: '簽核人員會依選的部門排。',
+          keepable: currentValid,
+          isCurrent: () => seq === expenseOwnerChangeSeq,
+        });
         if (!picked || seq !== expenseOwnerChangeSeq) return;
 
         const current = kintone.app.record.get();
         current.record[F.EXPENSE_OWNER_ORG].value = [{ code: picked.organization.code, name: picked.organization.name }];
+        current.record[F.EXPENSE_OWNER_ORG].disabled = true;
         // 程式寫入部門不會觸發 change 事件，公司名稱要在這裡跟著重算（推導規則在 main）
         window.PR_COMPANY_NAME?.apply(current.record);
         kintone.app.record.set(current);

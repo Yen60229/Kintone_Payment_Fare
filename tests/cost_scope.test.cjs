@@ -11,7 +11,7 @@ const { createEnv, createRunner } = require('./lib/pr_env.cjs');
 
 const { check, done } = createRunner('cost_scope.test.cjs');
 
-// 組織樹：物流部 ← 物流部-NEXT1 ← 物流部-NEXT1-CS課；總務部 ← 總務課；安全品質推動部（沒有費用歸屬代碼）
+// 組織樹：物流部 ← 物流部-NEXT1 ← 物流部-NEXT1-CS課；總務部 ← 總務課；安全品質推動部；營業戰略部；人事部（沒有費用歸屬代碼）
 const ORGS = [
   { code: 'LOG', parentCode: null },
   { code: 'LOG-N1', parentCode: 'LOG' },
@@ -19,8 +19,12 @@ const ORGS = [
   { code: 'GA', parentCode: null },
   { code: 'GA-1', parentCode: 'GA' },
   { code: 'QA', parentCode: null },
+  { code: 'STR', parentCode: null },
+  { code: 'HR', parentCode: null },
 ];
-const DEPT_OF_CODE = { AJ50: 'LOG', AJ51: 'LOG', AJ30: 'GA', AJ99: 'GA' };
+// 照 661 實際資料：AJ30（總公司）在主檔建了三筆，分屬營業戰略部、安全品質推動部、總務部
+const DEPTS_OF_CODE = { AJ50: ['LOG'], AJ51: ['LOG'], AJ30: ['STR', 'QA', 'GA'], AJ99: ['GA'] };
+const ORG_NAMES = { LOG: '物流部', GA: '總務部', QA: '安全品質推動部', STR: '營業戰略部' };
 
 /**
  * @param {Object} o
@@ -29,7 +33,7 @@ const DEPT_OF_CODE = { AJ50: 'LOG', AJ51: 'LOG', AJ30: 'GA', AJ99: 'GA' };
  * @param {boolean} [o.orgFail] 組織 API 失敗
  * @param {string[]} [o.validCodes] 使用中的費用歸屬代碼
  */
-const setup = ({ groups = {}, groupFail = false, orgFail = false, validCodes = Object.keys(DEPT_OF_CODE), loginCode = 'ME' } = {}) => {
+const setup = ({ groups = {}, groupFail = false, orgFail = false, validCodes = Object.keys(DEPTS_OF_CODE), loginCode = 'ME' } = {}) => {
   const calls = [];
   const env = createEnv({
     loginCode,
@@ -52,8 +56,8 @@ const setup = ({ groups = {}, groupFail = false, orgFail = false, validCodes = O
   env.window.PR_COST_CENTER = {
     ensureLoaded: () => Promise.resolve(),
     getValidCodes: () => new Set(validCodes),
-    getDeptOfCode: () => DEPT_OF_CODE,
-    getDeptNames: () => ({ LOG: '物流部', GA: '總務部' }),
+    getDeptsOfCode: () => DEPTS_OF_CODE,
+    getDeptNames: () => ORG_NAMES,
   };
   return { env, calls, S: env.window.PR_COST_SCOPE, C: env.window.PR_CONFIG };
 };
@@ -72,10 +76,11 @@ const record = ({ applicant = 'ME', ownerOrg = { code: 'LOG-N1-CS', name: '物�
 check('resolveDeptOfOrg：往上爬到主檔出現過的部門；自己就是部門直接回；爬到頂找不到回自己', () => {
   const { S } = setup();
   const parentOf = Object.fromEntries(ORGS.map((o) => [o.code, o.parentCode]));
-  const depts = new Set(Object.values(DEPT_OF_CODE));
+  const depts = new Set(Object.values(DEPTS_OF_CODE).flat());
   assert.strictEqual(S.resolveDeptOfOrg('LOG-N1-CS', parentOf, depts), 'LOG');
-  assert.strictEqual(S.resolveDeptOfOrg('GA', parentOf, depts), 'GA');
-  assert.strictEqual(S.resolveDeptOfOrg('QA', parentOf, depts), 'QA');
+  assert.strictEqual(S.resolveDeptOfOrg('GA-1', parentOf, depts), 'GA');
+  assert.strictEqual(S.resolveDeptOfOrg('QA', parentOf, depts), 'QA', '只出現在共用代碼的部門也算主檔裡的部門');
+  assert.strictEqual(S.resolveDeptOfOrg('HR', parentOf, depts), 'HR');
 });
 
 check('resolveDeptOfOrg：組織資料有迴圈也不會卡死', () => {
@@ -85,28 +90,52 @@ check('resolveDeptOfOrg：組織資料有迴圈也不會卡死', () => {
 
 check('checkScope：全部是部內代碼 → 通過（大小寫、空白列不影響）', () => {
   const { S } = setup();
-  assert.strictEqual(S.checkScope({ codes: ['aj50', '', 'AJ51 '], deptOfCode: DEPT_OF_CODE, ownerDept: 'LOG' }).length, 0);
+  assert.strictEqual(S.checkScope({ codes: ['aj50', '', 'AJ51 '], deptsOfCode: DEPTS_OF_CODE, ownerDept: 'LOG' }).length, 0);
 });
 
 check('checkScope：(1) 部外代碼 → 錯誤列出第幾行、代碼與所屬部門', () => {
   const { S } = setup();
-  const errs = S.checkScope({ codes: ['AJ30'], deptOfCode: DEPT_OF_CODE, ownerDept: 'LOG', orgNames: { LOG: '物流部', GA: '總務部' } });
+  const errs = S.checkScope({ codes: ['AJ99'], deptsOfCode: DEPTS_OF_CODE, ownerDept: 'LOG', orgNames: ORG_NAMES });
   assert.strictEqual(errs.length, 1);
   assert.ok(errs[0].includes('只能是費用所屬人的部內') && errs[0].includes('物流部'), errs[0]);
-  assert.ok(errs[0].includes('▸第 1 行 AJ30（總務部）'), errs[0]);
+  assert.ok(errs[0].includes('▸第 1 行 AJ99（總務部）'), errs[0]);
 });
 
 check('checkScope：(2) 跨部門 → 另外一條「不能跨部門」', () => {
   const { S } = setup();
-  const errs = S.checkScope({ codes: ['AJ50', 'AJ30'], deptOfCode: DEPT_OF_CODE, ownerDept: 'LOG', orgNames: { LOG: '物流部', GA: '總務部' } });
+  const errs = S.checkScope({ codes: ['AJ50', 'AJ99'], deptsOfCode: DEPTS_OF_CODE, ownerDept: 'LOG', orgNames: ORG_NAMES });
   assert.strictEqual(errs.length, 2);
   assert.ok(errs[0].includes('不能跨部門') && errs[0].includes('物流部、總務部'), errs[0]);
-  assert.ok(errs[1].includes('第 2 行 AJ30'), errs[1]);
+  assert.ok(errs[1].includes('第 2 行 AJ99'), errs[1]);
+});
+
+check('checkScope：共用代碼（AJ30 屬營業戰略部／安全品質推動部／總務部）→ 三個部的人都算部內', () => {
+  const { S } = setup();
+  ['STR', 'QA', 'GA'].forEach((ownerDept) => {
+    assert.strictEqual(S.checkScope({ codes: ['AJ30'], deptsOfCode: DEPTS_OF_CODE, ownerDept, orgNames: ORG_NAMES }).length, 0, ownerDept);
+  });
+});
+
+check('checkScope：共用代碼＋單一部門代碼，只要有共同的部就不算跨部門', () => {
+  const { S } = setup();
+  assert.strictEqual(S.checkScope({ codes: ['AJ30', 'AJ99'], deptsOfCode: DEPTS_OF_CODE, ownerDept: 'GA', orgNames: ORG_NAMES }).length, 0);
+  // 營業戰略部的人：AJ30 是部內，AJ99 只屬總務部 → 只報部外，不報跨部門（兩個代碼的共同部是總務部）
+  const errs = S.checkScope({ codes: ['AJ30', 'AJ99'], deptsOfCode: DEPTS_OF_CODE, ownerDept: 'STR', orgNames: ORG_NAMES });
+  assert.strictEqual(errs.length, 1);
+  assert.ok(errs[0].includes('▸第 2 行 AJ99（總務部）') && !errs[0].includes('AJ30'), errs[0]);
+});
+
+check('checkScope：共用代碼不在費用所屬人部門 → 部外訊息列出代碼所屬的全部部門；和別部代碼沒有交集 → 跨部門', () => {
+  const { S } = setup();
+  const errs = S.checkScope({ codes: ['AJ30', 'AJ50'], deptsOfCode: DEPTS_OF_CODE, ownerDept: 'LOG', orgNames: ORG_NAMES });
+  assert.strictEqual(errs.length, 2);
+  assert.ok(errs[0].includes('不能跨部門'), errs[0]);
+  assert.ok(errs[1].includes('▸第 1 行 AJ30（營業戰略部、安全品質推動部、總務部）'), errs[1]);
 });
 
 check('checkScope：代碼在主檔沒設定所屬部門 → 請管理員補主檔', () => {
   const { S } = setup();
-  const errs = S.checkScope({ codes: ['AJ77'], deptOfCode: DEPT_OF_CODE, ownerDept: 'LOG' });
+  const errs = S.checkScope({ codes: ['AJ77'], deptsOfCode: DEPTS_OF_CODE, ownerDept: 'LOG' });
   assert.strictEqual(errs.length, 1);
   assert.ok(errs[0].includes('沒有設定所屬部門') && errs[0].includes('▸AJ77'), errs[0]);
 });
@@ -154,9 +183,19 @@ check('validate：部內代碼通過；子單位的費用所屬人部門往上�
 
 check('validate：部外代碼被擋，訊息用主檔的部門名稱', async () => {
   const { S } = setup();
-  const errs = await S.validate(record({ codes: ['AJ50', 'AJ30'] }));
+  const errs = await S.validate(record({ codes: ['AJ50', 'AJ99'] }));
   assert.strictEqual(errs.length, 2);
   assert.ok(errs.join('\n').includes('總務部'));
+});
+
+check('validate：共用代碼 AJ30 → 總務課（往上爬到總務部）、安全品質推動部、營業戰略部的人都通過；物流部的人被擋', async () => {
+  const { S } = setup();
+  for (const ownerOrg of [{ code: 'GA-1', name: '總務課' }, { code: 'QA', name: '安全品質推動部' }, { code: 'STR', name: '營業戰略部' }]) {
+    assert.strictEqual((await S.validate(record({ ownerOrg, codes: ['AJ30'] }))).length, 0, ownerOrg.name);
+  }
+  const errs = await S.validate(record({ codes: ['AJ30'] }));
+  assert.strictEqual(errs.length, 1);
+  assert.ok(errs[0].includes('AJ30（營業戰略部、安全品質推動部、總務部）'), errs[0]);
 });
 
 check('validate：排除群組的申請人不檢查（也不查組織樹）', async () => {
@@ -176,11 +215,11 @@ check('validate：主檔沒有（非使用中）的代碼交給既有驗證報�
   assert.strictEqual((await S.validate(record({ codes: ['AJ50', 'AJ30', 'NOPE'] }))).length, 0);
 });
 
-check('validate：部門沒有自己代碼的人（安全品質推動部）用別部門代碼 → 擋', async () => {
+check('validate：部門沒有自己代碼的人（人事部）用別部門代碼 → 擋', async () => {
   const { S } = setup();
-  const errs = await S.validate(record({ ownerOrg: { code: 'QA', name: '安全品質推動部' }, codes: ['AJ30'] }));
+  const errs = await S.validate(record({ ownerOrg: { code: 'HR', name: '人事部' }, codes: ['AJ99'] }));
   assert.strictEqual(errs.length, 1);
-  assert.ok(errs[0].includes('安全品質推動部'), errs[0]);
+  assert.ok(errs[0].includes('人事部'), errs[0]);
 });
 
 check('validate：組織 API 失敗 → 一條「無法檢查」錯誤擋下存檔', async () => {

@@ -5,8 +5,9 @@
   // 掛帳單位（費用歸屬）限費用所屬人部內
   //
   //   (1) 每一列費用歸屬代碼的「所屬部門」（費用歸屬主檔 REF_FIELDS.COST_CENTER.DEPT）
-  //       必須是費用所屬人部門沿組織樹往上爬到的那個部
-  //   (2) 不能跨部門：所有列的代碼要屬於同一個部
+  //       必須包含費用所屬人部門沿組織樹往上爬到的那個部。
+  //       同一代碼可在主檔建多筆、各屬不同部門（例如總公司代碼由好幾個部共用）→ 任一個部符合就算部內
+  //   (2) 不能跨部門：所有列的代碼要有共同的部
   //   (3) 申請人在 COST_SCOPE.EXEMPT_GROUP 群組內 → 不受 (1)(2) 限制
   //   (4) 同上的人新增單時，自動切成「手動設定簽核流程」，簽核人員自選（signing_personnel_manager 接手）
   //
@@ -136,31 +137,34 @@
    * 判斷規則（純函式）。
    * @param {Object} p
    * @param {string[]} p.codes 每一列的費用歸屬代碼（依列順序；空白的列給空字串）
-   * @param {Object<string,string>} p.deptOfCode 代號（大寫）→ 所屬部門組織代碼
+   * @param {Object<string,string[]>} p.deptsOfCode 代號（大寫）→ 所屬部門組織代碼陣列（同代號可屬多個部門）
    * @param {string} p.ownerDept 費用所屬人部門往上爬到的部（組織代碼）
    * @param {Object<string,string>} [p.orgNames] 組織代碼 → 名稱（訊息用）
    * @returns {string[]} 錯誤訊息
    */
-  const checkScope = ({ codes, deptOfCode, ownerDept, orgNames = {} }) => {
+  const checkScope = ({ codes, deptsOfCode, ownerDept, orgNames = {} }) => {
     const errors = [];
     const nameOf = (code) => orgNames[code] || code;
+    const deptsOf = (code) => deptsOfCode[code] || [];
     const filled = codes.map((code, i) => ({ code: String(code || '').trim().toUpperCase(), line: i + 1 })).filter((x) => x.code);
 
-    const missing = filled.filter((x) => !deptOfCode[x.code]);
+    const missing = filled.filter((x) => deptsOf(x.code).length === 0);
     if (missing.length > 0) {
       errors.push(`以下費用歸屬在主檔沒有設定所屬部門，無法判斷是否為部內掛帳\n${[...new Set(missing.map((x) => `▸${x.code}`))].join('\n')}\n※ 請聯絡管理員補齊費用歸屬主檔的「所屬部門」`);
     }
 
-    const resolved = filled.filter((x) => deptOfCode[x.code]);
-    const depts = [...new Set(resolved.map((x) => deptOfCode[x.code]))];
-    if (depts.length > 1) {
+    // 跨部門：所有列的代碼找不到一個共同的部（共用代碼屬於好幾個部，只要有交集就不算跨部門）
+    const resolved = filled.filter((x) => deptsOf(x.code).length > 0);
+    const common = resolved.reduce((acc, x) => acc.filter((d) => deptsOf(x.code).includes(d)), resolved.length > 0 ? deptsOf(resolved[0].code) : []);
+    if (resolved.length > 1 && common.length === 0) {
+      const depts = [...new Set(resolved.flatMap((x) => deptsOf(x.code)))];
       errors.push(`掛帳單位**不能跨部門**：本單的費用歸屬分屬 ${depts.map(nameOf).join('、')}`);
     }
 
-    const foreign = resolved.filter((x) => deptOfCode[x.code] !== ownerDept);
+    const foreign = resolved.filter((x) => !deptsOf(x.code).includes(ownerDept));
     if (foreign.length > 0) {
       errors.push(
-        `掛帳單位**只能是費用所屬人的部內**（${nameOf(ownerDept)}）\n${foreign.map((x) => `▸第 ${x.line} 行 ${x.code}（${nameOf(deptOfCode[x.code])}）`).join('\n')}\n※ 請改填部內的費用歸屬，或改選費用所屬人`,
+        `掛帳單位**只能是費用所屬人的部內**（${nameOf(ownerDept)}）\n${foreign.map((x) => `▸第 ${x.line} 行 ${x.code}（${deptsOf(x.code).map(nameOf).join('、')}）`).join('\n')}\n※ 請改填部內的費用歸屬，或改選費用所屬人`,
       );
     }
     return errors;
@@ -183,11 +187,11 @@
     if (!codes.some((c) => String(c).trim())) return [];
 
     const cc = window.PR_COST_CENTER;
-    let deptOfCode;
+    let deptsOfCode;
     let parentOf;
     try {
       await cc.ensureLoaded();
-      deptOfCode = cc.getDeptOfCode();
+      deptsOfCode = cc.getDeptsOfCode();
       parentOf = await loadOrgParents();
     } catch (err) {
       console.error('[費用歸屬部門限制] 載入主檔或組織資料失敗:', err);
@@ -198,8 +202,8 @@
     const known = new Set([...(cc.getValidCodes() || [])].map((c) => String(c).trim().toUpperCase()));
     const knownCodes = codes.map((c) => (known.has(String(c).trim().toUpperCase()) ? c : ''));
 
-    const ownerDept = resolveDeptOfOrg(ownerOrg.code, parentOf, new Set(Object.values(deptOfCode)));
-    return checkScope({ codes: knownCodes, deptOfCode, ownerDept, orgNames: { ...(cc.getDeptNames?.() || {}), [ownerOrg.code]: ownerOrg.name } });
+    const ownerDept = resolveDeptOfOrg(ownerOrg.code, parentOf, new Set(Object.values(deptsOfCode).flat()));
+    return checkScope({ codes: knownCodes, deptsOfCode, ownerDept, orgNames: { ...(cc.getDeptNames?.() || {}), [ownerOrg.code]: ownerOrg.name } });
   };
 
   // ── 事件 ───────────────────────────────────────────────────────────────
