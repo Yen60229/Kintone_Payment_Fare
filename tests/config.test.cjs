@@ -35,16 +35,16 @@ const isDeepFrozen = (obj) =>
 console.log('config.test.cjs');
 
 // ── 整體結構 ────────────────────────────────────────────────────────────────
-check('PR_CONFIG 的頂層鍵恰為這 15 個（多了或少了都要有意識地改這裡）', () => {
+check('PR_CONFIG 的頂層鍵恰為這 18 個（多了或少了都要有意識地改這裡）', () => {
   assert.deepStrictEqual(
     Object.keys(c).sort(),
-    ['ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'EXPECTED_PAY_DATE', 'FIELDS', 'OPTIONS', 'REF_FIELDS', 'SEP', 'SIGNING', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'VOID_FIELD', 'isAdmin'].sort(),
+    ['ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'COST_SCOPE', 'EXPECTED_PAY_DATE', 'FIELDS', 'OPTIONS', 'REF_FIELDS', 'SEP', 'SIGNING', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'TRAFFIC_RULES', 'VOID_FIELD', 'isAdmin'].sort(),
   );
 });
 
 check('PR_CONFIG 與各註冊表皆為凍結物件（不會被其他模組意外改寫）', () => {
   assert.ok(Object.isFrozen(c));
-  ['APPS', 'ACCOUNTING', 'SIGNING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'OPTIONS'].forEach((key) => {
+  ['APPS', 'ACCOUNTING', 'SIGNING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'OPTIONS', 'TRAFFIC_RULES', 'COST_SCOPE'].forEach((key) => {
     assert.ok(isDeepFrozen(c[key]), `${key} 應為深層凍結`);
   });
 });
@@ -245,9 +245,29 @@ check('AUTO_ADVANCE 行為開關與重試參數為合理值', () => {
 });
 
 // ── OPTIONS ─────────────────────────────────────────────────────────────────
-check('OPTIONS 只剩手動簽核流程的勾選值；借支、付款方式、分攤填寫方式、註記等 723 選項已刪', () => {
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(c.OPTIONS)), { MANUAL_FLOW: { ON: '手動設定簽核流程' } });
+check('OPTIONS：手動簽核流程、交通工具（高鐵／計程車）、憑證種類（高鐵票／發票）、紙本憑證「是」；723 選項已刪', () => {
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(c.OPTIONS)), {
+    MANUAL_FLOW: { ON: '手動設定簽核流程' },
+    VEHICLE: { HSR: '高鐵', TAXI: '計程車' },
+    RECEIPT_TYPE: { HSR_TICKET: '高鐵票', INVOICE: '發票' },
+    PAPER_RECEIPT: { YES: '是' },
+  });
   assert.strictEqual(c.OPTIONS.MANUAL_FLOW.ON, F.MANUAL_FLOW, '勾選值與欄位代碼同字串但是兩回事，各自一個常數');
+});
+
+// ── TRAFFIC_RULES／COST_SCOPE ───────────────────────────────────────────────
+check('TRAFFIC_RULES：高鐵賣方統編 00000000、格式 22、稅率 5%、高鐵票與發票才填發票號碼', () => {
+  const t = c.TRAFFIC_RULES;
+  assert.strictEqual(t.HSR_SELLER_TAX_ID, '00000000');
+  assert.strictEqual(t.HSR_FORMAT, '22');
+  assert.strictEqual(t.TAX_RATE_PERCENT, 5);
+  assert.deepStrictEqual([...t.INVOICE_RECEIPT_TYPES], [c.OPTIONS.RECEIPT_TYPE.HSR_TICKET, c.OPTIONS.RECEIPT_TYPE.INVOICE]);
+});
+
+check('COST_SCOPE：排除群組「費用歸屬不限部門」、組織樹快取設定', () => {
+  assert.strictEqual(c.COST_SCOPE.EXEMPT_GROUP, '費用歸屬不限部門');
+  assert.ok(c.COST_SCOPE.ORG_TREE.PAGE_SIZE <= 100);
+  assert.ok(c.COST_SCOPE.ORG_TREE.MAX_DEPTH > 0 && c.COST_SCOPE.ORG_TREE.CACHE_TTL_MS > 0);
 });
 
 // ── ACCOUNTING／SIGNING ─────────────────────────────────────────────────────
@@ -267,9 +287,9 @@ check('SIGNING：組織名稱分隔字元、「所／中心 → 部」三筆對�
 });
 
 // ── REF_FIELDS／EXPECTED_PAY_DATE ───────────────────────────────────────────
-check('REF_FIELDS 只剩費用歸屬、會計對應、行事曆三份；費用歸屬主檔只有代碼／據點／中文名稱／使用狀況四個欄位', () => {
+check('REF_FIELDS 只剩費用歸屬、會計對應、行事曆三份；費用歸屬主檔有代碼／據點／中文名稱／使用狀況／所屬部門五個欄位', () => {
   assert.deepStrictEqual(Object.keys(c.REF_FIELDS).sort(), ['ACCOUNTING_MAP', 'COST_CENTER', 'HOLIDAY_CALENDAR']);
-  assert.deepStrictEqual({ ...c.REF_FIELDS.COST_CENTER }, { CODE: 'CostCenter', LOCATION: 'LOCATION', NAME: '中文名稱', IN_USE: '使用狀況' });
+  assert.deepStrictEqual({ ...c.REF_FIELDS.COST_CENTER }, { CODE: 'CostCenter', LOCATION: 'LOCATION', NAME: '中文名稱', IN_USE: '使用狀況', DEPT: '所屬部門' });
   assert.deepStrictEqual(
     { ...c.REF_FIELDS.ACCOUNTING_MAP },
     { APPLY_UNIT: '申請單位', ACCOUNTING_UNIT: '請款會計單位', ACCOUNTING_STAFF: '請款會計人員', PERMISSION_USER: '權限開放人員' },

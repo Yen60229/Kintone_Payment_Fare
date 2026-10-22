@@ -18,10 +18,11 @@ const CCf = (() => {
   return e.window.PR_CONFIG.REF_FIELDS.COST_CENTER;
 })();
 
-const rec = ({ code, loc = '', name = '' }) => ({
+const rec = ({ code, loc = '', name = '', dept = null }) => ({
   [CCf.CODE]: { value: code },
   [CCf.LOCATION]: { value: loc },
   [CCf.NAME]: { value: name },
+  [CCf.DEPT]: { value: dept ? [dept] : [] },
 });
 
 /** 載入 main，費用歸屬主檔由 records 提供；回傳 env、被呼叫的 api 參數與載入後的結果 */
@@ -46,18 +47,18 @@ const loadWith = async (records, { pages = null } = {}) => {
   return { env, calls, CC, validCodes: [...env.window.PR_COST_CENTER.getValidCodes()] };
 };
 
-check('只向費用歸屬主檔要 CODE／LOCATION／NAME 三個欄位，且只查「使用中」', async () => {
+check('只向費用歸屬主檔要 CODE／LOCATION／NAME／DEPT 四個欄位，且只查「使用中」', async () => {
   const { env, calls, CC } = await loadWith([]);
   const open = calls.find((c) => c.method === 'POST');
   assert.strictEqual(open.params.app, env.window.PR_CONFIG.APPS.COST_CENTER);
-  assert.deepStrictEqual([...open.params.fields], [CC.CODE, CC.LOCATION, CC.NAME]);
+  assert.deepStrictEqual([...open.params.fields], [CC.CODE, CC.LOCATION, CC.NAME, CC.DEPT]);
   assert.strictEqual(open.params.query, `${CC.IN_USE} in ("使用中")`);
 });
 
-check('對外只暴露 ensureLoaded／getValidCodes（舊的 getMaps 已拿掉），且物件被凍結', async () => {
+check('對外只暴露 ensureLoaded／getValidCodes／getDeptOfCode／getDeptNames（舊的 getMaps 已拿掉），且物件被凍結', async () => {
   const { env } = await loadWith([]);
   const api = env.window.PR_COST_CENTER;
-  assert.deepStrictEqual(Object.keys(api).sort(), ['ensureLoaded', 'getValidCodes']);
+  assert.deepStrictEqual(Object.keys(api).sort(), ['ensureLoaded', 'getDeptNames', 'getDeptOfCode', 'getValidCodes']);
   assert.ok(Object.isFrozen(api));
 });
 
@@ -116,10 +117,21 @@ check('載入失敗：丟出錯誤，且不快取失敗結果，下次呼叫會�
   assert.deepStrictEqual([...env.window.PR_COST_CENTER.getValidCodes()], ['X1']);
 });
 
-check('主檔欄位代碼走 REF_FIELDS.COST_CENTER，不寫死；部門／部長／主管部門的讀取已全數移除', () => {
+check('所屬部門：代號（大寫）→ 部門組織代碼，同代號取第一筆；部門代碼 → 名稱', async () => {
+  const { env } = await loadWith([
+    rec({ code: 'aj30', dept: { code: 'GA', name: '總務部' } }),
+    rec({ code: 'AJ30', dept: { code: 'LOG', name: '物流部' } }),
+    rec({ code: 'AJ40' }),
+  ]);
+  const deptOf = env.window.PR_COST_CENTER.getDeptOfCode();
+  assert.deepStrictEqual({ ...deptOf }, { AJ30: 'GA' });
+  assert.strictEqual(env.window.PR_COST_CENTER.getDeptNames().GA, '總務部');
+});
+
+check('主檔欄位代碼走 REF_FIELDS.COST_CENTER，不寫死；部長／主管部門的讀取已全數移除（所屬部門 2026-10-22 起為掛帳單位限部內重新讀取）', () => {
   const src = readSrc('payment_request_main_20260521.js');
   assert.ok(src.includes('C.REF_FIELDS.COST_CENTER'));
-  ['CC.DEPT', 'CC.DIRECTOR', 'CC.OWNER', 'DEPTS_OF_CODE', 'DIRECTOR_OF_DEPT', 'OWNER_DEPT_OF_CODE', 'getMaps'].forEach((s) => {
+  ['CC.DIRECTOR', 'CC.OWNER', 'DEPTS_OF_CODE', 'DIRECTOR_OF_DEPT', 'OWNER_DEPT_OF_CODE', 'getMaps'].forEach((s) => {
     assert.ok(!src.includes(s), `不應殘留 ${s}`);
   });
 });

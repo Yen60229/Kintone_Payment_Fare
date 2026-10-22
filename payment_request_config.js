@@ -62,6 +62,8 @@
       LOCATION: 'LOCATION',
       NAME: '中文名稱',
       IN_USE: '使用狀況', // 值 '使用中'；query 篩選用
+      // ORGANIZATION_SELECT（單選），值一律為「部」層級。掛帳單位限部內（COST_SCOPE）靠它判斷代碼屬於哪個部門
+      DEPT: '所屬部門',
     }),
     ACCOUNTING_MAP: Object.freeze({
       APPLY_UNIT: '申請單位', // 查詢鍵
@@ -90,7 +92,7 @@
     NOTI_1: 'Space_Noti_1',
     NOTI_2: 'Space_Noti_2',
     NOTI_3: 'Space_Noti_3',
-    APPLY_BUTTON: 'apply_button', // 「同費用所屬人」受款人按鈕
+    APPLY_BUTTON: 'apply_button', // 「同申請人」受款人按鈕
     EXPECTED_PAY_DATE_NOTE: 'Space_Expected_Pay_Date', // 預計付款日旁的說明文字（表單要另外拉一個空白欄位、ID 設成這個）
   });
 
@@ -188,11 +190,44 @@
   // ── 欄位選項字串註冊表（Checkbox / Radio / Dropdown 選項值單一事實來源）──────
   const OPTIONS = Object.freeze({
     MANUAL_FLOW: Object.freeze({ ON: '手動設定簽核流程' }),
+    // 子表格「交通工具」
+    VEHICLE: Object.freeze({ HSR: '高鐵', TAXI: '計程車' }),
+    // 子表格「憑證種類」
+    RECEIPT_TYPE: Object.freeze({ HSR_TICKET: '高鐵票', INVOICE: '發票' }),
+    // 主表「是否有紙本憑證」
+    PAPER_RECEIPT: Object.freeze({ YES: '是' }),
   });
 
   // ── 共用工具 ───────────────────────────────────────────────────────────────
 
   const isAdmin = (code) => ADMIN_USERS.includes(code || kintone.getLoginUser().code);
+
+  // ── 交通費明細規則（交通費明細規則_20261022.js 用）────────────────────────
+  const TRAFFIC_RULES = Object.freeze({
+    // 交通工具選高鐵 → 賣方統編、格式固定寫入
+    HSR_SELLER_TAX_ID: '00000000',
+    HSR_FORMAT: '22',
+    // 金額含稅；稅額＝金額 ÷ (1＋稅率) × 稅率，四捨五入到個位數
+    TAX_RATE_PERCENT: 5,
+    // 這些憑證種類才開放填發票號碼（存檔時必填、不可重複）
+    INVOICE_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.HSR_TICKET, OPTIONS.RECEIPT_TYPE.INVOICE]),
+    // 有計程車時「理由」動態必填：畫面上找標籤文字以此開頭的欄位加紅色 *
+    REASON_LABEL_PREFIX: '理由',
+  });
+
+  // ── 掛帳單位限部內（費用歸屬部門限制_20261022.js 用）──────────────────────
+  //   費用歸屬代碼的「所屬部門」（REF_FIELDS.COST_CENTER.DEPT）必須是費用所屬人部門往上爬到的那個部。
+  //   申請人在 EXEMPT_GROUP 群組內 → 不受限制，且新增時自動切成手動設定簽核流程（簽核人員自選）。
+  const COST_SCOPE = Object.freeze({
+    EXEMPT_GROUP: '費用歸屬不限部門', // kintone 群組（角色）；比對群組代碼或名稱
+    ORG_TREE: Object.freeze({
+      CACHE_KEY: 'pr749_org_parents_v1', // localStorage：組織代碼 → 上一層組織代碼
+      CACHE_TTL_MS: 6 * 60 * 60 * 1000, // 6 小時過期重抓
+      PAGE_SIZE: 100, // 組織 API 單次最多 100 筆
+      MAX_PAGES: 20,
+      MAX_DEPTH: 20, // 往上爬最多 20 層，防組織資料有迴圈
+    }),
+  });
 
   window.PR_CONFIG = Object.freeze({
     APPS,
@@ -210,6 +245,8 @@
     ACTIONS,
     AUTO_ADVANCE,
     OPTIONS,
+    TRAFFIC_RULES,
+    COST_SCOPE,
     isAdmin,
   });
 })();

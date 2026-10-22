@@ -9,7 +9,8 @@ kintone **交通費請款單（測試區 App 749）** 的自訂 JavaScript 原�
 ## 這個 App 在做什麼
 
 員工填寫交通費明細（子表格「交通費請款單」），程式依 **費用所屬人／費用所屬人部門** 自動帶入簽核人員與會計單位，
-存檔時檢查費用歸屬代碼與發票號碼重複，並計算預計付款日；列表頁可批次下載附件、批次列印 PDF、轉出 SAP 檔。
+存檔時檢查費用歸屬代碼、掛帳單位是否在費用所屬人部內、發票號碼重複，並計算預計付款日；
+明細自動算稅額、高鐵帶入賣方統編與格式、計程車要求紙本憑證與理由；列表頁可批次下載附件、批次列印 PDF、轉出 SAP 檔。
 
 | 用途 | App（常數名，App ID 見 `payment_request_config.js` 的 `APPS`） |
 |---|---|
@@ -29,8 +30,8 @@ kintone **交通費請款單（測試區 App 749）** 的自訂 JavaScript 原�
 ```bash
 npm test && bash tests/syntax.test.sh && npm run scan
 ```
-- `npm test`：21 支測試（共 317 項斷言）。
-- `bash tests/syntax.test.sh`：對根目錄所有 `*.js` 跑 `node --check`（目前 21 檔）。
+- `npm test`：24 支測試（共 361 項斷言）。
+- `bash tests/syntax.test.sh`：對根目錄所有 `*.js` 跑 `node --check`（目前 23 檔）。
 - `npm run scan`：統計剩餘的 App ID／狀態／選項／欄位代碼硬編碼（目前 11 處）。
 
 ### 檢查流程管理設定

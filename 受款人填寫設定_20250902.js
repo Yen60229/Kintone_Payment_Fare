@@ -2,35 +2,35 @@
   'use strict';
 
   const F = window.PR_CONFIG.FIELDS;
-  const BUTTON_ID = 'same-expense-owner-btn';
+  const BUTTON_ID = 'same-applicant-btn';
 
-  // 取得費用所屬人資訊：fullName 為「員工代碼 中文姓名」
-  function getExpenseOwnerInfo(record) {
-    const owner = record[F.EXPENSE_OWNER]?.value?.[0];
+  // 取得申請人資訊：fullName 為「員工代碼 中文姓名」（受款人＝申請人，723 是「員工姓名」欄位）
+  function getApplicantInfo(record) {
+    const applicant = record[F.APPLICANT]?.value?.[0];
 
-    if (!owner) {
-      return { error: '請先填寫費用所屬人' };
+    if (!applicant) {
+      return { error: '請先填寫申請人' };
     }
 
-    const ownerCode = owner.code || '';
-    const ownerName = owner.name || '';
+    const applicantCode = applicant.code || '';
+    const applicantName = applicant.name || '';
 
     // 提取括號內的中文姓名
-    const nameMatch = ownerName.match(/\((.+?)\)/);
-    const chineseName = nameMatch ? nameMatch[1] : ownerName;
+    const nameMatch = applicantName.match(/\((.+?)\)/);
+    const chineseName = nameMatch ? nameMatch[1] : applicantName;
 
     return {
-      code: ownerCode,
+      code: applicantCode,
       name: chineseName,
-      fullName: `${ownerCode} ${chineseName}`.trim(),
+      fullName: `${applicantCode} ${chineseName}`.trim(),
     };
   }
 
   // 建立按鈕元素
-  function createSameOwnerButton() {
+  function createSameApplicantButton() {
     const button = document.createElement('button');
     button.id = BUTTON_ID;
-    button.textContent = '同費用所屬人';
+    button.textContent = '同申請人';
     button.type = 'button';
 
     // 設定按鈕樣式（白色背景）
@@ -65,16 +65,16 @@
     button.addEventListener('click', function () {
       // 取得當前記錄
       const record = kintone.app.record.get().record;
-      const ownerInfo = getExpenseOwnerInfo(record);
+      const applicantInfo = getApplicantInfo(record);
 
-      if (ownerInfo.error) {
+      if (applicantInfo.error) {
         // 顯示錯誤訊息
-        alert(ownerInfo.error);
+        alert(applicantInfo.error);
         return;
       }
 
       // 將 fullName 寫入受款人欄位
-      record[F.PAYEE].value = ownerInfo.fullName;
+      record[F.PAYEE].value = applicantInfo.fullName;
 
       // 更新記錄
       kintone.app.record.set({ record: record });
@@ -113,12 +113,12 @@
   function handleShow(event) {
     const spaceElement = kintone.app.record.getSpaceElement(window.PR_CONFIG.SPACES.APPLY_BUTTON);
     if (spaceElement && !document.getElementById(BUTTON_ID)) {
-      spaceElement.appendChild(createSameOwnerButton());
+      spaceElement.appendChild(createSameApplicantButton());
     }
     return event;
   }
 
   kintone.events.on(['app.record.create.show', 'app.record.edit.show'], handleShow);
 
-  window.PR_PAYEE = Object.freeze({ getExpenseOwnerInfo, handleShow });
+  window.PR_PAYEE = Object.freeze({ getApplicantInfo, handleShow });
 })();

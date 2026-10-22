@@ -3,7 +3,7 @@
 // 測試：payment_request_submit_20260506.js 的存檔驗證（749 交通費請款單）
 //   公司名稱必填、付款方式必選且只能一種、子表格每列費用歸屬必填且要在「使用中」代碼內、
 //   發票號碼重複檢查（查本 App：狀態 not in 表單作廢、發票號碼記錄 like、排除自己）、
-//   表單作廢時跳過、驗證失敗視窗。
+//   表單作廢時跳過、驗證失敗視窗；整合交通費明細規則與掛帳單位限部內。
 // 單獨執行：node tests/submit_validation.test.cjs
 
 const assert = require('assert');
@@ -276,6 +276,85 @@ check('submit 原始碼沒有 723 的殘留（借支、分攤、交際費、帶�
     'PR_COST_CENTER_SCOPE', 'EXPENSE_FILL_MODE', 'AMOUNT_CHANGE', 'ENTERTAINMENT', 'VENDOR_TABLE', 'ATTACHMENT_TEXT', 'ADVANCE',
     'INVOICE_CHECK_TYPES', 'grand-total-display', 'docs/',
   ].forEach((s) => assert.ok(!src.includes(s), `不應殘留 ${s}`));
+});
+
+// ── 交通費明細規則＋掛帳單位限部內（2026-10-22）整合 ─────────────────────────
+const loadFull = async ({ groups = [], invoiceHits = 0 } = {}) => {
+  const calls = [];
+  const env = createEnv({
+    appId: 749,
+    loginCode: 'ME',
+    api: (url, method, params) => {
+      calls.push({ url, method, params });
+      const C = env.window.PR_CONFIG;
+      if (url === '/v1/user/groups.json') return Promise.resolve({ groups: groups.map((name) => ({ code: name, name })) });
+      if (url === '/v1/organizations.json') return Promise.resolve({ organizations: [{ code: 'LOG', parentCode: null }, { code: 'LOG-CS', parentCode: 'LOG' }, { code: 'GA', parentCode: null }] });
+      if (params.app === C.APPS.COST_CENTER || params.id || url.includes('cursor')) {
+        if (method === 'POST') return Promise.resolve({ id: 'c' });
+        const CC = C.REF_FIELDS.COST_CENTER;
+        const row = (code, dept) => ({ [CC.CODE]: { value: code }, [CC.DEPT]: { value: [{ code: dept, name: dept === 'LOG' ? '物流部' : '總務部' }] } });
+        return Promise.resolve({ records: [row('AJ50', 'LOG'), row('AJ30', 'GA')], next: false });
+      }
+      return Promise.resolve({ records: Array.from({ length: invoiceHits }, () => ({ $id: { value: '1' } })) });
+    },
+  });
+  ['payment_request_config.js', 'payment_request_main_20260521.js', '費用歸屬部門限制_20261022.js', '發票號碼寫入獨立欄位檢查.js', '交通費明細規則_20261022.js', 'payment_request_submit_20260506.js'].forEach((f) => env.load(f));
+  return { env, calls, F: env.window.PR_CONFIG.FIELDS };
+};
+
+const trafficRecord = (F, rows, over = {}) => {
+  const T = F.TRAFFIC_TABLE;
+  return {
+    [F.COMPANY_NAME]: { value: 'ＮＸ臺灣國際物流' },
+    [F.PAY_METHOD]: { value: ['電匯'] },
+    [F.INVOICE_AGG]: { value: '' },
+    [F.APPLICANT]: { value: [{ code: 'ME', name: 'ME' }] },
+    [F.EXPENSE_OWNER_ORG]: { value: [{ code: 'LOG-CS', name: '物流部-CS課' }] },
+    [F.PAPER_RECEIPT]: { value: '否' },
+    [F.REASON]: { value: '' },
+    [T.CODE]: {
+      value: rows.map((r) => {
+        const value = {};
+        Object.values(T.COLS).forEach((c) => (value[c] = { value: '' }));
+        Object.entries(r).forEach(([c, v]) => (value[c] = { value: v }));
+        return { value };
+      }),
+    },
+    ...over,
+  };
+};
+
+check('整合：部內代碼、高鐵票有號碼 → 通過；存檔時寫入稅額、高鐵固定值、發票號碼記錄', async () => {
+  const { env, F } = await loadFull();
+  const C = F.TRAFFIC_TABLE.COLS;
+  const r = trafficRecord(F, [{ [C.EXPENSE]: 'AJ50', [C.VEHICLE]: '高鐵', [C.AMOUNT]: '1490', [C.RECEIPT_TYPE]: '高鐵票', [C.INVOICE_NO]: 'T1' }]);
+  const ev = await submit(env, r);
+  assert.strictEqual(ev.error, undefined, popupText(env));
+  const v = ev.record[F.TRAFFIC_TABLE.CODE].value[0].value;
+  assert.strictEqual(v[C.TAX].value, '71');
+  assert.strictEqual(v[C.SELLER_TAX_ID].value, '00000000');
+  assert.strictEqual(v[C.FORMAT].value, '22');
+  assert.strictEqual(ev.record[F.INVOICE_AGG].value, `${env.window.PR_CONFIG.SEP}T1${env.window.PR_CONFIG.SEP}`);
+});
+
+check('整合：部外代碼＋計程車沒理由＋發票沒號碼 → 一個視窗列出全部錯誤；紙本憑證強制為「是」', async () => {
+  const { env, F } = await loadFull();
+  const C = F.TRAFFIC_TABLE.COLS;
+  const r = trafficRecord(F, [
+    { [C.EXPENSE]: 'AJ30', [C.VEHICLE]: '計程車', [C.AMOUNT]: '300', [C.RECEIPT_TYPE]: '發票' },
+  ]);
+  const ev = await submit(env, r);
+  assert.strictEqual(ev.error, '儲存失敗');
+  const text = plainText(env.swalCalls[0].html);
+  ['請填寫「發票號碼」', '請填寫「理由」', '只能是費用所屬人的部內'].forEach((s) => assert.ok(text.includes(s), `${s}\n${text}`));
+  assert.strictEqual(ev.record[F.PAPER_RECEIPT].value, '是', '有計程車，存檔時強制選「是」');
+});
+
+check('整合：申請人在「費用歸屬不限部門」群組 → 部外代碼也放行', async () => {
+  const { env, F } = await loadFull({ groups: ['費用歸屬不限部門'] });
+  const C = F.TRAFFIC_TABLE.COLS;
+  const ev = await submit(env, trafficRecord(F, [{ [C.EXPENSE]: 'AJ30', [C.AMOUNT]: '100' }]));
+  assert.strictEqual(ev.error, undefined, popupText(env));
 });
 
 done();

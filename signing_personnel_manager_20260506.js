@@ -604,6 +604,12 @@
     const record = event.record;
     const selectedOrg = record[F.EXPENSE_OWNER_ORG].value;
 
+    // 手動設定簽核流程：簽核人員由使用者自選，不重排、不清空；只帶入會計單位承辦人與權限開放人員
+    if (isManualSigningMode(record)) {
+      if (selectedOrg?.length > 0) setAccountingUnit(selectedOrg[0].name);
+      return event;
+    }
+
     // 先隱藏所有簽核相關欄位
     SIGNING_FIELDS_TO_HIDE.forEach((field) => {
       kintone.app.record.setFieldShown(field, false);
@@ -670,6 +676,9 @@
         params,
         function (resp) {
           const updateRecord = kintone.app.record.get();
+
+          // API 回來前使用者可能已勾選手動設定簽核流程，那就不蓋掉他自選的人
+          if (isManualSigningMode(updateRecord.record)) return;
 
           console.log('title為', title);
 
@@ -931,10 +940,33 @@
   // =========================
 
   // 費用所屬人部門變更時的事件
-  kintone.events.on(
-    ['app.record.create.show', `app.record.create.change.${F.EXPENSE_OWNER_ORG}`, `app.record.edit.change.${F.EXPENSE_OWNER_ORG}`],
-    handleExpenseOwnerOrgChange,
-  );
+  kintone.events.on([`app.record.create.change.${F.EXPENSE_OWNER_ORG}`, `app.record.edit.change.${F.EXPENSE_OWNER_ORG}`], handleExpenseOwnerOrgChange);
+
+  /**
+   * 申請人在「費用歸屬不限部門」群組（COST_SCOPE.EXEMPT_GROUP）→ 簽核人員自選：勾上手動設定簽核流程。
+   * @param {Object} record
+   */
+  function enterManualModeForExempt(record) {
+    record[F.MANUAL_FLOW].value = [OPT.MANUAL_FLOW.ON];
+    record[F.ACCOUNTING_UNIT].value = [];
+    kintone.app.record.setFieldShown(F.ACCOUNTING_UNIT, false);
+    if (typeof kintone.app.record.setGroupFieldOpen === 'function') kintone.app.record.setGroupFieldOpen(F.SIGN_FLOW_GROUP, true);
+    initManualSigningMode(record);
+  }
+
+  /**
+   * 新增畫面：先確認申請人是否在排除群組（PR_COST_SCOPE），在的話切手動模式，再帶入簽核人員／會計單位。
+   */
+  function handleCreateShow(event) {
+    const scope = window.PR_COST_SCOPE;
+    if (!scope) return handleExpenseOwnerOrgChange(event);
+    return scope.ensureExempt(scope.applicantCodeOf(event.record)).then((exempt) => {
+      if (exempt && !isManualSigningMode(event.record)) enterManualModeForExempt(event.record);
+      return handleExpenseOwnerOrgChange(event);
+    });
+  }
+
+  kintone.events.on('app.record.create.show', handleCreateShow);
 
   // ── 改費用所屬人後帶入費用所屬人部門並重排簽核人員（所有人適用）──
 

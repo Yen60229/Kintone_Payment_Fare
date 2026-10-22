@@ -38,6 +38,8 @@
   let LOCATION_CODE_MAP = {}; // 代號（大寫）→ 據點，會計單位判定用
   let NAME_OF_CODE = {}; // 代號（大寫）→ 中文名稱，畫面提示用
   let VALID_COST_CENTER_CODES = new Set(); // 「使用中」代碼（原始大小寫），給存檔驗證共用
+  let DEPT_OF_CODE = {}; // 代號（大寫）→ 所屬部門的組織代碼，掛帳單位限部內用
+  let DEPT_NAMES = {}; // 所屬部門組織代碼 → 名稱（錯誤訊息用）
   let _costCenterLoadPromise = null;
 
   // =========================================================================
@@ -301,6 +303,7 @@
    *   LOCATION_CODE_MAP        代號 → 據點（會計單位判定用）
    *   NAME_OF_CODE             代號 → 中文名稱（畫面提示用）
    *   VALID_COST_CENTER_CODES  「使用中」代碼集合（存檔驗證用）
+   *   DEPT_OF_CODE             代號 → 所屬部門組織代碼（掛帳單位限部內用）
    */
   const loadCostCenterMaps = () => {
     if (_costCenterLoadPromise) return _costCenterLoadPromise;
@@ -309,7 +312,7 @@
       const CC = C.REF_FIELDS.COST_CENTER;
       const params = {
         app: COST_CENTER_APP_ID,
-        fields: [CC.CODE, CC.LOCATION, CC.NAME],
+        fields: [CC.CODE, CC.LOCATION, CC.NAME, CC.DEPT],
         query: `${CC.IN_USE} in ("使用中")`,
         size: 500,
       };
@@ -318,6 +321,8 @@
 
       const locMap = {};
       const nameMap = {};
+      const deptMap = {};
+      const deptNames = {};
       const validCodes = new Set(); // 原始大小寫，給存檔驗證用（和 submit 自己查時的比對方式一致）
       const fieldConflicts = { loc: {}, nm: {} };
 
@@ -331,6 +336,11 @@
           const code = rawCode.toUpperCase();
           const loc = r[CC.LOCATION]?.value?.trim();
           const name = r[CC.NAME]?.value?.trim();
+          const dept = r[CC.DEPT]?.value?.[0];
+          if (dept?.code) {
+            if (!deptMap[code]) deptMap[code] = dept.code;
+            deptNames[dept.code] = dept.name || dept.code;
+          }
           // 同代號可建多筆記錄：據點／中文名稱保留第一筆非空值，值不同就點名代號提醒管理者
           if (loc) {
             if (!locMap[code]) locMap[code] = loc;
@@ -347,6 +357,8 @@
       LOCATION_CODE_MAP = locMap;
       NAME_OF_CODE = nameMap;
       VALID_COST_CENTER_CODES = validCodes;
+      DEPT_OF_CODE = deptMap;
+      DEPT_NAMES = deptNames;
 
       console.log(`✅ 已載入 ${validCodes.size} 筆費用歸屬代碼`);
 
@@ -374,6 +386,10 @@
     ensureLoaded: () => loadCostCenterMaps(),
     /** 「使用中」的費用歸屬代碼（原始大小寫）（呼叫前需先 await ensureLoaded()） */
     getValidCodes: () => VALID_COST_CENTER_CODES,
+    /** 代號（大寫）→ 所屬部門組織代碼（呼叫前需先 await ensureLoaded()） */
+    getDeptOfCode: () => DEPT_OF_CODE,
+    /** 所屬部門組織代碼 → 名稱 */
+    getDeptNames: () => DEPT_NAMES,
   });
 
   /**

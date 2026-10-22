@@ -307,7 +307,11 @@
       const record = event.record;
       const allErrors = [];
 
-      // 需要查 API 的兩項檢查互不相依，一次同時送出，縮短按下儲存後的等待
+      // 交通費明細：重算稅額、高鐵固定值、發票號碼記錄（發票重複檢查要讀整理後的記錄欄位，所以排最前）
+      const trafficRules = window.PR_TRAFFIC_RULES;
+      if (trafficRules) trafficRules.normalize(record);
+
+      // 需要查 API 的檢查互不相依，一次同時送出，縮短按下儲存後的等待
       const costCentersTask = getValidCostCenters()
         .then((set) => ({ set }))
         .catch((loadErr) => {
@@ -318,7 +322,14 @@
         console.error('發票號碼檢查失敗:', e);
         return ['發票號碼檢查失敗：請稍後再試或聯絡系統管理員'];
       });
-      const [costCenters, invoiceErrors] = await Promise.all([costCentersTask, invoiceTask]);
+      const scope = window.PR_COST_SCOPE;
+      const scopeTask = scope
+        ? scope.validate(record).catch((e) => {
+            console.error('掛帳單位檢查失敗:', e);
+            return ['掛帳單位檢查失敗：請稍後再試或聯絡系統管理員'];
+          })
+        : Promise.resolve([]);
+      const [costCenters, invoiceErrors, scopeErrors] = await Promise.all([costCentersTask, invoiceTask, scopeTask]);
 
       if (costCenters.error) allErrors.push(costCenters.error);
       else console.log(`✅ 已載入 ${costCenters.set.size} 筆合法費用歸屬代碼`);
@@ -326,8 +337,14 @@
       // 1. 表單基本驗證
       allErrors.push(...validateForm(record, costCenters.set));
 
-      // 2. 發票號碼檢查（上面已同時查好）
+      // 2. 交通費明細（發票號碼必填／本單重複、計程車的紙本憑證與理由）
+      if (trafficRules) allErrors.push(...trafficRules.validate(record));
+
+      // 3. 發票號碼跨單重複（上面已同時查好）
       allErrors.push(...invoiceErrors);
+
+      // 4. 掛帳單位限費用所屬人部內、不可跨部門（排除群組的申請人不檢查）
+      allErrors.push(...scopeErrors);
 
       if (allErrors.length > 0) {
         event.error = '儲存失敗';

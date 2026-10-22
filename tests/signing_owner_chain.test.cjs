@@ -173,7 +173,8 @@ const NAME = '航空貨物部-台北營業課';
     ['app.record.create.show', ORG_EVENT, `app.record.edit.change.${F.EXPENSE_OWNER_ORG}`].forEach((t) => {
       assert.ok(T.handlers[t]?.length === 1, `缺 ${t}`);
     });
-    assert.strictEqual(T.handlers['app.record.create.show'][0], T.handlers[ORG_EVENT][0], 'create.show 與部門變更走同一支');
+    assert.strictEqual(T.handlers['app.record.create.show'][0].name, 'handleCreateShow', 'create.show 先查排除群組再帶簽核');
+    assert.strictEqual(T.handlers[ORG_EVENT][0].name, 'handleExpenseOwnerOrgChange');
     Object.keys(T.handlers).forEach((t) => {
       assert.ok(!/申請單位|員工姓名|類型/.test(t), `不應有舊事件 ${t}`);
     });

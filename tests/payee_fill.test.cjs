@@ -1,7 +1,7 @@
 'use strict';
 
 // 測試：受款人填寫設定_20250902.js
-//   「同費用所屬人」按鈕：填入「員工代碼 中文姓名」；沒填費用所屬人要報錯；只在 create.show／edit.show 掛按鈕且不重複掛。
+//   「同申請人」按鈕：填入「員工代碼 中文姓名」；沒填申請人要報錯；只在 create.show／edit.show 掛按鈕且不重複掛。
 // 單獨執行：node tests/payee_fill.test.cjs
 
 const assert = require('assert');
@@ -68,13 +68,13 @@ const check = (label, fn) => {
 
 console.log('payee_fill.test.cjs');
 
-const recordWithOwner = (owner) => ({
-  [F.EXPENSE_OWNER]: { value: owner ? [owner] : [] },
+const recordWithApplicant = (applicant) => ({
+  [F.APPLICANT]: { value: applicant ? [applicant] : [] },
   [F.PAYEE]: { value: '' },
 });
 
 check('組字：員工代碼 + 空白 + 括號內的中文姓名', () => {
-  const info = P.getExpenseOwnerInfo(recordWithOwner({ code: '24136', name: 'Jimmy (王小明)' }));
+  const info = P.getApplicantInfo(recordWithApplicant({ code: '24136', name: 'Jimmy (王小明)' }));
   assert.strictEqual(info.error, undefined);
   assert.strictEqual(info.code, '24136');
   assert.strictEqual(info.name, '王小明');
@@ -82,21 +82,21 @@ check('組字：員工代碼 + 空白 + 括號內的中文姓名', () => {
 });
 
 check('組字：名稱沒有括號就整串當中文姓名', () => {
-  assert.strictEqual(P.getExpenseOwnerInfo(recordWithOwner({ code: '24145', name: '陳大文' })).fullName, '24145 陳大文');
+  assert.strictEqual(P.getApplicantInfo(recordWithApplicant({ code: '24145', name: '陳大文' })).fullName, '24145 陳大文');
 });
 
 check('組字：缺代碼只留姓名、不留前導空白', () => {
-  assert.strictEqual(P.getExpenseOwnerInfo(recordWithOwner({ name: '陳大文' })).fullName, '陳大文');
+  assert.strictEqual(P.getApplicantInfo(recordWithApplicant({ name: '陳大文' })).fullName, '陳大文');
 });
 
-check('沒填費用所屬人 → 回錯誤訊息（不是申請人／員工姓名）', () => {
-  assert.deepStrictEqual(P.getExpenseOwnerInfo(recordWithOwner(null)), { error: '請先填寫費用所屬人' });
-  assert.deepStrictEqual(P.getExpenseOwnerInfo({}), { error: '請先填寫費用所屬人' });
+check('沒填申請人 → 回錯誤訊息', () => {
+  assert.deepStrictEqual(P.getApplicantInfo(recordWithApplicant(null)), { error: '請先填寫申請人' });
+  assert.deepStrictEqual(P.getApplicantInfo({}), { error: '請先填寫申請人' });
 });
 
-check('只取費用所屬人，申請人不影響結果', () => {
-  const record = { ...recordWithOwner({ code: 'A1', name: '甲' }), [F.APPLICANT]: { value: [{ code: 'B2', name: '乙' }] } };
-  assert.strictEqual(P.getExpenseOwnerInfo(record).fullName, 'A1 甲');
+check('只取申請人（723 的「員工姓名」改成 749 的「申請人」），費用所屬人不影響結果', () => {
+  const record = { ...recordWithApplicant({ code: 'A1', name: '甲' }), [F.EXPENSE_OWNER]: { value: [{ code: 'B2', name: '乙' }] } };
+  assert.strictEqual(P.getApplicantInfo(record).fullName, 'A1 甲');
 });
 
 check('事件：只掛 create.show／edit.show，沒有任何 change 事件', () => {
@@ -105,40 +105,40 @@ check('事件：只掛 create.show／edit.show，沒有任何 change 事件', ()
 });
 
 let button = null;
-check('掛按鈕：「同費用所屬人」放進 apply_button 空白欄位', () => {
-  const event = { record: recordWithOwner({ code: '24136', name: '王小明' }) };
+check('掛按鈕：「同申請人」放進 apply_button 空白欄位', () => {
+  const event = { record: recordWithApplicant({ code: '24136', name: '王小明' }) };
   assert.strictEqual(P.handleShow(event), event);
   assert.strictEqual(spaceHost.children.length, 1);
   button = spaceHost.children[0];
-  assert.strictEqual(button.id, 'same-expense-owner-btn');
-  assert.strictEqual(button.textContent, '同費用所屬人');
+  assert.strictEqual(button.id, 'same-applicant-btn');
+  assert.strictEqual(button.textContent, '同申請人');
   assert.strictEqual(button.type, 'button');
 });
 
 check('不重複掛：頁面上已有按鈕時再進 show 不會多一顆', () => {
-  domById['same-expense-owner-btn'] = button;
+  domById['same-applicant-btn'] = button;
   P.handleShow({ record: {} });
   assert.strictEqual(spaceHost.children.length, 1);
 });
 
 check('點按鈕：受款人寫入「員工代碼 中文姓名」', () => {
-  currentRecord = recordWithOwner({ code: '24136', name: 'Jimmy (王小明)' });
+  currentRecord = recordWithApplicant({ code: '24136', name: 'Jimmy (王小明)' });
   button.click();
   assert.strictEqual(currentRecord[F.PAYEE].value, '24136 王小明');
   assert.strictEqual(alerts.length, 0);
 });
 
-check('點按鈕但沒填費用所屬人 → alert 錯誤、受款人不動', () => {
-  currentRecord = recordWithOwner(null);
+check('點按鈕但沒填申請人 → alert 錯誤、受款人不動', () => {
+  currentRecord = recordWithApplicant(null);
   currentRecord[F.PAYEE].value = '原值';
   button.click();
-  assert.deepStrictEqual(alerts, ['請先填寫費用所屬人']);
+  assert.deepStrictEqual(alerts, ['請先填寫申請人']);
   assert.strictEqual(currentRecord[F.PAYEE].value, '原值');
 });
 
-check('原始碼不含類型判斷、舊按鈕代碼', () => {
+check('原始碼不含類型判斷、舊的「同費用所屬人」按鈕與 723 員工姓名欄位', () => {
   const src = readSrc('受款人填寫設定_20250902.js');
-  ['F.TYPE', 'COMPANY_TYPES', 'EMPLOYEE_NAME', 'same-applicant-btn', '同申請人'].forEach((s) => assert.ok(!src.includes(s), s));
+  ['F.TYPE', 'COMPANY_TYPES', 'EMPLOYEE_NAME', 'same-expense-owner-btn', '同費用所屬人', 'F.EXPENSE_OWNER'].forEach((s) => assert.ok(!src.includes(s), s));
 });
 
 console.log(`${passed} assertions passed.`);
