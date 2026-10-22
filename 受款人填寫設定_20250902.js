@@ -118,7 +118,17 @@
     return event;
   }
 
-  kintone.events.on(['app.record.create.show', 'app.record.edit.show'], handleShow);
+  // 新增時受款人空白且申請人有值 → 自動帶入（沒填申請人就不動、不跳 alert；已有值不覆蓋）
+  function autoFillPayee(event) {
+    const record = event.record;
+    if (!record[F.PAYEE] || String(record[F.PAYEE].value || '').trim()) return event;
+    const info = getApplicantInfo(record);
+    if (!info.error) record[F.PAYEE].value = info.fullName;
+    return event;
+  }
 
-  window.PR_PAYEE = Object.freeze({ getApplicantInfo, handleShow });
+  kintone.events.on('app.record.create.show', (event) => handleShow(autoFillPayee(event)));
+  kintone.events.on('app.record.edit.show', handleShow);
+
+  window.PR_PAYEE = Object.freeze({ getApplicantInfo, handleShow, autoFillPayee });
 })();

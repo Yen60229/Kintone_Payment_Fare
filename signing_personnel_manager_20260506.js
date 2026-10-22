@@ -959,11 +959,25 @@
    */
   function handleCreateShow(event) {
     const scope = window.PR_COST_SCOPE;
-    if (!scope) return handleExpenseOwnerOrgChange(event);
+    if (!scope) return fillOwnerOrgIfMissing(handleExpenseOwnerOrgChange(event));
     return scope.ensureExempt(scope.applicantCodeOf(event.record)).then((exempt) => {
       if (exempt && !isManualSigningMode(event.record)) enterManualModeForExempt(event.record);
-      return handleExpenseOwnerOrgChange(event);
+      return fillOwnerOrgIfMissing(handleExpenseOwnerOrgChange(event));
     });
+  }
+
+  /**
+   * 新增畫面已有費用所屬人但費用所屬人部門空白 → 走和「改費用所屬人」同一套流程補上部門。
+   * 排在 handleExpenseOwnerOrgChange 之後：部門空白時它會先清空簽核欄位；
+   * 補部門的查詢是非同步的，回來後 handleExpenseOwnerChange 會再重排簽核人員，兩者不會互相覆蓋。
+   * 部門已有值就維持現狀。
+   */
+  function fillOwnerOrgIfMissing(event) {
+    const record = event.record;
+    const hasOwner = record[F.EXPENSE_OWNER]?.value?.length > 0;
+    const hasOrg = record[F.EXPENSE_OWNER_ORG]?.value?.length > 0;
+    if (hasOwner && !hasOrg) handleExpenseOwnerChange(event);
+    return event;
   }
 
   kintone.events.on('app.record.create.show', handleCreateShow);

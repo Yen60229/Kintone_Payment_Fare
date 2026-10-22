@@ -76,6 +76,9 @@
     return fetchValidCostCenters();
   };
 
+  // 發票重複查詢一次最多取回的對方單數
+  const INVOICE_DUP_LIMIT = 100;
+
   const escKintoneStr = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
   /**
@@ -101,10 +104,33 @@
     const thisId = record.$id?.value;
     const excludeSelf = thisId ? ` and $id != ${thisId}` : '';
 
-    const query = `${F.STATUS_FIELD} not in ("${STATUS.VOID}") and (${invoiceOr})${excludeSelf} limit 1`;
+    // 一併取回對方的單號與發票號碼記錄，才能告訴使用者是哪幾個號碼、撞到哪幾張單
+    const query = `${F.STATUS_FIELD} not in ("${STATUS.VOID}") and (${invoiceOr})${excludeSelf} limit ${INVOICE_DUP_LIMIT}`;
 
-    const resp = await invoiceCheckApi('/k/v1/records.json', 'GET', { app: APP_ID, query, fields: ['$id'] }, APP_ID);
-    return resp.records && resp.records.length > 0 ? ['發票號碼重複：已存在相同發票號碼，請更換後再儲存。'] : [];
+    const resp = await invoiceCheckApi(
+      '/k/v1/records.json',
+      'GET',
+      { app: APP_ID, query, fields: ['$id', F.RECORD_NO, F.INVOICE_AGG] },
+      APP_ID,
+    );
+    const hits = resp.records || [];
+    if (hits.length === 0) return [];
+
+    // 比對本單每個號碼出現在對方哪幾張單（同一號碼撞到多張單，單號用「、」併在同一個標籤）
+    const lines = [];
+    invoices.forEach((no) => {
+      const nos = [];
+      hits.forEach((r) => {
+        const theirs = (r[F.INVOICE_AGG]?.value || '').split(SEP).map((x) => x.trim());
+        const recNo = r[F.RECORD_NO]?.value;
+        if (theirs.includes(no) && recNo && !nos.includes(recNo)) nos.push(recNo);
+      });
+      if (nos.length > 0) lines.push(`▸${no}（${F.RECORD_NO} ${nos.join('、')}）`);
+    });
+
+    // 比對不出明細（例如對方欄位讀不到）就退回原本那句話
+    if (lines.length === 0) return ['發票號碼重複：已存在相同發票號碼，請更換後再儲存。'];
+    return [`發票號碼重複：以下發票號碼已在其他單據出現，請更換後再儲存。\n${lines.join('\n')}`];
   };
 
   /**

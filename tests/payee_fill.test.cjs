@@ -136,6 +136,45 @@ check('點按鈕但沒填申請人 → alert 錯誤、受款人不動', () => {
   assert.strictEqual(currentRecord[F.PAYEE].value, '原值');
 });
 
+alerts.length = 0;
+
+check('新增時自動帶：受款人空白 → 填入申請人「員工代碼 中文姓名」，回傳同一個 event', () => {
+  const create = registered.find((r) => r.types === 'app.record.create.show');
+  assert.ok(create, 'create.show 要有自己的 handler');
+  const event = { record: recordWithApplicant({ code: '24136', name: 'Jimmy (王小明)' }) };
+  assert.strictEqual(create.handler(event), event);
+  assert.strictEqual(event.record[F.PAYEE].value, '24136 王小明');
+  assert.strictEqual(alerts.length, 0);
+});
+
+check('新增時自動帶：受款人已有值不覆蓋；只有空白字元視為空白', () => {
+  const create = registered.find((r) => r.types === 'app.record.create.show');
+  const keep = { record: recordWithApplicant({ code: '24136', name: '王小明' }) };
+  keep.record[F.PAYEE].value = '別人';
+  create.handler(keep);
+  assert.strictEqual(keep.record[F.PAYEE].value, '別人');
+  const blank = { record: recordWithApplicant({ code: '24136', name: '王小明' }) };
+  blank.record[F.PAYEE].value = '  ';
+  create.handler(blank);
+  assert.strictEqual(blank.record[F.PAYEE].value, '24136 王小明');
+});
+
+check('新增時自動帶：申請人沒填 → 受款人不動、不跳 alert', () => {
+  const create = registered.find((r) => r.types === 'app.record.create.show');
+  const event = { record: recordWithApplicant(null) };
+  create.handler(event);
+  assert.strictEqual(event.record[F.PAYEE].value, '');
+  assert.strictEqual(alerts.length, 0);
+});
+
+check('編輯時不自動帶：edit.show 受款人維持空白', () => {
+  const edit = registered.find((r) => r.types === 'app.record.edit.show');
+  assert.ok(edit);
+  const event = { record: recordWithApplicant({ code: '24136', name: '王小明' }) };
+  assert.strictEqual(edit.handler(event), event);
+  assert.strictEqual(event.record[F.PAYEE].value, '');
+});
+
 check('原始碼不含類型判斷、舊的「同費用所屬人」按鈕與 723 員工姓名欄位', () => {
   const src = readSrc('受款人填寫設定_20250902.js');
   ['F.TYPE', 'COMPANY_TYPES', 'EMPLOYEE_NAME', 'same-expense-owner-btn', '同費用所屬人', 'F.EXPENSE_OWNER'].forEach((s) => assert.ok(!src.includes(s), s));

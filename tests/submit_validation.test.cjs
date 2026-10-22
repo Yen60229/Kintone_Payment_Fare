@@ -15,7 +15,7 @@ const { check, done } = createRunner('submit_validation.test.cjs');
  * 載入 main + submit。validCodes 為「使用中」費用歸屬代碼；invoiceHits 為發票重複查詢要回的筆數。
  * 回傳 env 與 api 呼叫紀錄。
  */
-const loadSubmit = async ({ validCodes = ['AJ30', 'AJ31'], invoiceHits = 0, failCostCenter = false, failInvoice = false } = {}) => {
+const loadSubmit = async ({ validCodes = ['AJ30', 'AJ31'], invoiceHits = 0, failCostCenter = false, failInvoice = false, invoiceRecords = null } = {}) => {
   const calls = [];
   const env = createEnv({
     appId: 749,
@@ -29,6 +29,7 @@ const loadSubmit = async ({ validCodes = ['AJ30', 'AJ31'], invoiceHits = 0, fail
         return Promise.resolve({ records: validCodes.map((code) => ({ [CC.CODE]: { value: code } })), next: false });
       }
       if (failInvoice) return Promise.reject(new Error('invoice down'));
+      if (invoiceRecords) return Promise.resolve({ records: invoiceRecords(env.window.PR_CONFIG.FIELDS) });
       return Promise.resolve({ records: Array.from({ length: invoiceHits }, () => ({ $id: { value: '1' } })) });
     },
   });
@@ -167,10 +168,10 @@ check('發票重複查詢字串：狀態 not in 表單作廢 + 每張發票各�
   const q = invoiceQueryOf(calls);
   assert.strictEqual(q.method, 'GET');
   assert.strictEqual(q.params.app, C.APPS.PAYMENT);
-  assert.deepStrictEqual([...q.params.fields], ['$id']);
+  assert.deepStrictEqual([...q.params.fields], ['$id', F.RECORD_NO, F.INVOICE_AGG]);
   assert.strictEqual(
     q.params.query,
-    `${F.STATUS_FIELD} not in ("${C.STATUS.VOID}") and (${F.INVOICE_AGG} like " / AB12345678 / " or ${F.INVOICE_AGG} like " / CD87654321 / ") and $id != 77 limit 1`,
+    `${F.STATUS_FIELD} not in ("${C.STATUS.VOID}") and (${F.INVOICE_AGG} like " / AB12345678 / " or ${F.INVOICE_AGG} like " / CD87654321 / ") and $id != 77 limit 100`,
   );
   assert.ok(!q.params.query.includes('in ("交通'), '不應有類型條件');
 });
@@ -179,7 +180,7 @@ check('新增（還沒有 $id）時查詢不帶「排除自己」', async () => 
   const { env, calls, F } = await loadSubmit();
   await submit(env, goodRecord(F, { [F.INVOICE_AGG]: { value: ' / A1 / ' } }));
   assert.ok(!invoiceQueryOf(calls).params.query.includes('$id !='));
-  assert.ok(invoiceQueryOf(calls).params.query.endsWith('limit 1'));
+  assert.ok(invoiceQueryOf(calls).params.query.endsWith('limit 100'));
 });
 
 check('發票號碼含雙引號或反斜線時要跳脫，不破壞查詢字串', async () => {
@@ -203,6 +204,52 @@ check('查到重複 → 擋下並提示；沒查到 → 通過', async () => {
   const clean = await loadSubmit({ invoiceHits: 0 });
   const evClean = await submit(clean.env, goodRecord(clean.F, { [clean.F.INVOICE_AGG]: { value: ' / A1 / ' } }));
   assert.strictEqual(evClean.error, undefined);
+});
+
+check('發票重複訊息：點名重複號碼與對方單號，每個號碼一行 ▸；沒重複的號碼不列', async () => {
+  const { env, F } = await loadSubmit({
+    invoiceRecords: (FF) => [{ $id: { value: '5' }, [FF.RECORD_NO]: { value: 'TR-0005' }, [FF.INVOICE_AGG]: { value: ' / AB12345678 / ZZ00000000 / ' } }],
+  });
+  const ev = await submit(env, goodRecord(F, { [F.INVOICE_AGG]: { value: ' / AB12345678 / CD87654321 / ' } }));
+  assert.strictEqual(ev.error, '儲存失敗');
+  const html = env.swalCalls[0].html;
+  const text = plainText(html);
+  assert.ok(text.includes('發票號碼重複'));
+  assert.ok(html.includes('pr-v-chip'), '▸ 行要畫成紅框標籤');
+  assert.ok(/AB12345678\s*交通費請款單號 TR-0005/.test(text), text);
+  assert.ok(!text.includes('CD87654321'), '沒重複的號碼不該列出');
+  assert.ok(!text.includes('ZZ00000000'), '對方獨有的號碼不該列出');
+});
+
+check('發票重複訊息：同一號碼撞到多張單、多個號碼各撞不同單 → 全部列出', async () => {
+  const { env, F } = await loadSubmit({
+    invoiceRecords: (FF) => [
+      { $id: { value: '1' }, [FF.RECORD_NO]: { value: '101' }, [FF.INVOICE_AGG]: { value: ' / A1 / ' } },
+      { $id: { value: '2' }, [FF.RECORD_NO]: { value: '102' }, [FF.INVOICE_AGG]: { value: ' / A1 / B2 / ' } },
+      { $id: { value: '3' }, [FF.RECORD_NO]: { value: '103' }, [FF.INVOICE_AGG]: { value: ' / B2 / ' } },
+    ],
+  });
+  await submit(env, goodRecord(F, { [F.INVOICE_AGG]: { value: ' / A1 / B2 / ' } }));
+  const text = plainText(env.swalCalls[0].html);
+  ['A1', 'B2', '101', '102', '103'].forEach((t) => assert.ok(text.includes(t), `${t}\n${text}`));
+  assert.ok(text.includes('101、102') && text.includes('102、103'), text);
+  assert.strictEqual((env.swalCalls[0].html.match(/pr-v-chip"/g) || []).length, 2, '兩個號碼兩個標籤');
+});
+
+check('發票重複訊息：號碼要完整比對，不會把 A1 當成 A12 的重複（退回原訊息）', async () => {
+  const { env, F } = await loadSubmit({
+    invoiceRecords: (FF) => [{ $id: { value: '9' }, [FF.RECORD_NO]: { value: '109' }, [FF.INVOICE_AGG]: { value: ' / A12 / ' } }],
+  });
+  await submit(env, goodRecord(F, { [F.INVOICE_AGG]: { value: ' / A1 / ' } }));
+  assert.ok(plainText(env.swalCalls[0].html).includes('發票號碼重複：已存在相同發票號碼，請更換後再儲存。'));
+});
+
+check('發票重複訊息：比對不出明細（對方沒有單號）→ 退回原本那句話、沒有標籤', async () => {
+  const { env, F } = await loadSubmit({ invoiceRecords: (FF) => [{ $id: { value: '9' }, [FF.INVOICE_AGG]: { value: ' / A1 / ' } }] });
+  await submit(env, goodRecord(F, { [F.INVOICE_AGG]: { value: ' / A1 / ' } }));
+  const html = env.swalCalls[0].html;
+  assert.ok(plainText(html).includes('發票號碼重複：已存在相同發票號碼，請更換後再儲存。'));
+  assert.ok(!html.includes('pr-v-chip"'));
 });
 
 check('發票查詢失敗 → 擋下並提示稍後再試（不放行）', async () => {

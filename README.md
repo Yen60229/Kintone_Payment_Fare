@@ -30,7 +30,7 @@ kintone **交通費請款單（測試區 App 749）** 的自訂 JavaScript 原�
 ```bash
 npm test && bash tests/syntax.test.sh && npm run scan
 ```
-- `npm test`：24 支測試（共 361 項斷言）。
+- `npm test`：24 支測試（共 377 項斷言）。
 - `bash tests/syntax.test.sh`：對根目錄所有 `*.js` 跑 `node --check`（目前 23 檔）。
 - `npm run scan`：統計剩餘的 App ID／狀態／選項／欄位代碼硬編碼（目前 11 處）。
 

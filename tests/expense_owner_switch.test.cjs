@@ -332,6 +332,95 @@ const check = async (label, fn) => {
     assert.strictEqual(env.setCount, 0);
   });
 
+  // ── 新增畫面：費用所屬人有值、部門空白 → 自動帶部門 ──
+  const showHandler = T.handlers['app.record.create.show'];
+  const showEvent = (ownerCode, orgVal) => {
+    env.live[F.EXPENSE_OWNER].value = ownerCode ? [U(ownerCode)] : [];
+    env.live[F.EXPENSE_OWNER_ORG].value = orgVal;
+    return { record: clone(env.live) };
+  };
+
+  await check('create.show：有費用所屬人、部門空白、只有 1 個單位 → 直接帶入部門並重排簽核（同步回傳 event）', async () => {
+    reset({ useSwal: false });
+    env.orgs.u1 = [ORG_A];
+    const ev = showEvent('u1', []);
+    const out = showHandler(ev);
+    assert.strictEqual(out, ev);
+    await flush();
+    assert.deepStrictEqual(orgValue(), [U('A', ORG_A.organization.name)]);
+    assert.ok(env.apiCalls.some((c) => c.url === '/v1/user/organizations.json' && c.params.code === 'u1'));
+    assert.deepStrictEqual(approvalQueries(), [`簽核流程名稱 = "${ORG_A.organization.name}"`]);
+  });
+
+  await check('create.show：多個單位 → 跳視窗選，選了才帶入', async () => {
+    reset({ swalAnswer: { isConfirmed: true, value: '2' } });
+    env.orgs.u2 = ORGS;
+    showHandler(showEvent('u2', []));
+    await flush();
+    assert.strictEqual(env.swalCalls.length, 1);
+    assert.strictEqual(env.swalCalls[0].title, '請選擇費用所屬人部門');
+    assert.deepStrictEqual(orgValue(), [U('C', '總務部')]);
+  });
+
+  await check('create.show：多個單位按取消 → 部門維持空白', async () => {
+    reset({ swalAnswer: { isConfirmed: false } });
+    env.orgs.u2 = ORGS;
+    showHandler(showEvent('u2', []));
+    await flush();
+    assert.deepStrictEqual(orgValue(), []);
+  });
+
+  await check('create.show：0 個單位 → 警告、部門不動', async () => {
+    reset();
+    env.orgs.u3 = [];
+    showHandler(showEvent('u3', []));
+    await flush();
+    assert.strictEqual(env.swalCalls.length, 1);
+    assert.strictEqual(env.swalCalls[0].title, '此費用所屬人沒有所屬單位');
+    assert.deepStrictEqual(orgValue(), []);
+  });
+
+  await check('create.show：部門已有值 → 不查單位、維持現狀', async () => {
+    reset({ swalAnswer: { isConfirmed: true, value: '2' } });
+    env.orgs.u1 = ORGS;
+    showHandler(showEvent('u1', [U('OLD', '原部門')]));
+    await flush();
+    assert.strictEqual(env.swalCalls.length, 0, '不該跳選部門視窗');
+    assert.deepStrictEqual(orgValue(), [U('OLD', '原部門')]);
+  });
+
+  await check('create.show：費用所屬人也空白 → 不查單位；部門空白時簽核欄位照舊被清空', async () => {
+    reset();
+    const ev = showEvent(null, []);
+    ev.record[SLOTS[0]].value = [U('m1')];
+    showHandler(ev);
+    await flush();
+    assert.strictEqual(env.apiCalls.length, 0);
+    assert.deepStrictEqual(ev.record[SLOTS[0]].value, []);
+  });
+
+  await check('edit.show 不觸發補部門（不查單位、部門維持空白）', async () => {
+    reset();
+    env.orgs.u1 = [ORG_A];
+    env.live[F.EXPENSE_OWNER].value = [U('u1')];
+    env.live[F.EXPENSE_OWNER_ORG].value = [];
+    T.handlers['app.record.edit.show']({ record: clone(env.live) });
+    await flush();
+    assert.ok(!env.apiCalls.some((c) => c.url === '/v1/user/organizations.json'));
+    assert.deepStrictEqual(orgValue(), []);
+  });
+
+  await check('create.show 補部門後呼叫公司名稱重算', async () => {
+    reset({ useSwal: false });
+    env.orgs.u1 = [ORG_A];
+    const applied = [];
+    global.window.PR_COMPANY_NAME = { apply: (r) => applied.push(r[F.EXPENSE_OWNER_ORG].value) };
+    showHandler(showEvent('u1', []));
+    await flush();
+    delete global.window.PR_COMPANY_NAME;
+    assert.deepStrictEqual(applied, [[U('A', ORG_A.organization.name)]]);
+  });
+
   console.log = origLog;
   console.log(`\n${passed} assertions passed.`);
 })().catch((err) => {
