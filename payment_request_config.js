@@ -239,7 +239,7 @@
   const STATUS = Object.freeze({
     VOID: '表單作廢',
     REIMBURSEMENT_FILL: '報銷人填單',
-    APPLY_START: '申請開始',
+    APPLY_START: '草稿（未送出）',
   });
 
   // ── 流程動作名稱註冊表（kintone 流程管理「按鈕上的字」）──────────────────────
@@ -256,7 +256,7 @@
   const AUTO_ADVANCE = Object.freeze({
     ENABLED: true, // 總開關：設 false 即完全停用（事件仍註冊，但不打任何 API）
     FROM_STATUS: STATUS.REIMBURSEMENT_FILL, // ① 建單後的初始狀態（推進前）＝「報銷人填單」
-    TO_STATUS: STATUS.APPLY_START, // ② 推進後應到達的狀態＝「申請開始」
+    TO_STATUS: STATUS.APPLY_START, // ② 推進後應到達的狀態＝「草稿（未送出）」
     ACTION_NAME: ACTIONS.APPLY_START, // ③ 要執行的動作名稱（不是狀態，見 ACTIONS 註解）
     // 是否連同 assignee（作業者）一起送出。
     //   後台該動作的下一關若有「多位候選作業者」→ 必須送，否則 API 會要求指定作業者；

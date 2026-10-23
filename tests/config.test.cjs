@@ -219,7 +219,7 @@ check('費用所屬人與申請人是兩組獨立欄位（簽核、會計單位�
 
 // ── STATUS／ACTIONS／AUTO_ADVANCE ───────────────────────────────────────────
 check("STATUS 只剩三個流程狀態值；STATUS.VOID 與 VOID_FIELD 字串相同但語意分開（狀態值 vs 欄位代碼）", () => {
-  assert.deepStrictEqual({ ...c.STATUS }, { VOID: '表單作廢', REIMBURSEMENT_FILL: '報銷人填單', APPLY_START: '申請開始' });
+  assert.deepStrictEqual({ ...c.STATUS }, { VOID: '表單作廢', REIMBURSEMENT_FILL: '報銷人填單', APPLY_START: '草稿（未送出）' });
   assert.strictEqual(c.STATUS.VOID, c.VOID_FIELD);
   assert.notStrictEqual(F.STATUS_FIELD, c.STATUS.VOID, '「狀態」是欄位代碼，不是狀態值');
   ['ACCOUNTING', 'UNIT_ACCOUNTING', 'IN_PROGRESS', 'DONE', 'FLOW_DONE'].forEach((key) => assert.ok(!(key in c.STATUS), `STATUS 不應有 ${key}`));
@@ -237,7 +237,7 @@ check('AUTO_ADVANCE 的三個字串（前狀態、後狀態、動作名稱）都
   assert.strictEqual(a.TO_STATUS, c.STATUS.APPLY_START);
   assert.strictEqual(a.ACTION_NAME, c.ACTIONS.APPLY_START);
   assert.strictEqual(a.FROM_STATUS, '報銷人填單');
-  assert.strictEqual(a.TO_STATUS, '申請開始');
+  assert.strictEqual(a.TO_STATUS, '草稿（未送出）');
   assert.strictEqual(a.ACTION_NAME, '點擊流程開始');
   assert.notStrictEqual(a.FROM_STATUS, a.TO_STATUS);
   assert.notStrictEqual(a.ACTION_NAME, a.TO_STATUS, '動作名稱不是目標狀態名稱');

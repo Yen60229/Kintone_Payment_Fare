@@ -2,7 +2,7 @@
 
 // 流程管理設定的「全部走一遍」檢查：
 //   enumerateRecords(config)  列出我們的程式「真的寫得出來」的每一種假資料（條件欄位的所有合法組合）
-//   checkAll(process, config) 每一筆都從申請開始一路按「送出」走到會計，並在每一關檢查：
+//   checkAll(process, config) 每一筆都從草稿（未送出）一路按「送出」走到會計，並在每一關檢查：
 //     - 每一關剛好一顆送出按鈕（不會兩顆、不會卡住）
 //     - 這一關的作業者找得到人（欄位型作業者至少有一個欄位有值）
 //     - 最後停在對的會計狀態（依「會計單位」；手動設定簽核流程的停在「單位會計處理中」）
@@ -167,7 +167,7 @@ const assigneeProblem = (proc, state, record) => {
 };
 
 /**
- * 一筆假資料從申請開始走到會計，回報這筆的所有問題（沒問題＝空陣列）。
+ * 一筆假資料從草稿（未送出）走到會計，回報這筆的所有問題（沒問題＝空陣列）。
  *   每一關剛好一顆送出按鈕、作業者找得到人、最後停在對的會計狀態。
  * @param {Object} proc  流程管理設定
  * @param {Object} config  PR_CONFIG
@@ -199,7 +199,7 @@ const walkAndCheck = (proc, config, record, accountingStates) => {
 };
 
 /**
- * 每一筆合法假資料從申請開始走到會計，回報所有問題。
+ * 每一筆合法假資料從草稿（未送出）走到會計，回報所有問題。
  * @param {Object} proc  流程管理設定
  * @param {Object} config  PR_CONFIG
  * @param {{mapRecord?: function(Object): Object}} [opts]  mapRecord：測試用，改寫每筆假資料（驗證檢查真的抓得到問題）

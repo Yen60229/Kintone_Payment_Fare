@@ -309,7 +309,7 @@ check('planTrafficTable：寬度限制在 MIN～MAX；沒有任何列 → 全部
   assert.ok(T.planTrafficTable(undefined).every((p) => p.hidden));
 });
 
-check('詳細頁：狀態不是「報銷人填單」「申請開始」才調欄寬', async () => {
+check('詳細頁：狀態不是「報銷人填單」「草稿（未送出）」才調欄寬', async () => {
   const { env, F, C } = await loadMain();
   for (const status of [C.STATUS.REIMBURSEMENT_FILL, C.STATUS.APPLY_START]) {
     await env.fire('app.record.detail.show', { record: baseRecord(F, { status }) });

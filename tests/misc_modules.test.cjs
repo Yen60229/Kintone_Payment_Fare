@@ -49,7 +49,7 @@ console.log('misc_modules.test.cjs');
 // ── 作廢防呆 ───────────────────────────────────────────────────────────────
 
 const voidHandler = registered.find((r) => r.types.includes('app.record.detail.process.proceed')).handler;
-const proceedEvent = (action, nextStatus) => ({ action: { value: action }, nextStatus: { value: nextStatus }, status: { value: '申請開始' }, record: { $id: { value: '15' } } });
+const proceedEvent = (action, nextStatus) => ({ action: { value: action }, nextStatus: { value: nextStatus }, status: { value: '草稿（未送出）' }, record: { $id: { value: '15' } } });
 
 check('作廢防呆：動作名稱取自 C.ACTIONS.VOID（原始碼不再寫死 \'作廢\' 當動作名稱）', () => {
   const src = readSrc('作廢防呆_20260506.js');

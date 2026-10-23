@@ -12,7 +12,7 @@
 //      作業者設成群組時，群組代碼必須是 ACCOUNTING.MAP 裡的會計群組
 //   5. 動作條件看得懂（看不懂的寫法直接報出來，模擬器不會把它當成通過）、用到的欄位是已知欄位、
 //      條件的值要在我們自己管的範圍內、群組／組織類型標記是已知的類型、THIS_YEAR() 只用在日期欄位
-//   6. 駁回狀態都有「再申請」回到申請開始
+//   6. 駁回狀態都有「再申請」回到草稿（未送出）
 
 const sim = require('./process_sim.cjs');
 
@@ -154,7 +154,7 @@ const lintProcess = (proc, config) => {
     });
   });
 
-  // 6. 駁回狀態都有「再申請」回到申請開始
+  // 6. 駁回狀態都有「再申請」回到草稿（未送出）
   const start = config.STATUS.APPLY_START;
   stateNames.forEach((name) => {
     if (!name.endsWith('駁回')) return;
