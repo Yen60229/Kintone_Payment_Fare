@@ -93,11 +93,8 @@
   // FIELDS.PERMISSION_STAFF 字串相同但分屬不同 App，讀主檔走 ACC、寫請款單走 F，不可代用。
   const ACC = C.REF_FIELDS.ACCOUNTING_MAP;
 
-  // 「所／中心」→ 上層「部」對應（單一事實來源在 config）
-  const ORG_PARENT_ENTRIES = Object.entries(C.SIGNING.ORG_PARENT_MAP);
-  const ORG_SEP = C.SIGNING.ORG_NAME_SEPARATOR;
-  // 這兩者在 kintone 底下還有子單位，只在「帶子單位」時才補上層部門前綴（見 processOrgName 註解）
-  const SUBUNIT_REQUIRED_CHILDREN = ['桃園機場營業所', '新竹營業所'];
+  // 簽核流程主檔（APPS.APPROVAL_FLOW）自己的欄位代碼
+  const AF = C.REF_FIELDS.APPROVAL_FLOW;
 
   // =========================
   // 手動簽核流程相關常數
@@ -186,99 +183,72 @@
   }
 
   /**
-   * 處理組織名稱（包含六大主管簽核流程）
-   * @param {string} orgName - 原始組織名稱
-   * @param {string} org - 組織名稱
-   * @param {string} title - 職位名稱
-   * @returns {string} 處理後的組織名稱
+   * 依職稱改查的合併簽核流程（簽核流程主檔「特殊簽核流程」那幾筆，例如「物流部次長級」）。
+   * 有對應就回傳要查的「簽核流程名稱」；沒有就回傳空字串，改用費用所屬人部門的組織代碼查「簽核所屬單位」。
+   * @param {string} org - 費用所屬人該單位的組織名稱
+   * @param {string} title - 費用所屬人在該單位的職稱
+   * @returns {string} 特殊簽核流程名稱，沒有則為空字串
    */
-  function processOrgName(orgName, org, title) {
-    let modifiedOrgName = orgName;
+  function specialFlowName(org, title) {
+    let flowName = '';
 
-    // 「所／中心」→ 上層「部」的補前綴處理，對應內容來自 C.SIGNING.ORG_PARENT_MAP。
-    //
-    // ⚠️ 比對條件有意不對稱：
-    //    桃園機場營業所／新竹營業所 → 只有帶子單位（例：新竹營業所-Sales Team）時才補前綴，
-    //                                裸名不補；
-    //    併裝中心                   → 裸名即補。
-    //    簽核流程主檔（APPS.APPROVAL_FLOW）是否存在裸名的簽核流程名稱無法查證，
-    //    故維持現況，不一律補前綴，以免簽核流程查詢失效。
-    ORG_PARENT_ENTRIES.forEach(([child, parent]) => {
-      const matched = SUBUNIT_REQUIRED_CHILDREN.includes(child) ? orgName.startsWith(`${child}${ORG_SEP}`) : orgName === child;
-      if (matched) {
-        modifiedOrgName = `${parent}${ORG_SEP}${orgName}`;
-      }
-    });
-
-    // 新竹營業所-Sales Team 的特例：補完前綴後再把 'Sales ' 改寫為 '營業'
-    if (modifiedOrgName === '航空貨物部-新竹營業所-Sales Team') {
-      modifiedOrgName = `${modifiedOrgName.replace('Sales ', '營業')}`;
-    }
-
-    // 聯海通運股份有限公司 → 聯海：這是簽核流程主檔（APPS.APPROVAL_FLOW）「簽核流程名稱」
-    // 的縮寫規則，不是組織隸屬關係，故刻意不放進 ORG_PARENT_MAP。
-    if (orgName === '聯海通運股份有限公司') {
-      modifiedOrgName = '聯海';
-    }
-
-    // 簽核名稱處理邏輯
     if (org && title) {
       // 1. 物流部次長級
       if ((org === '物流部-桃園NEXT1倉庫' || org === '物流部') && title === '次長') {
-        modifiedOrgName = '物流部次長級';
+        flowName = '物流部次長級';
       }
       // 2. 航空貨物部次長(所長)級
       else if (
         (org === '航空貨物部' && title === '次長') ||
         ((org === '桃園機場營業所' || org === '新竹營業所') && (title === '所長' || title === '次長'))
       ) {
-        modifiedOrgName = '航空貨物部次長(所長)級';
+        flowName = '航空貨物部次長(所長)級';
       }
       // 3. 海運貨物部次長級
       else if (org === '海運貨物部' && title === '次長') {
-        modifiedOrgName = '海運貨物部次長級';
+        flowName = '海運貨物部次長級';
       }
       // 4. 總務部次長級
       else if (org === '總務部' && title === '次長') {
-        modifiedOrgName = '總務部次長級';
+        flowName = '總務部次長級';
       }
       // 5. 物流部長/汽車貨運部長
       else if ((org === '物流部' || org === '汽車貨運部') && title === '部長') {
-        modifiedOrgName = '物流部長/汽車貨運部長';
+        flowName = '物流部長/汽車貨運部長';
       }
 
       // 6. 海運貨物部長/航空貨物部長
       else if ((org === '海運貨物部' || org === '航空貨物部') && title === '部長') {
-        modifiedOrgName = '海運貨物部長/航空貨物部長';
+        flowName = '海運貨物部長/航空貨物部長';
       }
       // 7. 安全品質推動部長/營業戰略部長/總務部長/事業本部長
       else if (
         (org === '安全品質推動部' && title === '部長') ||
         ((org === '營業戰略部' || org === '總務部' || org === '事業本部') && title === '部長')
       ) {
-        modifiedOrgName = '安全品質推動部長/營業戰略部長/總務部長/事業本部長';
+        flowName = '安全品質推動部長/營業戰略部長/總務部長/事業本部長';
       }
       //8. 台中營業部/高雄營業部/事業本部次長(中心長)級
       else if ((org === '事業本部' && title === '次長') || ((org === '台中營業部' || org === '高雄營業部') && title === '部長')) {
-        modifiedOrgName = '台中營業部長/高雄營業部長/事業本部次長(中心長)級';
+        flowName = '台中營業部長/高雄營業部長/事業本部次長(中心長)級';
       }
 
       //9. 安全品質推動部次長級
       else if (org === '安全品質推動部' && title === '次長') {
-        modifiedOrgName = '安全品質推動部次長級';
+        flowName = '安全品質推動部次長級';
 
         //10. 高雄營業部次長級
       } else if (org === '高雄營業部' && title === '次長') {
-        modifiedOrgName = '高雄營業部次長級';
+        flowName = '高雄營業部次長級';
       }
 
       //11. 台中營業部次長級
       else if (org === '台中營業部' && title === '次長') {
-        modifiedOrgName = '台中營業部次長級';
+        flowName = '台中營業部次長級';
       }
     }
 
-    return modifiedOrgName;
+    return flowName;
   }
 
   /**
@@ -520,9 +490,13 @@
     // 沒有職稱（title 是 null）→ 不清任何一層，簽核流程主檔有值的欄位全部排上
     const title = org.title?.name || '';
     const orgNameOfTitle = org.organization.name;
+    const flowName = specialFlowName(orgNameOfTitle, title);
     return {
       title,
-      modifiedOrgName: processOrgName(orgName, orgNameOfTitle, title),
+      // 特殊簽核流程用名稱查；其他一律用組織代碼查「簽核所屬單位」（改組織名稱不用改程式）
+      approvalQuery: flowName
+        ? `${AF.FLOW_NAME} = "${flowName}"`
+        : `${AF.ORG} in ("${org.organization.code}") and ${AF.IN_USE} in ("${AF.IN_USE_VALUE}")`,
       // 未更動之前的名稱來觀察是否為六大簽核流程
       isSpecialDepartment: SPECIAL_DEPARTMENTS.includes(orgName) || (DIRECTOR_CHECK_DEPARTMENTS.includes(orgName) && orgs[0]?.title?.name === '部長'),
       // 台中支店長／營業戰略部長／總務部長／事業本部長：不帶入課／次／部長流程
@@ -675,8 +649,8 @@
 
       // 使用匹配到的索引取得正確的組織和職位資料
       const owner = classifyOwner(orgName, orgs, matchedIndex);
-      const { title, modifiedOrgName, isSpecialDepartment, isSpecificDirector } = owner;
-      console.log(`modifiedOrgName為${modifiedOrgName}`);
+      const { title, approvalQuery, isSpecialDepartment, isSpecificDirector } = owner;
+      console.log(`簽核流程查詢：${approvalQuery}`);
 
       // 動態建立欄位陣列
       const enabledApiFields = MANAGER_FIELDS_MAPPING.map((field) => field.apiField);
@@ -684,8 +658,8 @@
 
       const params = {
         app: APPS.APPROVAL_FLOW,
-        fields: isSpecialDepartment ? ['簽核流程名稱', ...specialApiFields] : ['簽核流程名稱', ...enabledApiFields],
-        query: `簽核流程名稱 = "${modifiedOrgName}"`,
+        fields: isSpecialDepartment ? [AF.FLOW_NAME, ...specialApiFields] : [AF.FLOW_NAME, ...enabledApiFields],
+        query: approvalQuery,
       };
 
       // 呼叫 API 取得簽核主管資料、身份確認

@@ -141,6 +141,8 @@ const flush = async () => {
   for (let i = 0; i < 6; i++) await wait(0);
 };
 const orgValue = () => env.live[F.EXPENSE_OWNER_ORG].value;
+// 一般單位用組織代碼查簽核流程主檔的「簽核所屬單位」
+const orgQuery = (code) => `簽核所屬單位 in ("${code}") and 使用狀況 in ("使用中")`;
 const approvalQueries = () => env.apiCalls.filter((c) => c.params.app === C.APPS.APPROVAL_FLOW).map((c) => c.params.query);
 
 // 純函式 buildOwnerOrgOptions 從原始檔擷取
@@ -252,7 +254,7 @@ const check = async (label, fn) => {
     assert.deepStrictEqual(env.apiCalls[0], { url: '/v1/user/organizations.json', params: { code: 'u1' } });
     assert.strictEqual(env.swalCalls.length, 0);
     assert.deepStrictEqual(orgValue(), [U('A', '物流部-業務企劃課')]);
-    assert.deepStrictEqual(approvalQueries(), ['簽核流程名稱 = "物流部-業務企劃課"'], '帶入後用新部門重排');
+    assert.deepStrictEqual(approvalQueries(), [orgQuery('A')], '帶入後用新部門重排');
     assert.deepStrictEqual(env.live[F.ACCOUNTING_UNIT].value.map((g) => g.code), ['ACC_TPE']);
   });
 
@@ -291,7 +293,7 @@ const check = async (label, fn) => {
     assert.strictEqual(opts.title, '請選擇費用所屬人部門');
     assert.match(opts.text, /王小明 有 3 個所屬單位，簽核人員會依選的部門排/);
     assert.deepStrictEqual(orgValue(), [U('C', '總務部')]);
-    assert.deepStrictEqual(approvalQueries(), ['簽核流程名稱 = "總務部"']);
+    assert.deepStrictEqual(approvalQueries(), [orgQuery('C')]);
   });
 
   await check('多個單位、原部門也是新費用所屬人的單位 → 可以取消保留', async () => {
@@ -342,7 +344,7 @@ const check = async (label, fn) => {
     await wait(60);
     await flush();
     assert.deepStrictEqual(orgValue(), [U('C', '總務部')], '慢的第一次不可蓋掉最後一次');
-    assert.deepStrictEqual(approvalQueries(), ['簽核流程名稱 = "總務部"']);
+    assert.deepStrictEqual(approvalQueries(), [orgQuery('C')]);
   });
 
   await check('第一次正在等使用者選視窗時又改了人：第一次的選擇不再寫回', async () => {
@@ -355,7 +357,7 @@ const check = async (label, fn) => {
     await wait(60);
     await flush();
     assert.deepStrictEqual(orgValue(), [U('C', '總務部')]);
-    assert.deepStrictEqual(approvalQueries(), ['簽核流程名稱 = "總務部"']);
+    assert.deepStrictEqual(approvalQueries(), [orgQuery('C')]);
   });
 
   await check('查詢失敗：只記錄錯誤，不寫回、不跳例外', async () => {
@@ -386,7 +388,7 @@ const check = async (label, fn) => {
     await flush();
     assert.deepStrictEqual(orgValue(), [U('A', ORG_A.organization.name)]);
     assert.ok(env.apiCalls.some((c) => c.url === '/v1/user/organizations.json' && c.params.code === 'u1'));
-    assert.deepStrictEqual(approvalQueries(), [`簽核流程名稱 = "${ORG_A.organization.name}"`]);
+    assert.deepStrictEqual(approvalQueries(), [orgQuery(ORG_A.organization.code)]);
   });
 
   await check('create.show：多個單位 → 跳視窗選，選了才帶入', async () => {
@@ -434,7 +436,7 @@ const check = async (label, fn) => {
     showHandler(showEvent('u1', [U('OLD', '原部門')]));
     await flush();
     assert.deepStrictEqual(orgValue(), [U('A', ORG_A.organization.name)]);
-    assert.ok(approvalQueries().includes(`簽核流程名稱 = "${ORG_A.organization.name}"`));
+    assert.ok(approvalQueries().includes(orgQuery(ORG_A.organization.code)));
     assert.strictEqual(env.alerts.length, 0, '不再跳「請選取費用所屬人正確所在的部門」');
 
     reset({ swalAnswer: { isConfirmed: true, value: '0' } });

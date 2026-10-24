@@ -31,7 +31,8 @@ const loadSigning = () => {
   global.window = {};
   global.alert = (m) => env.alerts.push(m);
   global.confirm = () => true;
-  const queryName = (q) => (q.match(/簽核流程名稱 = "(.*)"/) || [])[1];
+  // 特殊簽核流程用名稱查、其他用組織代碼查「簽核所屬單位」；假主檔用查詢鍵（名稱或組織代碼）對應
+  const queryName = (q) => (q.match(/簽核流程名稱 = "(.*)"/) || q.match(/簽核所屬單位 in \("(.*?)"\)/) || [])[1];
   global.kintone = {
     app: {
       getId: () => 749,
@@ -107,7 +108,7 @@ const makeLive = ({ orgName, owner = 'OWN' }) => {
   const r = {
     [F.APPLICANT]: { type: 'USER_SELECT', value: [U('APPLICANT')] },
     [F.EXPENSE_OWNER]: { type: 'USER_SELECT', value: owner ? [U(owner)] : [] },
-    [F.EXPENSE_OWNER_ORG]: { type: 'ORGANIZATION_SELECT', value: orgName ? [{ code: 'ORG', name: orgName }] : [] },
+    [F.EXPENSE_OWNER_ORG]: { type: 'ORGANIZATION_SELECT', value: orgName ? [{ code: orgName, name: orgName }] : [] },
     [F.MANUAL_FLOW]: { type: 'CHECK_BOX', value: [] },
     [F.ACCOUNTING_UNIT]: { type: 'GROUP_SELECT', value: [] },
     [F.ACCOUNTING_STAFF]: { type: 'USER_SELECT', value: [] },
@@ -140,7 +141,7 @@ const run = async ({ orgName, title, queryName = orgName, master = masterOf(FULL
   env.alerts.length = 0;
   env.shown = {};
   env.master = master ? { [queryName]: master } : {};
-  env.orgs = { [owner]: [{ organization: { code: 'ORG', name: orgName, primary: true }, title: { name: title } }] };
+  env.orgs = { [owner]: [{ organization: { code: orgName, name: orgName, primary: true }, title: { name: title } }] };
   env.live = makeLive({ orgName, owner });
   await fire(eventType);
   await settle();

@@ -85,21 +85,6 @@
     MAP: Object.freeze({ TPE: 'ACC_TPE', TPE海運: 'ACC_TPE海運', CKS: 'ACC_CKS', KHH: 'ACC_KHH', TEPZ: 'ACC_TEPZ', NEXT: 'ACC_NEXT' }),
   });
 
-  // ── 簽核人員程式（signing_personnel_manager）──────────────────────────────
-  //   依「費用所屬人／費用所屬人部門」到簽核流程主檔（APPS.APPROVAL_FLOW）查主管。
-  const SIGNING = Object.freeze({
-    // 組織名稱的分隔字元。例：總務部-總務課
-    ORG_NAME_SEPARATOR: '-',
-    // 「所／中心」→ 上層「部」的對應，組出要去簽核流程主檔查的名稱。
-    //   ⚠️ 不含「聯海通運股份有限公司 → 聯海」——那是簽核流程名稱的縮寫規則，
-    //      不是組織隸屬關係，兩者語意不同不可混用。
-    ORG_PARENT_MAP: Object.freeze({
-      桃園機場營業所: '航空貨物部',
-      新竹營業所: '航空貨物部',
-      併裝中心: '事業本部',
-    }),
-  });
-
   // ── 預計付款日 ─────────────────────────────────────────────────────────────
   //   會計需要 LEAD_WORKDAYS 個工作日作業，之後的第一個付款日（每月 PAY_DAYS 與月底）付款，付款日遇假日往後順延。
   //   起算日＝請款日期（不含當天）。工作日依行事曆 App（APPS.HOLIDAY_CALENDAR）：
@@ -121,6 +106,14 @@
       IN_USE: '使用狀況', // 值 '使用中'；query 篩選用
       // ORGANIZATION_SELECT（單選），值一律為「部」層級。掛帳單位限部內（COST_SCOPE）靠它判斷代碼屬於哪個部門
       DEPT: '所屬部門',
+    }),
+    // 簽核流程主檔（APPS.APPROVAL_FLOW）：一般單位用「簽核所屬單位」（組織欄位，存組織代碼）查，
+    //   改組織名稱不用改程式；依職稱改查的合併流程（特殊簽核流程，例如「物流部次長級」）才用「簽核流程名稱」查。
+    APPROVAL_FLOW: Object.freeze({
+      FLOW_NAME: '簽核流程名稱',
+      ORG: '簽核所屬單位', // ORGANIZATION_SELECT
+      IN_USE: '使用狀況',
+      IN_USE_VALUE: '使用中',
     }),
     ACCOUNTING_MAP: Object.freeze({
       APPLY_UNIT: '申請單位', // 查詢鍵
@@ -314,7 +307,6 @@
   window.PR_CONFIG = Object.freeze({
     APPS,
     ACCOUNTING,
-    SIGNING,
     EXPECTED_PAY_DATE,
     REF_FIELDS,
     ADMIN_USERS,

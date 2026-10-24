@@ -35,16 +35,16 @@ const isDeepFrozen = (obj) =>
 console.log('config.test.cjs');
 
 // ── 整體結構 ────────────────────────────────────────────────────────────────
-check('PR_CONFIG 的頂層鍵恰為這 19 個（多了或少了都要有意識地改這裡）', () => {
+check('PR_CONFIG 的頂層鍵恰為這 18 個（多了或少了都要有意識地改這裡）', () => {
   assert.deepStrictEqual(
     Object.keys(c).sort(),
-    ['ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'COST_SCOPE', 'EXPECTED_PAY_DATE', 'FIELDS', 'OPTIONS', 'REF_FIELDS', 'SEP', 'SIGNING', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'TRAFFIC_RULES', 'TRAFFIC_TABLE_LAYOUT', 'VOID_FIELD', 'isAdmin'].sort(),
+    ['ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'COST_SCOPE', 'EXPECTED_PAY_DATE', 'FIELDS', 'OPTIONS', 'REF_FIELDS', 'SEP', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'TRAFFIC_RULES', 'TRAFFIC_TABLE_LAYOUT', 'VOID_FIELD', 'isAdmin'].sort(),
   );
 });
 
 check('PR_CONFIG 與各註冊表皆為凍結物件（不會被其他模組意外改寫）', () => {
   assert.ok(Object.isFrozen(c));
-  ['APPS', 'ACCOUNTING', 'SIGNING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'TRAFFIC_TABLE_LAYOUT', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'OPTIONS', 'TRAFFIC_RULES', 'COST_SCOPE'].forEach((key) => {
+  ['APPS', 'ACCOUNTING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'TRAFFIC_TABLE_LAYOUT', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'OPTIONS', 'TRAFFIC_RULES', 'COST_SCOPE'].forEach((key) => {
     assert.ok(isDeepFrozen(c[key]), `${key} 應為深層凍結`);
   });
 });
@@ -280,23 +280,20 @@ check('COST_SCOPE：排除群組「費用歸屬不限部門」、組織樹快取
   assert.ok(c.COST_SCOPE.ORG_TREE.MAX_DEPTH > 0 && c.COST_SCOPE.ORG_TREE.CACHE_TTL_MS > 0);
 });
 
-// ── ACCOUNTING／SIGNING ─────────────────────────────────────────────────────
+// ── ACCOUNTING ─────────────────────────────────────────────────────
 check('ACCOUNTING 只剩 MAP 六個會計群組；依費用歸屬據點判斷的機場／海運特殊代碼已刪（會計單位只依費用所屬人部門）', () => {
   assert.deepStrictEqual({ ...c.ACCOUNTING.MAP }, { TPE: 'ACC_TPE', TPE海運: 'ACC_TPE海運', CKS: 'ACC_CKS', KHH: 'ACC_KHH', TEPZ: 'ACC_TEPZ', NEXT: 'ACC_NEXT' });
   assert.deepStrictEqual(Object.keys(c.ACCOUNTING), ['MAP']);
 });
 
-check('SIGNING：組織名稱分隔字元、「所／中心 → 部」三筆對應；ORG_PARENT_MAP 不含「聯海通運股份有限公司」', () => {
-  assert.strictEqual(c.SIGNING.ORG_NAME_SEPARATOR, '-');
-  assert.deepStrictEqual({ ...c.SIGNING.ORG_PARENT_MAP }, { 桃園機場營業所: '航空貨物部', 新竹營業所: '航空貨物部', 併裝中心: '事業本部' });
-  assert.ok(!('聯海通運股份有限公司' in c.SIGNING.ORG_PARENT_MAP), '那是簽核流程名稱的縮寫規則，不是組織隸屬');
-  assert.deepStrictEqual(Object.keys(c.SIGNING).sort(), ['ORG_NAME_SEPARATOR', 'ORG_PARENT_MAP']);
-  assert.strictEqual('總務部-總務課'.split(c.SIGNING.ORG_NAME_SEPARATOR)[0], '總務部');
+check('SIGNING（「所／中心 → 部」補前綴對應）已刪：簽核流程主檔改用組織欄位「簽核所屬單位」查，不再拼名稱', () => {
+  assert.strictEqual(c.SIGNING, undefined);
 });
 
 // ── REF_FIELDS／EXPECTED_PAY_DATE ───────────────────────────────────────────
-check('REF_FIELDS 只剩費用歸屬、會計對應、行事曆三份；費用歸屬主檔有代碼／中文名稱／使用狀況／所屬部門四個欄位（據點不再讀）', () => {
-  assert.deepStrictEqual(Object.keys(c.REF_FIELDS).sort(), ['ACCOUNTING_MAP', 'COST_CENTER', 'HOLIDAY_CALENDAR']);
+check('REF_FIELDS 有簽核流程、費用歸屬、會計對應、行事曆四份；費用歸屬主檔有代碼／中文名稱／使用狀況／所屬部門四個欄位（據點不再讀）', () => {
+  assert.deepStrictEqual(Object.keys(c.REF_FIELDS).sort(), ['ACCOUNTING_MAP', 'APPROVAL_FLOW', 'COST_CENTER', 'HOLIDAY_CALENDAR']);
+  assert.deepStrictEqual({ ...c.REF_FIELDS.APPROVAL_FLOW }, { FLOW_NAME: '簽核流程名稱', ORG: '簽核所屬單位', IN_USE: '使用狀況', IN_USE_VALUE: '使用中' });
   assert.deepStrictEqual({ ...c.REF_FIELDS.COST_CENTER }, { CODE: 'CostCenter', NAME: '中文名稱', IN_USE: '使用狀況', DEPT: '所屬部門' });
   assert.deepStrictEqual(
     { ...c.REF_FIELDS.ACCOUNTING_MAP },

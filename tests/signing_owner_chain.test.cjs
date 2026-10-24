@@ -37,7 +37,8 @@ const loadSigning = () => {
   global.window = {};
   global.alert = (m) => env.alerts.push(m);
   global.confirm = () => true;
-  const queryName = (q) => (q.match(/簽核流程名稱 = "(.*)"/) || [])[1];
+  // 特殊簽核流程用名稱查、其他用組織代碼查「簽核所屬單位」；假主檔用查詢鍵（名稱或組織代碼）對應
+  const queryName = (q) => (q.match(/簽核流程名稱 = "(.*)"/) || q.match(/簽核所屬單位 in \("(.*?)"\)/) || [])[1];
   global.kintone = {
     app: {
       getId: () => 749,
@@ -107,7 +108,7 @@ const makeLive = ({ orgName, owner = 'OWN' }) => {
   const r = {
     [F.APPLICANT]: { type: 'USER_SELECT', value: [U('APPLICANT')] },
     [F.EXPENSE_OWNER]: { type: 'USER_SELECT', value: owner ? [U(owner)] : [] },
-    [F.EXPENSE_OWNER_ORG]: { type: 'ORGANIZATION_SELECT', value: orgName ? [{ code: 'ORG', name: orgName }] : [] },
+    [F.EXPENSE_OWNER_ORG]: { type: 'ORGANIZATION_SELECT', value: orgName ? [{ code: orgName, name: orgName }] : [] },
     [F.MANUAL_FLOW]: { type: 'CHECK_BOX', value: [] },
     [F.ACCOUNTING_UNIT]: { type: 'GROUP_SELECT', value: [] },
     [F.ACCOUNTING_STAFF]: { type: 'USER_SELECT', value: [] },
@@ -141,7 +142,7 @@ const run = async ({ orgName, title, queryName = orgName, master = masterOf(FULL
   env.shown = {};
   env.master = master ? { [queryName]: master } : {};
   // title 給 null＝這個人在該單位沒有職稱（kintone 回 title: null）
-  env.orgs = { [owner]: [{ organization: { code: 'ORG', name: orgName, primary: true }, title: title === null ? null : { name: title } }] };
+  env.orgs = { [owner]: [{ organization: { code: orgName, name: orgName, primary: true }, title: title === null ? null : { name: title } }] };
   env.live = makeLive({ orgName, owner });
   fire(eventType);
   await settle();
@@ -289,9 +290,21 @@ const NAME = '航空貨物部-台北營業課';
     assert.deepStrictEqual(approvalCall().params.fields.length, 7, '課員不是部長，走一般六格查詢');
   });
 
-  await check('新竹營業所-Sales Team：以補完前綴的名稱「航空貨物部-新竹營業所-營業Team」查簽核流程主檔', async () => {
-    await run({ orgName: '新竹營業所-Sales Team', title: '課員', queryName: '航空貨物部-新竹營業所-營業Team', master: masterOf(FULL) });
-    assert.strictEqual(approvalCall().params.query, '簽核流程名稱 = "航空貨物部-新竹營業所-營業Team"');
+  await check('一般單位（新竹營業所-Sales Team）：用組織代碼查「簽核所屬單位」且限使用中，不再拼簽核流程名稱', async () => {
+    await run({ orgName: '新竹營業所-Sales Team', title: '課員', master: masterOf(FULL) });
+    assert.strictEqual(approvalCall().params.query, '簽核所屬單位 in ("新竹營業所-Sales Team") and 使用狀況 in ("使用中")');
+    assert.deepStrictEqual(filledSlots(), SLOTS);
+  });
+
+  await check('查詢用的是組織代碼不是名稱：組織改名後（代碼不變）照樣查得到', async () => {
+    env.apiCalls.length = 0;
+    env.master = { 'ORG-CODE-1': masterOf(FULL) };
+    env.orgs = { OWN: [{ organization: { code: 'ORG-CODE-1', name: '改過名的課', primary: true }, title: { name: '課員' } }] };
+    env.live = makeLive({ orgName: '改過名的課' });
+    env.live[F.EXPENSE_OWNER_ORG].value = [{ code: 'ORG-CODE-1', name: '改過名的課' }];
+    fire(ORG_EVENT);
+    await settle();
+    assert.strictEqual(approvalCall().params.query, '簽核所屬單位 in ("ORG-CODE-1") and 使用狀況 in ("使用中")');
     assert.deepStrictEqual(filledSlots(), SLOTS);
   });
 
@@ -314,7 +327,7 @@ const NAME = '航空貨物部-台北營業課';
     await run({ orgName: NAME, title: null });
     assert.deepStrictEqual(filledSlots(), SLOTS);
     assert.deepStrictEqual(counts(), ['3人', '2人']);
-    assert.strictEqual(approvalCall().params.query, `簽核流程名稱 = "${NAME}"`);
+    assert.strictEqual(approvalCall().params.query, `簽核所屬單位 in ("${NAME}") and 使用狀況 in ("使用中")`);
   });
 
   await check('沒有職稱且費用所屬人自己就在主管格：照樣全部排上（沒有職稱就不清）', async () => {
