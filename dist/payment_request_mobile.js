@@ -1794,21 +1794,31 @@
      *
      * 簽核流程主檔有值的欄位全部保留，由低層級到高層級：
      *   單位主管1 → 單位主管2 → 單位主管3 → 單位次長 → 單位次長1 → 單位部長_支店長
+     * 同一人出現在好幾格時只留最上面那格（主檔的主管3 與次長1 常是同一位次長，不讓他連簽兩關）。
      * 費用所屬人本人那一層與以下，之後由 clearSigningFieldsByTitle 依職稱清掉。
      *
      * @param {Object} managerData - 簽核流程主檔回傳的那筆記錄
      * @param {Array}  fieldsToUpdate - MANAGER_FIELDS_MAPPING 或 MANAGER_FIELDS_SPECIAL
-     * @returns {{ fieldHasValue: Object, fieldsToShow: string[] }}
+     * @returns {{ fieldHasValue: Object, fieldsToShow: string[], usersOf: Object<string, Array> }}  usersOf：每格實際要排的人
      */
     const planSigningChain = (managerData, fieldsToUpdate) => {
+      // 由高層往低層看：同一人已排在更上面的格子（例如主管3 與次長1 是同一人），下面那格就不排，只簽上面那關
+      const usersOf = {};
+      const codesAbove = new Set();
+      [...fieldsToUpdate].reverse().forEach(({ apiField, displayField }) => {
+        const users = (managerData[apiField]?.value || []).filter((user) => !codesAbove.has(user.code));
+        users.forEach((user) => codesAbove.add(user.code));
+        usersOf[displayField] = users;
+      });
+
       const fieldHasValue = {};
-      fieldsToUpdate.forEach(({ apiField, displayField }) => {
-        fieldHasValue[displayField] = managerData[apiField]?.value?.length > 0;
+      fieldsToUpdate.forEach(({ displayField }) => {
+        fieldHasValue[displayField] = usersOf[displayField].length > 0;
       });
 
       const fieldsToShow = fieldsToUpdate.map(({ displayField }) => displayField).filter((displayField) => fieldHasValue[displayField]);
 
-      return { fieldHasValue, fieldsToShow };
+      return { fieldHasValue, fieldsToShow, usersOf };
     };
 
     /**
@@ -1833,11 +1843,11 @@
     function updateSigningFields(managerData, record, isSpecialDepartment) {
       const fieldsToUpdate = isSpecialDepartment ? MANAGER_FIELDS_SPECIAL : MANAGER_FIELDS_MAPPING;
 
-      const { fieldHasValue, fieldsToShow } = planSigningChain(managerData, fieldsToUpdate);
+      const { fieldHasValue, fieldsToShow, usersOf } = planSigningChain(managerData, fieldsToUpdate);
 
-      fieldsToUpdate.forEach(({ apiField, displayField }) => {
+      fieldsToUpdate.forEach(({ displayField }) => {
         const shouldShow = fieldsToShow.includes(displayField);
-        const users = fieldHasValue[displayField] ? managerData[apiField].value : [];
+        const users = fieldHasValue[displayField] ? usersOf[displayField] : [];
 
         if (shouldShow && users.length > 0) {
           // 顯示欄位並設定值
@@ -1871,7 +1881,11 @@
      * @param {string} userCode - 費用所屬人的使用者代碼
      */
     function clearSigningFieldsByTitle(updateRecord, title, userCode) {
-      switch (title) {
+      // 本人也排在次長格（課長兼次長、中心長排在次長格…）：照次長處理，簽核從他上面那一層開始，不會自己簽自己
+      const isInDeputySlot = DEPUTY_FIELDS.some((field) => updateRecord.record[field]?.value?.some((user) => user.code === userCode));
+      const effectiveTitle = isInDeputySlot && title !== '部長' && title !== '支店長' ? '次長' : title;
+
+      switch (effectiveTitle) {
         case '課長':
           console.log('開始處理課長身份');
           console.log('使用者 code:', userCode);

@@ -65,9 +65,29 @@ const buildManagerData = (presence) => {
 const presencePatterns = [];
 for (let mask = 0; mask < 64; mask++) presencePatterns.push(API_FIELDS.map((_, i) => Boolean(mask & (1 << i))));
 
-check('回傳 fieldHasValue 與 fieldsToShow 兩個鍵', () => {
+check('回傳 fieldHasValue、fieldsToShow、usersOf 三個鍵', () => {
   const r = planSigningChain({}, MANAGER_FIELDS_MAPPING);
-  assert.deepStrictEqual(Object.keys(r).sort(), ['fieldHasValue', 'fieldsToShow']);
+  assert.deepStrictEqual(Object.keys(r).sort(), ['fieldHasValue', 'fieldsToShow', 'usersOf']);
+});
+
+check('同一人在主管3 與次長1：只留次長1，主管3 不排（不連簽兩關）', () => {
+  const data = { 請購單位主管3: { value: U('D') }, 請購單位次長1: { value: U('D') }, 請購單位部長: { value: U('H') } };
+  const r = planSigningChain(data, MANAGER_FIELDS_MAPPING);
+  assert.deepStrictEqual(r.fieldsToShow, ['單位次長1', '單位部長_支店長']);
+  assert.deepStrictEqual(r.usersOf['單位主管3'], []);
+  assert.deepStrictEqual(r.usersOf['單位次長1'], U('D'));
+});
+
+check('同一人在主管3 與部長（中間沒有次長）：只留部長', () => {
+  const data = { 請購單位主管3: { value: U('H') }, 請購單位部長: { value: U('H') } };
+  assert.deepStrictEqual(planSigningChain(data, MANAGER_FIELDS_MAPPING).fieldsToShow, ['單位部長_支店長']);
+});
+
+check('一格有兩人、其中一人也在上面：只拿掉重複的那位，另一位照排', () => {
+  const data = { 請購單位主管3: { value: [...U('A'), ...U('D')] }, 請購單位次長1: { value: U('D') } };
+  const r = planSigningChain(data, MANAGER_FIELDS_MAPPING);
+  assert.deepStrictEqual(r.usersOf['單位主管3'], U('A'));
+  assert.deepStrictEqual(r.fieldsToShow, ['單位主管3', '單位次長1']);
 });
 
 check('六格都有人：全部排進來，順序是 主管1→2→3→次長→次長1→部長', () => {

@@ -3,7 +3,7 @@
 // 測試：流程管理設定的檢查工具（tests/lib/process_*.cjs、process_management/check_process.cjs、load_config.cjs）
 //   1. 載入設定檔：kintone.app.getId() 回 749，欄位代碼從 FIELDS 取
 //   2. 模擬器怎麼解讀條件：in／not in、群組與組織的類型標記、THIS_YEAR()；看不懂的寫法會明確報錯，不會靜默通過
-//   3. 749 目前的流程（process_management/exports/749_rev1798.json）：
+//   3. 749 目前的流程（process_management/exports/749_rev1799.json）：
 //        結構檢查 0 個問題；走一遍與按鈕檢查有「已知的問題清單」（見下方 KNOWN_*），
 //        測試斷言的就是這份清單——之後使用者把流程改好、清單變了，測試會失敗提醒更新
 //   4. 修好的複本（只補 749 現況缺的條件）：全部通過，證明已知問題的成因就是下面講的那幾個條件
@@ -28,7 +28,7 @@ const ROOT = path.join(__dirname, '..');
 const EXPORTS_DIR = path.join(ROOT, 'process_management', 'exports');
 const CONFIG = loadConfig();
 const F = CONFIG.FIELDS;
-const EXPORT_CURRENT = JSON.parse(fs.readFileSync(path.join(EXPORTS_DIR, '749_rev1798.json'), 'utf8'));
+const EXPORT_CURRENT = JSON.parse(fs.readFileSync(path.join(EXPORTS_DIR, '749_rev1799.json'), 'utf8'));
 
 const clone = (obj) => JSON.parse(JSON.stringify(obj));
 
@@ -41,7 +41,7 @@ const check = (label, fn) => {
 
 const hasProblem = (problems, ...words) => problems.some((p) => words.every((w) => p.includes(w)));
 
-// ── 749 revision 1798 已知的問題（流程本身的設定，不是檢查工具的錯；要由使用者決定怎麼改）─────────────
+// ── 749 revision 1799（與 1798 相同） 已知的問題（流程本身的設定，不是檢查工具的錯；要由使用者決定怎麼改）─────────────
 //   成因 A：自動排人的單、有部長（單位部長_支店長 有人）時，
 //           「申請單位主管3確認中」「申請單位次長1確認中」同時出現「提交單位部長確認」和「提交單位會計入帳」兩顆按鈕。
 //           因為這兩關的「提交單位會計入帳」只看「會計單位」，沒有像「草稿（未送出）」那樣加 單位部長_支店長 not in (部長)。
@@ -171,8 +171,8 @@ check('模擬器解讀：不支援的寫法（>、or、其他函式）直接丟�
 
 // ── 3. 749 目前的流程 ────────────────────────────────────────────────────
 
-check('749 revision 1798：結構檢查 0 個問題（24 個狀態、122 條動作、作業者欄位與條件欄位都是已知欄位，條件模擬器都看得懂）', () => {
-  assert.strictEqual(EXPORT_CURRENT.revision, '1798');
+check('749 revision 1799：結構檢查 0 個問題（24 個狀態、122 條動作、作業者欄位與條件欄位都是已知欄位，條件模擬器都看得懂）', () => {
+  assert.strictEqual(EXPORT_CURRENT.revision, '1799');
   assert.strictEqual(Object.keys(EXPORT_CURRENT.states).length, 24);
   assert.strictEqual(EXPORT_CURRENT.actions.length, 122);
   assert.deepStrictEqual(lintProcess(EXPORT_CURRENT, CONFIG), []);
@@ -183,7 +183,7 @@ check('749 revision 1798：結構檢查 0 個問題（24 個狀態、122 條動�
   conds.forEach((c) => assert.doesNotThrow(() => sim.parseCond(c), c));
 });
 
-check('749 revision 1798：config 的 STATUS 都是流程裡真的有的狀態（「點擊流程開始」後是「草稿（未送出）」，與其他 App 一致）', () => {
+check('749 revision 1799：config 的 STATUS 都是流程裡真的有的狀態（「點擊流程開始」後是「草稿（未送出）」，與其他 App 一致）', () => {
   Object.values(CONFIG.STATUS).forEach((name) => assert.ok(EXPORT_CURRENT.states[name], `流程裡沒有狀態「${name}」`));
   assert.strictEqual(EXPORT_CURRENT.states['申請開始'], undefined);
   const start = EXPORT_CURRENT.actions.find((a) => a.name === CONFIG.ACTIONS.APPLY_START);
@@ -233,7 +233,50 @@ check('749 沒有條件永遠不成立的動作（rev 1798 拿掉「申請單位
   assert.deepStrictEqual(fromDeputy, [`提交單位次長1確認→${S.DEPUTY1}`, '駁回→申請單位次長駁回']);
 });
 
+// 程式會把主檔有值的簽核人全部排上（§2.3），流程每條可走的路線都要經過每一位有人的關卡，不能跳過
+const SLOT_STATES = Object.freeze({
+  單位主管1: '申請單位主管1確認中',
+  單位主管2: '申請單位主管2確認中',
+  單位主管3: S.MANAGER3,
+  單位次長: S.DEPUTY,
+  單位次長1: S.DEPUTY1,
+  [HEAD_FIELD]: S.HEAD,
+});
+/** 每筆假資料展開所有送出按鈕（有兩顆就兩條路都走），回報「走得到會計卻跳過有人的關卡」的路線 */
+const skippedApprovers = (proc) => {
+  const skips = [];
+  for (const { id, record } of enumerateRecords(CONFIG)) {
+    const need = Object.keys(SLOT_STATES).filter((f) => (Array.isArray(record[f]) ? record[f].length > 0 : record[f] != null && String(record[f]) !== '')).map((f) => SLOT_STATES[f]);
+    const dfs = (state, route) => {
+      if (state.startsWith('單位會計處理中') || route.length > 20) {
+        const missed = need.filter((s) => !route.includes(s));
+        if (missed.length) skips.push({ id, route, missed });
+        return;
+      }
+      sim.enabledActions(proc, state, record)
+        .filter((a) => a.type === 'PRIMARY' && !['駁回', '作廢'].includes(a.name))
+        .forEach((a) => dfs(a.to, route.concat(a.to)));
+    };
+    dfs(S.START, [S.START]);
+  }
+  return skips;
+};
+
+check('⚠️ 749 簽核人會被跳過：有次長或部長時，主管3／次長1 可以直接按「提交單位會計入帳」略過後面的人（102 筆假資料；流程補條件前的已知問題）', () => {
+  const skips = skippedApprovers(EXPORT_CURRENT);
+  assert.strictEqual(new Set(skips.map((s) => s.id)).size, 102);
+  // 被跳過的只會是次長、次長1、部長，而且都是從主管3 或次長1 直接送會計
+  skips.forEach((s) => {
+    assert.ok(s.missed.every((m) => [S.DEPUTY, S.DEPUTY1, S.HEAD].includes(m)), `${s.id}：${s.missed}`);
+    assert.ok([S.MANAGER3, S.DEPUTY1].includes(s.route[s.route.length - 2]), `${s.id}：${s.route.join('→')}`);
+  });
+});
+
 // ── 4. 修好的複本全部通過 ────────────────────────────────────────────────
+
+check('修好的複本：每筆假資料的每條路線都經過所有排上的簽核人，沒有人被跳過', () => {
+  assert.deepStrictEqual(skippedApprovers(FIXED).map((s) => `${s.id}：${s.route.join('→')}`), []);
+});
 
 check('修好的複本（補 部長 not in、次長 0 人兩處條件）：結構、走一遍、按鈕全部 0 個問題——已知問題的成因就是這兩處', () => {
   assert.notDeepStrictEqual(FIXED.actions, EXPORT_CURRENT.actions);
@@ -476,7 +519,7 @@ check('latestExport：挑 revision 最大的 749_rev*.json（不是字串排序�
 check('命令列：沒給參數時檢查 exports 裡 revision 最大的 749 流程檔；749 目前有已知問題，結束代碼 1、輸出「未通過」', () => {
   const run = runCli();
   assert.strictEqual(run.status, 1, run.stdout + run.stderr);
-  assert.ok(run.stdout.includes(`${path.basename(latestExport())}（revision 1798）`), run.stdout);
+  assert.ok(run.stdout.includes(`${path.basename(latestExport())}（revision 1799）`), run.stdout);
   assert.ok(run.stdout.includes('[1] 結構檢查：沒有問題'));
   assert.ok(run.stdout.includes('102 筆'));
   assert.ok(run.stdout.includes('未通過'));

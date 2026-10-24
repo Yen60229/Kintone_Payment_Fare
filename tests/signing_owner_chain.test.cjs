@@ -233,6 +233,32 @@ const NAME = '航空貨物部-台北營業課';
     assert.deepStrictEqual(filledSlots(), ['單位次長1', '單位部長_支店長']);
   });
 
+  await check('課長兼次長（本人在單位主管3 也在單位次長1）：照次長處理，課長全清、次長清到本人那格，只剩部長；人數 0／0', async () => {
+    await run({ orgName: NAME, title: '課長', master: masterOf({ 單位主管3: 'OWN', 單位次長1: 'OWN', 單位部長_支店長: 'H' }) });
+    assert.deepStrictEqual(filledSlots(), ['單位部長_支店長']);
+    assert.deepStrictEqual(counts(), ['0人', '0人']);
+    SLOTS.forEach((f) => assert.ok(!signers()[f].includes('OWN'), `${f} 不該有本人`));
+  });
+
+  await check('主檔的主管3 與次長1 是同一位次長、課員填單：主管3 不排，次長直接簽；人數 0／1', async () => {
+    await run({ orgName: NAME, title: '課員', master: masterOf({ 單位主管3: 'D', 單位次長1: 'D', 單位部長_支店長: 'H' }) });
+    assert.deepStrictEqual(signers(), { 單位主管1: [], 單位主管2: [], 單位主管3: [], 單位次長: [], 單位次長1: ['D'], 單位部長_支店長: ['H'] });
+    assert.deepStrictEqual(counts(), ['0人', '1人']);
+    assert.strictEqual(env.shown['單位主管3'], false);
+  });
+
+  await check('本人排在單位次長、職稱不是次長（例如中心長）：一樣從次長以上開始，剩次長1 與部長；人數 0／1', async () => {
+    await run({ orgName: NAME, title: '中心長', master: masterOf({ ...FULL, 單位次長: 'OWN' }) });
+    assert.deepStrictEqual(filledSlots(), ['單位次長1', '單位部長_支店長']);
+    assert.deepStrictEqual(counts(), ['0人', '1人']);
+  });
+
+  await check('本人只在課長格、不在次長格：照原本的課長處理，次長以上都留著', async () => {
+    await run({ orgName: NAME, title: '課長', master: masterOf({ 單位主管3: 'OWN', 單位次長1: 'D1', 單位部長_支店長: 'H' }) });
+    assert.deepStrictEqual(filledSlots(), ['單位次長1', '單位部長_支店長']);
+    assert.deepStrictEqual(counts(), ['0人', '1人']);
+  });
+
   await check('部長／支店長本人：主管、次長全清，只剩部長格，人數 0／0', async () => {
     await run({ orgName: NAME, title: '部長', master: masterOf({ ...FULL, 單位部長_支店長: 'OWN' }) });
     assert.deepStrictEqual(filledSlots(), ['單位部長_支店長']);
