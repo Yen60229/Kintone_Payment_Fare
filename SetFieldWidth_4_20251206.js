@@ -18,10 +18,13 @@
   //   寬度是依內容算出來的，只能留在 JS。
   // =============================================================================
 
-  const F = window.PR_CONFIG.FIELDS;
-
   // 🔧 設定要自動調整的欄位代碼
-  const autoResizeFields = [F.PAY_METHOD, F.APPLICANT, F.APPLICANT_ORG, F.EXPENSE_OWNER, F.EXPENSE_OWNER_ORG];
+  //   用到時才讀 window.PR_CONFIG（在 bundle 裡）：這支在 kintone 上就算排在 bundle 前面載入也不會出錯，
+  //   事件觸發時所有 JS 都已載入完。
+  const autoResizeFields = () => {
+    const F = window.PR_CONFIG.FIELDS;
+    return [F.PAY_METHOD, F.APPLICANT, F.APPLICANT_ORG, F.EXPENSE_OWNER, F.EXPENSE_OWNER_ORG];
+  };
 
   const DELAY_MS = 500; // 等畫面畫好
   const DEBOUNCE_MS = 300; // 內容連續變化時，停下來才調
@@ -68,7 +71,7 @@
 
   /** 依 record 的值調整每個欄位的寬度；寬度沒變就不重寫（避免連續觸發時畫面一直重排） */
   const applyWidths = (record) => {
-    autoResizeFields.forEach((fieldCode) => {
+    autoResizeFields().forEach((fieldCode) => {
       try {
         if (!record[fieldCode]) return;
         const widthPx = `${calcWidth(fieldContent(record[fieldCode]))}px`;

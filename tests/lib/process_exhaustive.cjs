@@ -9,7 +9,10 @@
 //
 // 「合法組合」的規則，和簽核人員程式實際會寫的值一致（只列程式寫得出來的；寫不出來的不列，否則會誤報）：
 //   1. 簽核人排「完整鏈」：主管、次長各自靠右對齊（主管 1 人放單位主管3、2 人放主管2＋主管3…；
-//      次長 1 人放單位次長1、2 人放單位次長＋單位次長1），主管 0～3 人、次長 0～2 人、有無部長都可能
+//      次長 1 人放單位次長1、2 人放單位次長＋單位次長1），主管 0～3 人、次長 0～2 人
+//      簽核順序固定是 主管 → 次長 → 部長 → 會計，從費用所屬人上面那一層開始。簽核流程主檔一定有部長，
+//      部長格只有在「費用所屬人就是部長」時才會清空，這時下面的主管、次長也一定是空的；
+//      所以「無部長」只會是 主管 0 人／次長 0 人，不會有「有主管或次長、卻沒有部長」的單
 //   2. 勾手動設定簽核流程時：
 //        - 手動設定簽核流程的 change 處理會把「會計單位」清空，所以手動的單會計單位一律是空的，
 //          最後停在「單位會計處理中」；因此手動的單每種簽核人形狀只列一次，不分會計單位
@@ -59,7 +62,7 @@ const makeShape = (slots, hasHead) => {
   };
 };
 
-/** 主管 0～3 人、次長 0～2 人靠右對齊，部長有無都可以 */
+/** 主管 0～3 人、次長 0～2 人靠右對齊，部長有無都可以（手動設定簽核流程：簽核人是使用者自己挑的） */
 const fullShapes = () => {
   const shapes = [];
   for (const managers of MANAGER_COUNTS) {
@@ -71,6 +74,9 @@ const fullShapes = () => {
   }
   return shapes;
 };
+
+/** 自動排人：一定有部長；只有費用所屬人就是部長時才沒有部長，這時主管、次長也都是 0 人 */
+const autoShapes = () => fullShapes().filter((shape) => shape.hasHead || (shape.managers === 0 && shape.deputies === 0));
 
 /**
  * 組出一筆給流程模擬器用的假資料（欄位值的約定見 process_sim.cjs）。
@@ -113,7 +119,7 @@ function* enumerateRecords(config) {
     // 手動的單會計單位是空的，只列一次，但會計單位承辦人每個組織各列一次；自動的單每個會計單位各列一次
     const accounts = manual ? [''] : accountingGroups;
     const staffOrgs = manual ? MANUAL_ACCOUNTING_ORGS : [undefined];
-    for (const shape of fullShapes()) {
+    for (const shape of manual ? fullShapes() : autoShapes()) {
       for (const acc of accounts) {
         for (const staffOrg of staffOrgs) {
           const slotValues = {};

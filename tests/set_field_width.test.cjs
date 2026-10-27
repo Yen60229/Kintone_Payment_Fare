@@ -13,7 +13,7 @@ const { createRunner, readSrc } = require('./lib/pr_env.cjs');
 
 const { check, done } = createRunner('set_field_width.test.cjs');
 
-const setup = () => {
+const setup = ({ configAfter = false } = {}) => {
   const handlers = [];
   const timers = [];
   const observers = [];
@@ -89,8 +89,10 @@ const setup = () => {
     },
   };
   vm.createContext(sandbox);
-  vm.runInContext(readSrc('payment_request_config.js'), sandbox);
+  // kintone 上的載入順序：config 在 bundle 裡；configAfter＝SetFieldWidth 排在 bundle 前面
+  if (!configAfter) vm.runInContext(readSrc('payment_request_config.js'), sandbox);
   vm.runInContext(readSrc('SetFieldWidth_4_20251206.js'), sandbox);
+  if (configAfter) vm.runInContext(readSrc('payment_request_config.js'), sandbox);
   const F = sandbox.window.PR_CONFIG.FIELDS;
 
   const fire = (type, record = {}) => handlers.filter((h) => h.types.includes(type)).forEach((h) => h.handler({ type, record }));
@@ -109,6 +111,13 @@ const setup = () => {
 };
 
 // ── 1. 寬度計算 ─────────────────────────────────────────────────────────────
+check('載入順序：SetFieldWidth 排在 bundle（config）前面載入也不出錯，事件觸發時照常調寬度', () => {
+  const { fire, flush, record, getFieldCalls, F } = setup({ configAfter: true });
+  fire('app.record.detail.show', record());
+  flush();
+  assert.ok(getFieldCalls.includes(F.APPLICANT), getFieldCalls.join(','));
+});
+
 check('寬度：空白 50px；英數 1 單位、中文 2 單位，×10＋40；最寬 500px', () => {
   const { W } = setup();
   assert.strictEqual(W.calcWidth(''), 50);

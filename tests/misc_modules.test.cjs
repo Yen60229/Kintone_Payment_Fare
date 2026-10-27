@@ -86,8 +86,8 @@ check('作廢防呆：只看下一狀態是作廢也算作廢動作', () => {
 // ── SetFieldWidth ──────────────────────────────────────────────────────────
 
 check('自動寬度欄位：付款方式、申請人、申請人部門、費用所屬人、費用所屬人部門', () => {
-  assert.deepStrictEqual([...global.window.PR_FIELD_WIDTH.autoResizeFields], [F.PAY_METHOD, F.APPLICANT, F.APPLICANT_ORG, F.EXPENSE_OWNER, F.EXPENSE_OWNER_ORG]);
-  assert.deepStrictEqual([...global.window.PR_FIELD_WIDTH.autoResizeFields], ['付款方式', '申請人', '申請人部門', '費用所屬人', '費用所屬人部門']);
+  assert.deepStrictEqual([...global.window.PR_FIELD_WIDTH.autoResizeFields()], [F.PAY_METHOD, F.APPLICANT, F.APPLICANT_ORG, F.EXPENSE_OWNER, F.EXPENSE_OWNER_ORG]);
+  assert.deepStrictEqual([...global.window.PR_FIELD_WIDTH.autoResizeFields()], ['付款方式', '申請人', '申請人部門', '費用所屬人', '費用所屬人部門']);
 });
 
 check('SetFieldWidth：左移（leftShift）整段刪除', () => {

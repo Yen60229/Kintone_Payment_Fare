@@ -1,10 +1,11 @@
 'use strict';
 
 // 測試：交通費明細規則_20261022.js
-//   1. 高鐵 → 賣方統編 00000000、格式 22，並鎖住；改回其他交通工具解鎖
+//   1. 高鐵 → 賣方統編 00000000、格式 22，並鎖住；改選其他交通工具清空並解鎖
 //   2. 稅額＝含稅金額 ÷ 1.05 × 0.05，四捨五入到個位數，稅額鎖住
 //   3. 憑證種類＝高鐵票／發票才開放發票號碼；其他種類清空並鎖住；存檔必填、本單不可重複、重算發票號碼記錄
 //   4. 有計程車 → 是否有紙本憑證自動選「是」、理由動態必填（紅色 *）；存檔驗證
+//   5. 交通工具限制憑證種類：變更事件清掉不能用的、只有一種就帶入；存檔擋；桌面版選單藏起不能選的項目
 // 單獨執行：node tests/traffic_rules.test.cjs
 
 const assert = require('assert');
@@ -83,14 +84,24 @@ check('交通工具＝高鐵 → 賣方統編 00000000、格式 22，兩欄鎖�
   assert.strictEqual(v[COLS.FORMAT].disabled, true);
 });
 
-check('改回其他交通工具（變更事件）→ 解鎖賣方統編／格式，值保留讓使用者自己改', async () => {
+check('改選高鐵以外（變更事件）→ 賣方統編還是高鐵固定值時，賣方統編、格式清空並解鎖', async () => {
   const { env } = setup();
   const r = record([row({ [COLS.VEHICLE]: '計程車', [COLS.SELLER_TAX_ID]: '00000000', [COLS.FORMAT]: '22' })]);
   const ev = await env.fire(`app.record.create.change.${COLS.VEHICLE}`, { record: r });
   const v = ev.record[T.CODE].value[0].value;
   assert.strictEqual(v[COLS.SELLER_TAX_ID].disabled, false);
   assert.strictEqual(v[COLS.FORMAT].disabled, false);
-  assert.strictEqual(v[COLS.SELLER_TAX_ID].value, '00000000');
+  assert.strictEqual(v[COLS.SELLER_TAX_ID].value, '');
+  assert.strictEqual(v[COLS.FORMAT].value, '');
+});
+
+check('改選高鐵以外：使用者自己填的賣方統編、格式不清', async () => {
+  const { env } = setup();
+  const r = record([row({ [COLS.VEHICLE]: '計程車', [COLS.SELLER_TAX_ID]: '12345678', [COLS.FORMAT]: '22' })]);
+  const ev = await env.fire(`app.record.create.change.${COLS.VEHICLE}`, { record: r });
+  const v = ev.record[T.CODE].value[0].value;
+  assert.strictEqual(v[COLS.SELLER_TAX_ID].value, '12345678');
+  assert.strictEqual(v[COLS.FORMAT].value, '22');
 });
 
 check('開畫面（show）只加鎖不解鎖：不蓋掉帳號權限設定已鎖的欄位', async () => {
@@ -218,6 +229,109 @@ check('事件註冊：create/edit 的 show，以及子表格／交通工具／�
     assert.ok(types.includes(`app.record.create.change.${code}`), code);
     assert.ok(types.includes(`app.record.edit.change.${code}`), code);
   });
+});
+
+// ── 5. 交通工具限制憑證種類 ─────────────────────────────────────────────────
+check('改交通工具：憑證種類不能用就清空（計程車不能選高鐵票），可以用就保留', async () => {
+  const { env } = setup();
+  let ev = await env.fire(`app.record.edit.change.${COLS.VEHICLE}`, {
+    record: record([row({ [COLS.VEHICLE]: '計程車', [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.INVOICE_NO]: 'T1' })]),
+  });
+  let v = ev.record[T.CODE].value[0].value;
+  assert.strictEqual(v[COLS.RECEIPT_TYPE].value, '');
+  assert.strictEqual(v[COLS.INVOICE_NO].value, '', '憑證種類清掉，發票號碼跟著清');
+  ev = await env.fire(`app.record.edit.change.${COLS.VEHICLE}`, { record: record([row({ [COLS.VEHICLE]: '計程車', [COLS.RECEIPT_TYPE]: '收據' })]) });
+  assert.strictEqual(ev.record[T.CODE].value[0].value[COLS.RECEIPT_TYPE].value, '收據');
+});
+
+check('改憑證種類：選了這個交通工具不能用的 → 清空', async () => {
+  const { env } = setup();
+  const ev = await env.fire(`app.record.create.change.${COLS.RECEIPT_TYPE}`, { record: record([row({ [COLS.VEHICLE]: 'Uber', [COLS.RECEIPT_TYPE]: '無' })]) });
+  assert.strictEqual(ev.record[T.CODE].value[0].value[COLS.RECEIPT_TYPE].value, '');
+});
+
+check('選高鐵：只能高鐵票 → 自動帶入，發票號碼開放', async () => {
+  const { env } = setup();
+  const ev = await env.fire(`app.record.create.change.${COLS.VEHICLE}`, { record: record([row({ [COLS.VEHICLE]: '高鐵', [COLS.RECEIPT_TYPE]: '發票' })]) });
+  const v = ev.record[T.CODE].value[0].value;
+  assert.strictEqual(v[COLS.RECEIPT_TYPE].value, '高鐵票');
+  assert.strictEqual(v[COLS.INVOICE_NO].disabled, false);
+});
+
+check('開畫面不改憑證種類（舊單照原樣顯示），存檔時 validate 擋下並列出可選項目', async () => {
+  const { env, R } = setup();
+  const r = record([row({ [COLS.VEHICLE]: '計程車', [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.INVOICE_NO]: 'T1' })]);
+  const ev = await env.fire('app.record.edit.show', { record: r });
+  assert.strictEqual(ev.record[T.CODE].value[0].value[COLS.RECEIPT_TYPE].value, '高鐵票');
+  const errs = R.validate(r);
+  assert.ok(errs.some((e) => e.includes('第 1 行') && e.includes('計程車') && e.includes('高鐵票') && e.includes('發票、收據、無')), errs.join('\n'));
+});
+
+check('allowedReceiptTypes：交通工具空白 → null（不限制）', () => {
+  const { R } = setup();
+  assert.strictEqual(R.allowedReceiptTypes(''), null);
+  assert.deepStrictEqual([...R.allowedReceiptTypes('高鐵')], ['高鐵票']);
+});
+
+/** 假 DOM：一列子表格（交通工具、憑證種類兩欄）＋一個選單 */
+const fakeEl = (tag, { text = '', cls = [] } = {}) => {
+  const el = {
+    tag,
+    textContent: text,
+    children: [],
+    parentNode: null,
+    classes: new Set(cls),
+    classList: { toggle: (c, on) => (on ? el.classes.add(c) : el.classes.delete(c)) },
+    append(...kids) {
+      kids.forEach((k) => {
+        k.parentNode = el;
+        el.children.push(k);
+      });
+      return el;
+    },
+    matches: (sel) => sel.split(',').some((s) => (s.trim().startsWith('.') ? el.classes.has(s.trim().slice(1)) : el.tag === s.trim())),
+    closest(sel) {
+      for (let n = el; n; n = n.parentNode) if (n.matches(sel)) return n;
+      return null;
+    },
+    querySelectorAll(sel) {
+      const out = [];
+      const [first, second] = sel.split(' ');
+      const walk = (n, inFirst) => n.children.forEach((k) => {
+        const hit = second ? inFirst && k.matches(second) : k.matches(first);
+        if (hit) out.push(k);
+        walk(k, inFirst || (second && k.matches(first)));
+      });
+      walk(el, false);
+      return out;
+    },
+  };
+  return el;
+};
+
+check('menuContext：點憑證種類欄的下拉 → 依這列交通工具限制；點交通工具欄 → 不限制；不是交通費明細 → undefined', () => {
+  const { env, R } = setup();
+  env.currentRecord = record([row({ [COLS.VEHICLE]: '計程車' })]);
+  const thead = fakeEl('thead').append(fakeEl('tr').append(fakeEl('th', { text: '交通工具*' }), fakeEl('th', { text: '憑證種類*' })));
+  const vehicleSel = fakeEl('div', { cls: ['gaia-argoui-select'] });
+  const receiptSel = fakeEl('div', { cls: ['gaia-argoui-select'] });
+  const tbody = fakeEl('tbody').append(fakeEl('tr').append(fakeEl('td').append(vehicleSel), fakeEl('td').append(receiptSel)));
+  fakeEl('table').append(thead, tbody);
+  assert.deepStrictEqual([...R.menuContext(receiptSel).allowed], ['發票', '收據', '無']);
+  assert.strictEqual(R.menuContext(vehicleSel).allowed, null);
+  const other = fakeEl('div', { cls: ['gaia-argoui-select'] });
+  fakeEl('table').append(fakeEl('thead').append(fakeEl('tr').append(fakeEl('th', { text: '公司' }))), fakeEl('tbody').append(fakeEl('tr').append(fakeEl('td').append(other))));
+  assert.strictEqual(R.menuContext(other), undefined);
+});
+
+check('filterMenuItems：藏起不能選的憑證種類、不碰「-----」；allowed＝null 全部還原', () => {
+  const { R } = setup();
+  const items = ['-----', '高鐵票', '車票（高鐵外）', '發票', '收據', '無'].map((t) => fakeEl('div', { text: t, cls: ['goog-menuitem'] }));
+  const menu = fakeEl('div', { cls: ['goog-menu'] }).append(...items);
+  assert.strictEqual(R.filterMenuItems(menu, ['發票', '收據', '無']), 2);
+  assert.deepStrictEqual(items.filter((i) => i.classes.has('pr-option-hidden')).map((i) => i.textContent), ['高鐵票', '車票（高鐵外）']);
+  assert.strictEqual(R.filterMenuItems(menu, null), 0);
+  assert.ok(items.every((i) => !i.classes.has('pr-option-hidden')));
 });
 
 done();

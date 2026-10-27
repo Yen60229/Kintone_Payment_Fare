@@ -7,11 +7,14 @@
   // =============================================================================
   // 交通費明細規則（子表格「交通費請款單」與「是否有紙本憑證」「理由」）
   //
-  //   1. 交通工具＝高鐵 → 賣方統編寫 TRAFFIC_RULES.HSR_SELLER_TAX_ID、格式寫 HSR_FORMAT，並鎖住
+  //   1. 交通工具＝高鐵 → 賣方統編寫 TRAFFIC_RULES.HSR_SELLER_TAX_ID、格式寫 HSR_FORMAT，並鎖住；
+  //      改選高鐵以外（變更事件）→ 若賣方統編還是高鐵固定值，賣方統編、格式一起清空並解鎖
   //   2. 金額變更 → 稅額＝金額 ÷ 1.05 × 0.05，四捨五入到個位數（金額本身含稅），稅額鎖住
   //   3. 憑證種類＝高鐵票／發票 → 開放發票號碼；其他種類鎖住並清空。存檔時必填、表單內不可重複，
   //      並重算「發票號碼記錄」（跨單重複由 payment_request_submit 查記錄欄位，不用迴圈讀表格）
   //   4. 有任何一列是計程車 → 是否有紙本憑證自動選「是」，理由動態必填（標籤加紅色 *）
+  //   5. 交通工具限制憑證種類（TRAFFIC_RULES.RECEIPT_BY_VEHICLE）：變更事件清掉不能用的組合、只有一種就自動帶入；
+  //      存檔時擋下不能用的組合；桌面版下拉選單只列出可選的項目
   //
   //   存檔驗證的錯誤由 payment_request_submit 統一顯示（呼叫 normalize／validate），這裡不另跳視窗。
   // =============================================================================
@@ -43,6 +46,17 @@
   };
 
   const isInvoiceReceipt = (row) => RULES.INVOICE_RECEIPT_TYPES.includes(row.value[COLS.RECEIPT_TYPE]?.value);
+  /**
+   * 這個交通工具可選的憑證種類；交通工具空白或沒設定 → null（不限制）
+   * @param {string} vehicle
+   * @returns {string[]|null}
+   */
+  const allowedReceiptTypes = (vehicle) => (vehicle && RULES.RECEIPT_BY_VEHICLE[vehicle]) || null;
+  const isReceiptAllowed = (row) => {
+    const receipt = row.value[COLS.RECEIPT_TYPE]?.value;
+    const allowed = allowedReceiptTypes(row.value[COLS.VEHICLE]?.value);
+    return !receipt || !allowed || allowed.includes(receipt);
+  };
   const isHsr = (row) => row.value[COLS.VEHICLE]?.value === OPT.VEHICLE.HSR;
   const getRows = (record) => (Array.isArray(record[TRAFFIC.CODE]?.value) ? record[TRAFFIC.CODE].value.filter((r) => r?.value) : []);
 
@@ -67,8 +81,19 @@
       if (v[COLS.SELLER_TAX_ID]) v[COLS.SELLER_TAX_ID].value = RULES.HSR_SELLER_TAX_ID;
       if (v[COLS.FORMAT]) v[COLS.FORMAT].value = RULES.HSR_FORMAT;
     }
+    else if (unlock && v[COLS.SELLER_TAX_ID]?.value === RULES.HSR_SELLER_TAX_ID) {
+      v[COLS.SELLER_TAX_ID].value = '';
+      if (v[COLS.FORMAT]) v[COLS.FORMAT].value = '';
+    }
     setLock(COLS.SELLER_TAX_ID, isHsr(row));
     setLock(COLS.FORMAT, isHsr(row));
+
+    // 5. 交通工具限制憑證種類（只在變更事件改值；開畫面／存檔不動，交給 validate 擋）
+    if (unlock && v[COLS.RECEIPT_TYPE]) {
+      const allowed = allowedReceiptTypes(v[COLS.VEHICLE]?.value);
+      if (!isReceiptAllowed(row)) v[COLS.RECEIPT_TYPE].value = '';
+      if (allowed && allowed.length === 1 && !v[COLS.RECEIPT_TYPE].value) v[COLS.RECEIPT_TYPE].value = allowed[0];
+    }
 
     // 2. 稅額
     if (v[COLS.TAX] && v[COLS.AMOUNT]) v[COLS.TAX].value = calcTax(v[COLS.AMOUNT].value);
@@ -117,6 +142,15 @@
   const validate = (record) => {
     const errors = [];
     const rows = getRows(record);
+
+    // 交通工具與憑證種類的組合
+    rows.forEach((row, i) => {
+      if (isReceiptAllowed(row)) return;
+      const vehicle = row.value[COLS.VEHICLE].value;
+      errors.push(
+        `第 ${i + 1} 行交通工具是「${vehicle}」，「${COLS.RECEIPT_TYPE}」**不能選「${row.value[COLS.RECEIPT_TYPE].value}」**\n※ 可選：${allowedReceiptTypes(vehicle).join('、')}`,
+      );
+    });
 
     // 發票號碼：高鐵票／發票必填、表單內不可重複
     const seen = {};
@@ -176,6 +210,79 @@
     }
   };
 
+  // ── 畫面：憑證種類下拉選單只列出可選的項目（桌面版）───────────────────────
+  //   kintone 沒有隱藏下拉選項的 API。桌面版的下拉選單點開後是掛在 body 的 .goog-menu，
+  //   點子表格的下拉時記下是哪一列哪一欄，選單出現後把不能選的項目加上 pr-option-hidden。
+  //   這是畫面層的輔助，DOM 改版找不到就不做；真正的把關是變更事件與存檔驗證。
+
+  const OPTION_HIDDEN_CLASS = 'pr-option-hidden';
+  const ALL_RECEIPT_TYPES = Object.values(OPT.RECEIPT_TYPE);
+
+  const cellLabel = (th) => (th?.textContent || '').replace(/\*/g, '').trim();
+
+  /**
+   * 把選單裡不能選的憑證種類藏起來；allowed 為 null 時全部顯示。
+   * 只動憑證種類的選項（「-----」等其他項目不碰），所以點其他欄位的下拉也可以呼叫來還原。
+   * @param {Element} menu .goog-menu
+   * @param {string[]|null} allowed
+   * @returns {number} 藏起來的項目數
+   */
+  const filterMenuItems = (menu, allowed) => {
+    let hidden = 0;
+    Array.from(menu.querySelectorAll('.goog-menuitem')).forEach((item) => {
+      const text = (item.textContent || '').trim();
+      const hide = !!allowed && ALL_RECEIPT_TYPES.includes(text) && !allowed.includes(text);
+      item.classList.toggle(OPTION_HIDDEN_CLASS, hide);
+      if (hide) hidden += 1;
+    });
+    return hidden;
+  };
+
+  /**
+   * 點到的是不是交通費明細的下拉；是 → 回傳這次選單要用的限制（不是憑證種類欄 → null＝全部顯示）。
+   * @param {Element} target 點到的元素
+   * @returns {{ allowed: string[]|null }|undefined} 不是交通費明細的下拉 → undefined
+   */
+  const menuContext = (target) => {
+    const select = target?.closest?.('.gaia-argoui-select');
+    const td = select?.closest('td');
+    const tr = td?.closest('tr');
+    const table = tr?.closest('table');
+    if (!table) return undefined;
+    const headers = Array.from(table.querySelectorAll('thead th'));
+    const labelAt = (i) => cellLabel(headers[i]);
+    const receiptLabel = C.TRAFFIC_TABLE_LAYOUT.COLUMNS.find((c) => c.code === COLS.RECEIPT_TYPE)?.label || COLS.RECEIPT_TYPE;
+    if (!headers.some((th) => cellLabel(th) === receiptLabel)) return undefined;
+    const tds = Array.from(tr.children);
+    if (labelAt(tds.indexOf(td)) !== receiptLabel) return { allowed: null };
+    const rowIndex = Array.from(tr.parentNode.children).indexOf(tr);
+    const row = getRows(KT.record().get().record)[rowIndex];
+    return { allowed: row ? allowedReceiptTypes(row.value[COLS.VEHICLE]?.value) : null };
+  };
+
+  const filterOpenMenus = (allowed) => {
+    document.querySelectorAll('.goog-menu').forEach((menu) => {
+      if (getComputedStyle(menu).display !== 'none') filterMenuItems(menu, allowed);
+    });
+  };
+
+  const installMenuFilter = () => {
+    if (KT.IS_MOBILE || typeof document.addEventListener !== 'function') return;
+    const onOpen = (e) => {
+      try {
+        const ctx = menuContext(e.target);
+        if (!ctx) return;
+        // 選單是點下去之後才畫出來，等一下再處理（第二次是保險）
+        [0, 50].forEach((ms) => setTimeout(() => filterOpenMenus(ctx.allowed), ms));
+      } catch (err) {
+        console.warn('[交通費明細規則] 憑證種類選單過濾失敗', err);
+      }
+    };
+    document.addEventListener('mousedown', onOpen, true);
+    document.addEventListener('keydown', onOpen, true);
+  };
+  installMenuFilter();
+
   // ── 事件 ───────────────────────────────────────────────────────────────
 
   KT.on(['app.record.create.show', 'app.record.edit.show'], (event) => {
@@ -200,5 +307,5 @@
     return event;
   });
 
-  window.PR_TRAFFIC_RULES = Object.freeze({ calcTax, hasTaxi, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
+  window.PR_TRAFFIC_RULES = Object.freeze({ calcTax, hasTaxi, allowedReceiptTypes, filterMenuItems, menuContext, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
 })();

@@ -52,6 +52,7 @@
   // 簽核相關欄位
   const MANAGER_FIELDS = ['單位主管1', '單位主管2', '單位主管3'].filter((field) => APPROVAL_FIELDS[field]?.enabled);
   const DEPUTY_FIELDS = ['單位次長', '單位次長1'].filter((field) => APPROVAL_FIELDS[field]?.enabled);
+  const DIRECTOR_FIELD = '單位部長_支店長';
 
   const SIGNING_FIELDS_TO_HIDE = [...getEnabledFields(), COUNT_FIELDS.manager, COUNT_FIELDS.deputy];
 
@@ -345,7 +346,9 @@
   function clearSigningFieldsByTitle(updateRecord, title, userCode) {
     // 本人也排在次長格（課長兼次長、中心長排在次長格…）：照次長處理，簽核從他上面那一層開始，不會自己簽自己
     const isInDeputySlot = DEPUTY_FIELDS.some((field) => updateRecord.record[field]?.value?.some((user) => user.code === userCode));
-    const effectiveTitle = isInDeputySlot && title !== '部長' && title !== '支店長' ? '次長' : title;
+    // 本人就排在部長格（職稱不一定是部長，例如事業部長）：照部長處理，部長格也清掉，不會自己簽自己
+    const isInDirectorSlot = updateRecord.record[DIRECTOR_FIELD]?.value?.some((user) => user.code === userCode);
+    const effectiveTitle = isInDirectorSlot ? '部長' : isInDeputySlot && title !== '部長' && title !== '支店長' ? '次長' : title;
 
     switch (effectiveTitle) {
       case '課長':
@@ -462,7 +465,8 @@
 
       case '部長':
       case '支店長':
-        [...MANAGER_FIELDS, ...DEPUTY_FIELDS].forEach((field) => {
+        // 部長格是本人才清；部長格是別人（上一層部長）就留著讓他簽
+        [...MANAGER_FIELDS, ...DEPUTY_FIELDS, ...(isInDirectorSlot ? [DIRECTOR_FIELD] : [])].forEach((field) => {
           updateRecord.record[field] = {
             value: [],
             type: 'USER_SELECT',
@@ -716,8 +720,9 @@
 
           KT.record().set(updateRecord);
 
-          // 六大簽核流程不需再運行下方程式
-          if (isSpecialDepartment) return;
+          // 六大簽核流程只排部長，不需再運行下方程式；除非那位部長就是本人，要清掉部長格
+          const isOwnerDirector = updateRecord.record[DIRECTOR_FIELD]?.value?.some((user) => user.code === ownerCode);
+          if (isSpecialDepartment && !isOwnerDirector) return;
 
           // 費用所屬人職位設定 - 單職位與雙職位過濾重複簽核的人員
           clearSigningFieldsByTitle(updateRecord, title, ownerCode);

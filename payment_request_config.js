@@ -291,9 +291,17 @@
   const OPTIONS = Object.freeze({
     MANUAL_FLOW: Object.freeze({ ON: '手動設定簽核流程' }),
     // 子表格「交通工具」
-    VEHICLE: Object.freeze({ HSR: '高鐵', TAXI: '計程車' }),
+    VEHICLE: Object.freeze({
+      HSR: '高鐵',
+      MRT_BUS: '捷運／公車',
+      PARKING: '停車費',
+      TRAIN: '火車',
+      TAXI: '計程車',
+      UBER: 'Uber',
+      RENTAL: '汽機車短租',
+    }),
     // 子表格「憑證種類」
-    RECEIPT_TYPE: Object.freeze({ HSR_TICKET: '高鐵票', INVOICE: '發票' }),
+    RECEIPT_TYPE: Object.freeze({ HSR_TICKET: '高鐵票', TICKET: '車票（高鐵外）', INVOICE: '發票', RECEIPT: '收據', NONE: '無' }),
     // 主表「是否有紙本憑證」
     PAPER_RECEIPT: Object.freeze({ YES: '是' }),
   });
@@ -311,6 +319,18 @@
     TAX_RATE_PERCENT: 5,
     // 這些憑證種類才開放填發票號碼（存檔時必填、不可重複）
     INVOICE_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.HSR_TICKET, OPTIONS.RECEIPT_TYPE.INVOICE]),
+    // 交通工具 → 可選的憑證種類（沒列在這裡的交通工具不限制）。
+    //   變更事件：選了不能用的組合就清空憑證種類；只有一種可選時自動帶入。存檔時再驗一次。
+    //   桌面版：憑證種類的下拉選單只列出可選的項目（手機版選單是系統原生的，只靠變更事件清空）。
+    RECEIPT_BY_VEHICLE: Object.freeze({
+      [OPTIONS.VEHICLE.HSR]: Object.freeze([OPTIONS.RECEIPT_TYPE.HSR_TICKET]),
+      [OPTIONS.VEHICLE.TRAIN]: Object.freeze([OPTIONS.RECEIPT_TYPE.TICKET, OPTIONS.RECEIPT_TYPE.RECEIPT, OPTIONS.RECEIPT_TYPE.NONE]),
+      [OPTIONS.VEHICLE.MRT_BUS]: Object.freeze([OPTIONS.RECEIPT_TYPE.TICKET, OPTIONS.RECEIPT_TYPE.RECEIPT, OPTIONS.RECEIPT_TYPE.NONE]),
+      [OPTIONS.VEHICLE.TAXI]: Object.freeze([OPTIONS.RECEIPT_TYPE.INVOICE, OPTIONS.RECEIPT_TYPE.RECEIPT, OPTIONS.RECEIPT_TYPE.NONE]),
+      [OPTIONS.VEHICLE.UBER]: Object.freeze([OPTIONS.RECEIPT_TYPE.INVOICE, OPTIONS.RECEIPT_TYPE.RECEIPT]),
+      [OPTIONS.VEHICLE.PARKING]: Object.freeze([OPTIONS.RECEIPT_TYPE.INVOICE, OPTIONS.RECEIPT_TYPE.RECEIPT]),
+      [OPTIONS.VEHICLE.RENTAL]: Object.freeze([OPTIONS.RECEIPT_TYPE.INVOICE, OPTIONS.RECEIPT_TYPE.RECEIPT]),
+    }),
     // 有計程車時「理由」動態必填：畫面上找標籤文字以此開頭的欄位加紅色 *
     REASON_LABEL_PREFIX: '理由',
   });

@@ -532,3 +532,8 @@
   transform: scale(1.5);
   accent-color: #ff0000;
 }
+
+/* 交通費明細規則：憑證種類下拉選單隱藏這列交通工具不能用的選項（桌面版） */
+.goog-menuitem.pr-option-hidden {
+  display: none !important;
+}

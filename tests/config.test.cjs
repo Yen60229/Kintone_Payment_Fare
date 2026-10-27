@@ -264,11 +264,11 @@ check('AUTO_ADVANCE 行為開關與重試參數為合理值', () => {
 });
 
 // ── OPTIONS ─────────────────────────────────────────────────────────────────
-check('OPTIONS：手動簽核流程、交通工具（高鐵／計程車）、憑證種類（高鐵票／發票）、紙本憑證「是」；723 選項已刪', () => {
+check('OPTIONS：手動簽核流程、交通工具（7 種）、憑證種類（5 種，與 749 rev1819 下拉選項一致）、紙本憑證「是」；723 選項已刪', () => {
   assert.deepStrictEqual(JSON.parse(JSON.stringify(c.OPTIONS)), {
     MANUAL_FLOW: { ON: '手動設定簽核流程' },
-    VEHICLE: { HSR: '高鐵', TAXI: '計程車' },
-    RECEIPT_TYPE: { HSR_TICKET: '高鐵票', INVOICE: '發票' },
+    VEHICLE: { HSR: '高鐵', MRT_BUS: '捷運／公車', PARKING: '停車費', TRAIN: '火車', TAXI: '計程車', UBER: 'Uber', RENTAL: '汽機車短租' },
+    RECEIPT_TYPE: { HSR_TICKET: '高鐵票', TICKET: '車票（高鐵外）', INVOICE: '發票', RECEIPT: '收據', NONE: '無' },
     PAPER_RECEIPT: { YES: '是' },
   });
   assert.strictEqual(c.OPTIONS.MANUAL_FLOW.ON, F.MANUAL_FLOW, '勾選值與欄位代碼同字串但是兩回事，各自一個常數');
@@ -281,6 +281,16 @@ check('TRAFFIC_RULES：高鐵賣方統編 00000000、格式 22、稅率 5%、高
   assert.strictEqual(t.HSR_FORMAT, '22');
   assert.strictEqual(t.TAX_RATE_PERCENT, 5);
   assert.deepStrictEqual([...t.INVOICE_RECEIPT_TYPES], [c.OPTIONS.RECEIPT_TYPE.HSR_TICKET, c.OPTIONS.RECEIPT_TYPE.INVOICE]);
+});
+
+check('TRAFFIC_RULES.RECEIPT_BY_VEHICLE：每種交通工具都有設定，值都是有效的憑證種類；高鐵只能高鐵票、高鐵票只給高鐵', () => {
+  const map = JSON.parse(JSON.stringify(c.TRAFFIC_RULES.RECEIPT_BY_VEHICLE));
+  const R = c.OPTIONS.RECEIPT_TYPE;
+  assert.deepStrictEqual(Object.keys(map).sort(), Object.values(c.OPTIONS.VEHICLE).sort());
+  Object.values(map).forEach((list) => list.forEach((v) => assert.ok(Object.values(R).includes(v), v)));
+  assert.deepStrictEqual(map[c.OPTIONS.VEHICLE.HSR], [R.HSR_TICKET]);
+  Object.entries(map).filter(([k]) => k !== c.OPTIONS.VEHICLE.HSR).forEach(([k, list]) => assert.ok(!list.includes(R.HSR_TICKET), k));
+  assert.ok(!map[c.OPTIONS.VEHICLE.TAXI].includes(R.TICKET), '計程車不能選車票');
 });
 
 check('COST_SCOPE：排除群組「費用歸屬不限部門」、組織樹快取設定', () => {

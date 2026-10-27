@@ -260,11 +260,35 @@ const NAME = '航空貨物部-台北營業課';
     assert.deepStrictEqual(counts(), ['0人', '1人']);
   });
 
-  await check('部長／支店長本人：主管、次長全清，只剩部長格，人數 0／0', async () => {
+  await check('部長本人就排在部長格：主管、次長、部長全清（不自己簽自己），部長格隱藏，人數 0／0', async () => {
     await run({ orgName: NAME, title: '部長', master: masterOf({ ...FULL, 單位部長_支店長: 'OWN' }) });
+    assert.deepStrictEqual(filledSlots(), []);
+    assert.strictEqual(env.shown['單位部長_支店長'], false);
+    assert.deepStrictEqual(counts(), ['0人', '0人']);
+  });
+
+  await check('部長／支店長、但部長格是別人（上一層部長）：主管、次長全清，部長格留著給他簽', async () => {
+    await run({ orgName: NAME, title: '部長' });
+    assert.deepStrictEqual(signers()['單位部長_支店長'], ['H']);
     assert.deepStrictEqual(filledSlots(), ['單位部長_支店長']);
     assert.deepStrictEqual(counts(), ['0人', '0人']);
     await run({ orgName: NAME, title: '支店長' });
+    assert.deepStrictEqual(filledSlots(), ['單位部長_支店長']);
+  });
+
+  await check('本人排在部長格、職稱不是部長（例如事業部長、課員）：照部長處理，全清，人數 0／0', async () => {
+    for (const title of ['事業部長', '課員', null]) {
+      await run({ orgName: NAME, title, master: masterOf({ ...FULL, 單位部長_支店長: 'OWN' }) });
+      assert.deepStrictEqual(filledSlots(), [], `${title}：不該排人`);
+      assert.deepStrictEqual(counts(), ['0人', '0人'], `${title}：人數`);
+    }
+  });
+
+  await check('六大簽核流程部門、主檔的部長就是本人：部長格清掉；是別人就照排', async () => {
+    await run({ orgName: '總務部', title: '課長', master: masterOf({ 單位部長_支店長: 'OWN' }) });
+    assert.deepStrictEqual(filledSlots(), []);
+    assert.deepStrictEqual(counts(), ['0人', '0人']);
+    await run({ orgName: '總務部', title: '課長', master: masterOf({ 單位部長_支店長: 'H' }) });
     assert.deepStrictEqual(filledSlots(), ['單位部長_支店長']);
   });
 

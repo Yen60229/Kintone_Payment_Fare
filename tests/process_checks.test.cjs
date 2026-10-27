@@ -3,11 +3,9 @@
 // 測試：流程管理設定的檢查工具（tests/lib/process_*.cjs、process_management/check_process.cjs、load_config.cjs）
 //   1. 載入設定檔：kintone.app.getId() 回 749，欄位代碼從 FIELDS 取
 //   2. 模擬器怎麼解讀條件：in／not in、群組與組織的類型標記、THIS_YEAR()；看不懂的寫法會明確報錯，不會靜默通過
-//   3. 749 目前的流程（process_management/exports/749_rev1799.json）：
-//        結構檢查 0 個問題；走一遍與按鈕檢查有「已知的問題清單」（見下方 KNOWN_*），
-//        測試斷言的就是這份清單——之後使用者把流程改好、清單變了，測試會失敗提醒更新
-//   4. 修好的複本（只補 749 現況缺的條件）：全部通過，證明已知問題的成因就是下面講的那幾個條件
-//   5. 故意弄壞修好的複本，確認檢查抓得到（改作業者欄位、終點狀態不存在、拿掉唯一出口、複製一顆一樣的送出按鈕…）
+//   3. 749 目前的流程（process_management/exports/749_rev1821.json）：結構、走一遍、按鈕全部 0 個問題，沒有人被跳過
+//   4. （rev 1799 的「修好的複本」已不需要：rev 1820 主管3／次長1 送一般會計的動作刪掉，自動排人一律經過部長）
+//   5. 故意弄壞 749 的流程，確認檢查抓得到（改作業者欄位、終點狀態不存在、拿掉唯一出口、複製一顆一樣的送出按鈕…）
 //   6. 假資料涵蓋範圍
 //   7. check_process.cjs 命令列：沒給參數時檢查 exports 裡 revision 最大的 749 流程檔
 // 單獨執行：node tests/process_checks.test.cjs
@@ -22,13 +20,13 @@ const { lintProcess } = require('./lib/process_lint.cjs');
 const { checkAll, enumerateRecords, MANUAL_ACCOUNTING_ORGS, MANAGER_COUNT_FIELD, DEPUTY_COUNT_FIELD, HEAD_FIELD } = require('./lib/process_exhaustive.cjs');
 const { checkButtons } = require('./lib/process_buttons.cjs');
 const { loadConfig, APP_ID } = require('../process_management/load_config.cjs');
-const { latestExport, groupKey } = require('../process_management/check_process.cjs');
+const { latestExport } = require('../process_management/check_process.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const EXPORTS_DIR = path.join(ROOT, 'process_management', 'exports');
 const CONFIG = loadConfig();
 const F = CONFIG.FIELDS;
-const EXPORT_CURRENT = JSON.parse(fs.readFileSync(path.join(EXPORTS_DIR, '749_rev1799.json'), 'utf8'));
+const EXPORT_CURRENT = JSON.parse(fs.readFileSync(path.join(EXPORTS_DIR, '749_rev1821.json'), 'utf8'));
 
 const clone = (obj) => JSON.parse(JSON.stringify(obj));
 
@@ -41,39 +39,6 @@ const check = (label, fn) => {
 
 const hasProblem = (problems, ...words) => problems.some((p) => words.every((w) => p.includes(w)));
 
-// ── 749 revision 1799（與 1798 相同） 已知的問題（流程本身的設定，不是檢查工具的錯；要由使用者決定怎麼改）─────────────
-//   成因 A：自動排人的單、有部長（單位部長_支店長 有人）時，
-//           「申請單位主管3確認中」「申請單位次長1確認中」同時出現「提交單位部長確認」和「提交單位會計入帳」兩顆按鈕。
-//           因為這兩關的「提交單位會計入帳」只看「會計單位」，沒有像「草稿（未送出）」那樣加 單位部長_支店長 not in (部長)。
-//   成因 B：「申請單位主管3確認中」同時出現「提交單位次長1確認／提交單位次長確認」和「提交單位會計入帳」兩顆按鈕：
-//           這關的「提交單位會計入帳」沒有限制 部門次長簽核人數 為 0 人。
-//   （rev 1795 的成因 C「聯海通運的手動單在主管3卡住」已在 rev 1798 補上承辦人組織條件，不再列）
-const KNOWN_WALK_PROBLEMS = Object.freeze({
-  '「申請單位主管3確認中」應該剛好一顆送出按鈕，實際：提交單位次長1確認→申請單位次長1確認中、提交單位會計入帳→單位會計處理中(…)': 36,
-  '「申請單位主管3確認中」應該剛好一顆送出按鈕，實際：提交單位次長確認→申請單位次長確認中、提交單位會計入帳→單位會計處理中(…)': 36,
-  '「申請單位主管3確認中」應該剛好一顆送出按鈕，實際：提交單位部長確認→申請單位部長確認中、提交單位會計入帳→單位會計處理中(…)': 18,
-  '「申請單位次長1確認中」應該剛好一顆送出按鈕，實際：提交單位部長確認→申請單位部長確認中、提交單位會計入帳→單位會計處理中(…)': 12,
-});
-const KNOWN_BUTTON_PROBLEMS = Object.freeze({
-  '「申請單位次長1確認中」出現兩顆以上的送出按鈕（共 2 顆）：提交單位部長確認→申請單位部長確認中、提交單位會計入帳→單位會計處理中(…)': 48,
-  '「申請單位主管3確認中」出現兩顆以上的送出按鈕（共 2 顆）：提交單位次長1確認→申請單位次長1確認中、提交單位會計入帳→單位會計處理中(…)': 36,
-  '「申請單位主管3確認中」出現兩顆以上的送出按鈕（共 2 顆）：提交單位次長確認→申請單位次長確認中、提交單位會計入帳→單位會計處理中(…)': 36,
-  '「申請單位主管3確認中」出現兩顆以上的送出按鈕（共 2 顆）：提交單位部長確認→申請單位部長確認中、提交單位會計入帳→單位會計處理中(…)': 18,
-});
-
-/** 失敗清單併成「類別 → 筆數」 */
-const tally = (failures) => {
-  const counts = {};
-  failures.forEach((f) => {
-    const key = groupKey(f.message);
-    counts[key] = (counts[key] || 0) + 1;
-  });
-  return counts;
-};
-
-// ── 修好的複本：只補上面兩個成因缺的條件，其他完全不動 ───────────────────────
-const HEAD_NOT = ` and ${HEAD_FIELD} not in (" GROUP", "部長")`;
-const DEPUTY_ZERO = ` and ${DEPUTY_COUNT_FIELD} in ("0人", "")`;
 const S = Object.freeze({
   START: CONFIG.STATUS.APPLY_START,
   MANAGER3: '申請單位主管3確認中',
@@ -86,16 +51,6 @@ const S = Object.freeze({
   REJECT_HEAD: '申請單位部長駁回',
   VOID: CONFIG.STATUS.VOID,
 });
-const isGroupAccounting = (a) => a.type === 'PRIMARY' && a.name === '提交單位會計入帳' && a.to.startsWith('單位會計處理中(');
-const repair = (proc) => {
-  const fixed = clone(proc);
-  fixed.actions.forEach((a) => {
-    if (isGroupAccounting(a) && [S.MANAGER3, S.DEPUTY, S.DEPUTY1].includes(a.from)) a.filterCond += HEAD_NOT;
-    if (isGroupAccounting(a) && a.from === S.MANAGER3) a.filterCond += DEPUTY_ZERO;
-  });
-  return fixed;
-};
-const FIXED = repair(EXPORT_CURRENT);
 
 console.log('process_checks.test.cjs');
 
@@ -161,7 +116,7 @@ check('模擬器解讀：不支援的寫法（>、or、其他函式）直接丟�
     assert.throws(() => sim.parseCond(cond), /看不懂的條件/, cond);
     assert.throws(() => sim.matches(cond, {}), /看不懂的條件/, cond);
   });
-  const broken = clone(FIXED);
+  const broken = clone(EXPORT_CURRENT);
   broken.actions.find((a) => a.from === S.ACC_TPE && a.name === '入帳完成').filterCond = `${F.VOUCHER_DATE} <= TODAY()`;
   assert.ok(hasProblem(lintProcess(broken, CONFIG), '條件看不懂', '不能當作通過', '入帳完成'));
   const buttons = checkButtons(broken, CONFIG).failures.map((f) => f.message);
@@ -171,10 +126,10 @@ check('模擬器解讀：不支援的寫法（>、or、其他函式）直接丟�
 
 // ── 3. 749 目前的流程 ────────────────────────────────────────────────────
 
-check('749 revision 1799：結構檢查 0 個問題（24 個狀態、122 條動作、作業者欄位與條件欄位都是已知欄位，條件模擬器都看得懂）', () => {
-  assert.strictEqual(EXPORT_CURRENT.revision, '1799');
+check('749 revision 1821：結構檢查 0 個問題（24 個狀態、110 條動作、作業者欄位與條件欄位都是已知欄位，條件模擬器都看得懂）', () => {
+  assert.strictEqual(EXPORT_CURRENT.revision, '1821');
   assert.strictEqual(Object.keys(EXPORT_CURRENT.states).length, 24);
-  assert.strictEqual(EXPORT_CURRENT.actions.length, 122);
+  assert.strictEqual(EXPORT_CURRENT.actions.length, 110);
   assert.deepStrictEqual(lintProcess(EXPORT_CURRENT, CONFIG), []);
   const conds = EXPORT_CURRENT.actions.map((a) => a.filterCond).filter(Boolean);
   assert.ok(conds.some((c) => c.includes('THIS_YEAR()')));
@@ -183,7 +138,7 @@ check('749 revision 1799：結構檢查 0 個問題（24 個狀態、122 條動�
   conds.forEach((c) => assert.doesNotThrow(() => sim.parseCond(c), c));
 });
 
-check('749 revision 1799：config 的 STATUS 都是流程裡真的有的狀態（「點擊流程開始」後是「草稿（未送出）」，與其他 App 一致）', () => {
+check('749 revision 1821：config 的 STATUS 都是流程裡真的有的狀態（「點擊流程開始」後是「草稿（未送出）」，與其他 App 一致）', () => {
   Object.values(CONFIG.STATUS).forEach((name) => assert.ok(EXPORT_CURRENT.states[name], `流程裡沒有狀態「${name}」`));
   assert.strictEqual(EXPORT_CURRENT.states['申請開始'], undefined);
   const start = EXPORT_CURRENT.actions.find((a) => a.name === CONFIG.ACTIONS.APPLY_START);
@@ -191,27 +146,36 @@ check('749 revision 1799：config 的 STATUS 都是流程裡真的有的狀態�
   assert.strictEqual(CONFIG.AUTO_ADVANCE.TO_STATUS, '草稿（未送出）');
 });
 
-check('⚠️ 749 全部走一遍：目前已知的問題清單（流程本身的設定問題，要使用者決定；清單變了就代表流程改過，請更新 KNOWN_WALK_PROBLEMS）', () => {
+check('749 全部走一遍：126 種假資料 0 個問題（每一關剛好一顆送出按鈕、作業者找得到人、停在對的會計狀態）', () => {
   const { total, failures } = checkAll(EXPORT_CURRENT, CONFIG);
-  assert.strictEqual(total, 192);
-  assert.deepStrictEqual(tally(failures), KNOWN_WALK_PROBLEMS);
-  // 問題只出在「有簽核人的單」：沒有簽核人（主管 0 人、次長 0 人、無部長）的單全都走得通
-  failures.forEach((f) => assert.ok(!f.id.includes('主管0人／次長0人／無部長'), f.id));
-  // rev 1798 起聯海通運的手動單不再卡住：沒有任何一筆是「沒有按鈕」
-  assert.ok(failures.every((f) => !f.message.includes('沒有按鈕')), '沒有卡住的單');
-  console.log(`      （${total} 種假資料，${failures.length} 筆已知問題）`);
+  assert.strictEqual(total, 126);
+  assert.deepStrictEqual(failures.map((f) => `${f.id}：${f.message}`), []);
 });
 
-check('⚠️ 749 每個狀態的按鈕：目前已知的問題清單（同上，清單變了請更新 KNOWN_BUTTON_PROBLEMS）；其餘狀態都走得到', () => {
+check('749 每個狀態的按鈕：0 個問題，除了初始狀態與作廢都走得到', () => {
   const result = checkButtons(EXPORT_CURRENT, CONFIG);
-  assert.strictEqual(result.total, 192);
-  assert.deepStrictEqual(tally(result.failures), KNOWN_BUTTON_PROBLEMS);
+  assert.strictEqual(result.total, 126);
+  assert.deepStrictEqual(result.failures.map((f) => `${f.id}：${f.message}`), []);
   assert.deepStrictEqual(result.unreached, []);
   assert.deepStrictEqual([...result.expected].sort(), [CONFIG.STATUS.REIMBURSEMENT_FILL, S.VOID].sort());
-  // 會計狀態（含傳票日期的檢查）沒有任何問題：入帳完成有被傳票日期擋住，今年的日期填了就剛好一顆
-  assert.ok(result.failures.every((f) => !f.message.startsWith('「單位會計處理中')), '會計狀態的按鈕沒有問題');
   [S.MANAGER3, S.DEPUTY1, S.HEAD, S.REJECT_HEAD, '單位會計駁回', S.MANUAL_ACC, S.ACC_TPE, S.ACC_KHH, '請款流程結束'].forEach((state) => {
     assert.ok(result.reached.has(state), `沒走到「${state}」`);
+  });
+});
+
+check('749 rev 1820：主管3／次長1 確認中只能送部長或手動流程的會計（送一般會計的動作已刪），自動排人一律經過部長', () => {
+  [S.MANAGER3, S.DEPUTY1].forEach((from) => {
+    const toAcc = EXPORT_CURRENT.actions.filter((a) => a.from === from && a.type === 'PRIMARY' && a.to.startsWith('單位會計處理中')).map((a) => a.to);
+    assert.deepStrictEqual(toAcc, [S.MANUAL_ACC], from);
+  });
+});
+
+check('749 rev 1821：六個會計群組狀態彼此都能「轉至」（rev 1820 漏掉的 高雄→桃園 已補回）', () => {
+  const groupStates = Object.values(EXPORT_CURRENT.states).map((st) => st.name).filter((name) => name.startsWith('單位會計處理中('));
+  assert.strictEqual(groupStates.length, 6);
+  groupStates.forEach((from) => {
+    const targets = EXPORT_CURRENT.actions.filter((a) => a.from === from && a.name.startsWith('轉至')).map((a) => a.to);
+    assert.deepStrictEqual(targets.sort(), groupStates.filter((s) => s !== from).sort(), from);
   });
 });
 
@@ -262,35 +226,14 @@ const skippedApprovers = (proc) => {
   return skips;
 };
 
-check('⚠️ 749 簽核人會被跳過：有次長或部長時，主管3／次長1 可以直接按「提交單位會計入帳」略過後面的人（102 筆假資料；流程補條件前的已知問題）', () => {
-  const skips = skippedApprovers(EXPORT_CURRENT);
-  assert.strictEqual(new Set(skips.map((s) => s.id)).size, 102);
-  // 被跳過的只會是次長、次長1、部長，而且都是從主管3 或次長1 直接送會計
-  skips.forEach((s) => {
-    assert.ok(s.missed.every((m) => [S.DEPUTY, S.DEPUTY1, S.HEAD].includes(m)), `${s.id}：${s.missed}`);
-    assert.ok([S.MANAGER3, S.DEPUTY1].includes(s.route[s.route.length - 2]), `${s.id}：${s.route.join('→')}`);
-  });
+check('749 每筆假資料的每條路線都經過所有排上的簽核人，沒有人被跳過', () => {
+  assert.deepStrictEqual(skippedApprovers(EXPORT_CURRENT).map((s) => `${s.id}：${s.route.join('→')}`), []);
 });
 
-// ── 4. 修好的複本全部通過 ────────────────────────────────────────────────
-
-check('修好的複本：每筆假資料的每條路線都經過所有排上的簽核人，沒有人被跳過', () => {
-  assert.deepStrictEqual(skippedApprovers(FIXED).map((s) => `${s.id}：${s.route.join('→')}`), []);
-});
-
-check('修好的複本（補 部長 not in、次長 0 人兩處條件）：結構、走一遍、按鈕全部 0 個問題——已知問題的成因就是這兩處', () => {
-  assert.notDeepStrictEqual(FIXED.actions, EXPORT_CURRENT.actions);
-  assert.deepStrictEqual(lintProcess(FIXED, CONFIG), []);
-  assert.deepStrictEqual(checkAll(FIXED, CONFIG).failures.map((f) => `${f.id}：${f.message}`), []);
-  const buttons = checkButtons(FIXED, CONFIG);
-  assert.deepStrictEqual(buttons.failures.map((f) => `${f.id}：${f.message}`), []);
-  assert.deepStrictEqual(buttons.unreached, []);
-});
-
-// ── 5. 故意弄壞：結構檢查要抓得到（以修好的複本為底，所以出現的問題都是弄壞造成的）──────
+// ── 5. 故意弄壞：結構檢查要抓得到（749 本身 0 個問題，所以出現的問題都是弄壞造成的）──────
 
 check('結構檢查抓得到：作業者欄位寫成不認識的代碼、作業者群組不是會計群組、可執行者欄位不認識', () => {
-  const broken = clone(FIXED);
+  const broken = clone(EXPORT_CURRENT);
   broken.states[S.HEAD].assignee.entities[0].entity.code = '部長群組';
   broken.states[S.ACC_TPE].assignee.entities[0].entity.code = 'ACC_亂寫';
   broken.actions.find((a) => a.type === 'SECONDARY' && a.from === S.ACC_TPE && a.name === '作廢').executableUser.entities[0].entity.code = '亂寫的欄位';
@@ -301,7 +244,7 @@ check('結構檢查抓得到：作業者欄位寫成不認識的代碼、作業�
 });
 
 check('結構檢查抓得到：動作的終點狀態不存在、起點狀態不存在', () => {
-  const broken = clone(FIXED);
+  const broken = clone(EXPORT_CURRENT);
   broken.actions.find((a) => a.type === 'PRIMARY' && a.to === S.HEAD).to = '不存在的狀態';
   broken.actions.find((a) => a.type === 'PRIMARY' && a.from === S.DEPUTY1).from = '另一個不存在的狀態';
   const problems = lintProcess(broken, CONFIG);
@@ -310,7 +253,7 @@ check('結構檢查抓得到：動作的終點狀態不存在、起點狀態不�
 });
 
 check('結構檢查抓得到：條件用到不認識的欄位、條件值不在我們管的範圍內、類型標記不認識、THIS_YEAR() 用在非日期欄位', () => {
-  const broken = clone(FIXED);
+  const broken = clone(EXPORT_CURRENT);
   const [a, b, c, d] = broken.actions.filter((x) => x.type === 'PRIMARY' && x.from === S.START);
   a.filterCond = `${a.filterCond} and 亂寫的欄位 in ("x")`;
   b.filterCond = b.filterCond.replace('"2人"', '"9人"');
@@ -327,7 +270,7 @@ check('結構檢查抓得到：條件用到不認識的欄位、條件值不在�
 });
 
 check('結構檢查抓得到：走不到的狀態、沒有出口的狀態、駁回沒有再申請', () => {
-  const broken = clone(FIXED);
+  const broken = clone(EXPORT_CURRENT);
   broken.states['孤島狀態'] = { name: '孤島狀態', index: '99', assignee: { type: 'ONE', entities: [] } };
   broken.actions = broken.actions.filter((a) => a.from !== S.REJECT_HEAD);
   const problems = lintProcess(broken, CONFIG);
@@ -339,11 +282,11 @@ check('結構檢查抓得到：走不到的狀態、沒有出口的狀態、駁�
 
 // ── 故意弄壞：全部走一遍要抓得到 ─────────────────────────────────────────
 
-/** 改壞的流程（或改壞的假資料）走一遍之後的問題；修好的複本本身是 0 個，所以這裡出現的都是改壞造成的 */
+/** 改壞的流程（或改壞的假資料）走一遍之後的問題；749 本身是 0 個，所以這裡出現的都是改壞造成的 */
 const failuresOf = (mutated, opts) => checkAll(mutated, CONFIG, opts).failures;
 
 check('走流程抓得到：拿掉「提交單位主管3確認」這個唯一出口 → 主管 1 人的單卡在草稿（未送出）（沒有按鈕）', () => {
-  const broken = clone(FIXED);
+  const broken = clone(EXPORT_CURRENT);
   broken.actions = broken.actions.filter((a) => !(a.from === S.START && a.name === '提交單位主管3確認'));
   const added = failuresOf(broken);
   assert.ok(added.length > 0, '拿掉出口後應該有新的問題');
@@ -352,7 +295,7 @@ check('走流程抓得到：拿掉「提交單位主管3確認」這個唯一出
 });
 
 check('走流程抓得到：複製一顆條件一樣的送出按鈕 → 同一關出現兩顆按鈕', () => {
-  const broken = clone(FIXED);
+  const broken = clone(EXPORT_CURRENT);
   broken.actions.push(clone(broken.actions.find((a) => a.type === 'PRIMARY' && a.from === S.START && a.name === '提交單位主管3確認')));
   const added = failuresOf(broken);
   assert.ok(added.length > 0);
@@ -362,7 +305,7 @@ check('走流程抓得到：複製一顆條件一樣的送出按鈕 → 同一�
 });
 
 check('走流程抓得到：主管 3 確認中的作業者欄位是空的（單子到那一關沒有人可以簽）', () => {
-  const added = failuresOf(FIXED, {
+  const added = failuresOf(EXPORT_CURRENT, {
     mapRecord: (record) => {
       record['單位主管3'] = [];
       return record;
@@ -374,7 +317,7 @@ check('走流程抓得到：主管 3 確認中的作業者欄位是空的（單�
 });
 
 check('走流程抓得到：部長確認中的作業者欄位寫成群組代碼（它不是欄位代碼）→ 所有要部長簽的單都沒有人簽，lint 也報得出來', () => {
-  const broken = clone(FIXED);
+  const broken = clone(EXPORT_CURRENT);
   broken.states[S.HEAD].assignee.entities[0].entity.code = '部長群組';
   const added = failuresOf(broken);
   assert.ok(added.length > 0);
@@ -383,18 +326,18 @@ check('走流程抓得到：部長確認中的作業者欄位寫成群組代碼�
 });
 
 check('走流程抓得到：送會計送錯地方（台北的單送到高雄）；會計單位的群組找不到對應的會計狀態', () => {
-  const broken = clone(FIXED);
+  const broken = clone(EXPORT_CURRENT);
   broken.actions.find((a) => a.type === 'PRIMARY' && a.from === S.START && a.to === S.ACC_TPE).to = S.ACC_KHH;
   const added = failuresOf(broken);
   assert.ok(added.some((f) => f.message.includes(`最後停在「${S.ACC_KHH}」，應該是「${S.ACC_TPE}」`)), added.map((f) => f.message).join('\n'));
   // 台北會計狀態的作業者改成固定的人，就不再是 ACC_TPE 群組的狀態
-  const noState = clone(FIXED);
+  const noState = clone(EXPORT_CURRENT);
   noState.states[S.ACC_TPE].assignee.entities = [{ entity: { type: 'USER', code: '24136' }, includeSubs: false }];
   assert.ok(failuresOf(noState).some((f) => f.message.includes('找不到對應的會計狀態') && f.message.includes('ACC_TPE')));
 });
 
 check('走流程抓得到：手動設定簽核流程的單，拿掉承辦人組織條件裡的聯海通運 → 該公司的手動單沒有按鈕', () => {
-  const broken = clone(FIXED);
+  const broken = clone(EXPORT_CURRENT);
   const action = broken.actions.find((a) => a.type === 'PRIMARY' && a.from === S.MANAGER3 && a.to === S.MANUAL_ACC);
   action.filterCond = action.filterCond.replace(', " ORGANIZATION", "聯海通運股份有限公司"', '');
   const added = failuresOf(broken);
@@ -404,12 +347,12 @@ check('走流程抓得到：手動設定簽核流程的單，拿掉承辦人組�
 
 // ── 每個狀態的按鈕：故意弄壞 ─────────────────────────────────────────────
 
-/** 改壞的流程，每個狀態的按鈕檢查之後的問題（修好的複本本身是 0 個） */
+/** 改壞的流程，每個狀態的按鈕檢查之後的問題（749 本身是 0 個） */
 const buttonProblems = (mutated) => checkButtons(mutated, CONFIG).failures.map((f) => f.message);
 const hasMessage = (messages, ...words) => messages.some((m) => words.every((w) => m.includes(w)));
 
 check('按鈕檢查抓得到：部長確認中多一顆一樣的送出按鈕 → 兩顆', () => {
-  const broken = clone(FIXED);
+  const broken = clone(EXPORT_CURRENT);
   broken.actions.push(clone(broken.actions.find((a) => a.type === 'PRIMARY' && a.from === S.HEAD && a.to === S.ACC_TPE)));
   const messages = buttonProblems(broken);
   assert.ok(hasMessage(messages, `「${S.HEAD}」`, '兩顆'), messages.join('\n'));
@@ -417,7 +360,7 @@ check('按鈕檢查抓得到：部長確認中多一顆一樣的送出按鈕 →
 });
 
 check('按鈕檢查抓得到：部長駁回拿掉再申請 → 沒有送出按鈕', () => {
-  const broken = clone(FIXED);
+  const broken = clone(EXPORT_CURRENT);
   broken.actions = broken.actions.filter((a) => !(a.from === S.REJECT_HEAD && a.name === '再申請'));
   const messages = buttonProblems(broken);
   assert.ok(hasMessage(messages, `「${S.REJECT_HEAD}」`, '沒有送出按鈕'), messages.join('\n'));
@@ -425,7 +368,7 @@ check('按鈕檢查抓得到：部長駁回拿掉再申請 → 沒有送出按�
 });
 
 check('按鈕檢查抓得到：單位會計處理中(台北) 多一顆沒有條件的非「轉至」按鈕 → 兩顆；傳票日期空白時也會被抓到', () => {
-  const broken = clone(FIXED);
+  const broken = clone(EXPORT_CURRENT);
   broken.actions.push({ name: '多餘的送出', from: S.ACC_TPE, to: '請款流程結束', filterCond: '', type: 'PRIMARY' });
   const messages = buttonProblems(broken);
   assert.ok(hasMessage(messages, `「${S.ACC_TPE}」`, '兩顆'), messages.join('\n'));
@@ -433,7 +376,7 @@ check('按鈕檢查抓得到：單位會計處理中(台北) 多一顆沒有條�
 });
 
 check('按鈕檢查抓得到：單位會計處理中(高雄) 拿掉入帳完成 → 傳票日期已填卻沒有按鈕；傳票日期空白時沒有是正常的，不會誤報', () => {
-  const broken = clone(FIXED);
+  const broken = clone(EXPORT_CURRENT);
   broken.actions = broken.actions.filter((a) => !(a.from === S.ACC_KHH && a.name === '入帳完成'));
   const messages = buttonProblems(broken);
   assert.ok(hasMessage(messages, `「${S.ACC_KHH}」`, '傳票日期已填', '沒有', '入帳完成'), messages.join('\n'));
@@ -441,15 +384,15 @@ check('按鈕檢查抓得到：單位會計處理中(高雄) 拿掉入帳完成 
 });
 
 check('按鈕檢查抓得到：入帳完成的傳票日期條件被拿掉 → 傳票日期空白也出現送出按鈕（沒有被擋住）', () => {
-  const broken = clone(FIXED);
+  const broken = clone(EXPORT_CURRENT);
   broken.actions.find((a) => a.from === S.MANUAL_ACC && a.name === '入帳完成').filterCond = '';
   const messages = buttonProblems(broken);
   assert.ok(hasMessage(messages, `「${S.MANUAL_ACC}」`, '傳票日期還沒填', '入帳完成沒有被傳票日期擋住'), messages.join('\n'));
 });
 
 check('按鈕檢查：會計狀態的「轉至…」不算送出按鈕（傳票日期空白時只有駁回、轉至，不會誤報沒有送出按鈕）', () => {
-  assert.ok(FIXED.actions.filter((a) => a.type === 'PRIMARY' && a.from === S.ACC_TPE && a.name.startsWith('轉至')).length >= 2);
-  assert.deepStrictEqual(buttonProblems(FIXED), []);
+  assert.ok(EXPORT_CURRENT.actions.filter((a) => a.type === 'PRIMARY' && a.from === S.ACC_TPE && a.name.startsWith('轉至')).length >= 2);
+  assert.deepStrictEqual(buttonProblems(EXPORT_CURRENT), []);
 });
 
 // ── 6. 假資料涵蓋範圍 ────────────────────────────────────────────────────
@@ -457,13 +400,14 @@ check('按鈕檢查：會計狀態的「轉至…」不算送出按鈕（傳票�
 check('假資料涵蓋夠廣：六個會計單位、主管 0～3 人、次長 0～2 人、有無部長、手動與否、兩家公司的承辦人組織；id 不重複', () => {
   const entries = [...enumerateRecords(CONFIG)];
   const records = entries.map((e) => e.record);
-  assert.strictEqual(records.length, 192);
+  assert.strictEqual(records.length, 126);
   assert.strictEqual(new Set(entries.map((e) => e.id)).size, entries.length, 'id 不能重複');
   const distinct = (field, list = records) => new Set(list.map((r) => r[field]));
   const manual = records.filter((r) => r[F.MANUAL_FLOW]);
   const auto = records.filter((r) => !r[F.MANUAL_FLOW]);
   assert.strictEqual(manual.length, 4 * 3 * 2 * MANUAL_ACCOUNTING_ORGS.length);
-  assert.strictEqual(auto.length, 4 * 3 * 2 * 6);
+  // 自動排人：有部長的 4×3 種，加上費用所屬人就是部長（主管 0／次長 0／無部長）1 種
+  assert.strictEqual(auto.length, (4 * 3 + 1) * 6);
   assert.deepStrictEqual(distinct(F.ACCOUNTING_UNIT, auto), new Set(Object.values(CONFIG.ACCOUNTING.MAP)));
   assert.deepStrictEqual(distinct(MANAGER_COUNT_FIELD), new Set(['0人', '1人', '2人', '3人']));
   assert.deepStrictEqual(distinct(DEPUTY_COUNT_FIELD), new Set(['0人', '1人', '2人']));
@@ -484,6 +428,17 @@ check('假資料規則：手動的單會計單位是空的、會計單位承辦�
     }
     assert.ok(record[F.APPLICANT].length > 0 && record['建立人'].length > 0, id);
   }
+});
+
+check('假資料規則：自動排人的單沒有部長時，主管、次長一定都是 0 人（主檔一定有部長，只有費用所屬人就是部長才清空）', () => {
+  const auto = [...enumerateRecords(CONFIG)].filter(({ record }) => !record[F.MANUAL_FLOW]);
+  const noHead = auto.filter(({ record }) => !record[HEAD_FIELD]);
+  assert.strictEqual(noHead.length, 6);
+  noHead.forEach(({ id, record }) => {
+    assert.deepStrictEqual([record[MANAGER_COUNT_FIELD], record[DEPUTY_COUNT_FIELD]], ['0人', '0人'], id);
+  });
+  // 手動的單簽核人是使用者自己挑的，沒有部長也可以有主管、次長
+  assert.ok([...enumerateRecords(CONFIG)].some(({ record }) => record[F.MANUAL_FLOW] && !record[HEAD_FIELD] && record[DEPUTY_COUNT_FIELD] !== '0人'));
 });
 
 check('假資料規則：簽核人靠右對齊，人數欄位等於有人的格子數（主管 1 人放單位主管3、次長 1 人放單位次長1）', () => {
@@ -516,21 +471,35 @@ check('latestExport：挑 revision 最大的 749_rev*.json（不是字串排序�
   }
 });
 
-check('命令列：沒給參數時檢查 exports 裡 revision 最大的 749 流程檔；749 目前有已知問題，結束代碼 1、輸出「未通過」', () => {
+check('命令列：沒給參數時檢查 exports 裡 revision 最大的 749 流程檔；749 rev 1821 通過，結束代碼 0；跨年入帳的注意事項照樣印出來', () => {
   const run = runCli();
-  assert.strictEqual(run.status, 1, run.stdout + run.stderr);
-  assert.ok(run.stdout.includes(`${path.basename(latestExport())}（revision 1799）`), run.stdout);
+  assert.strictEqual(run.status, 0, run.stdout + run.stderr);
+  assert.ok(run.stdout.includes(`${path.basename(latestExport())}（revision 1821）`), run.stdout);
   assert.ok(run.stdout.includes('[1] 結構檢查：沒有問題'));
-  assert.ok(run.stdout.includes('102 筆'));
-  assert.ok(run.stdout.includes('未通過'));
+  assert.ok(/\n通過\n/.test(run.stdout), run.stdout);
   assert.ok(run.stdout.includes('傳票日期填了去年'), '跨年入帳的注意事項有印出來');
 });
 
-check('命令列：修好的複本通過（結束代碼 0、輸出「通過」）；讀不到的檔案與不是流程管理設定的檔案報錯、結束代碼 1', () => {
+check('命令列：弄壞的流程（拿掉「提交單位主管3確認」）未通過，結束代碼 1、列出卡住的筆數', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'proc-bad-'));
+  try {
+    const broken = clone(EXPORT_CURRENT);
+    broken.actions = broken.actions.filter((a) => !(a.from === S.START && a.name === '提交單位主管3確認'));
+    const file = path.join(dir, '749_rev9998.json');
+    fs.writeFileSync(file, JSON.stringify({ ...broken, revision: '9998' }));
+    const run = runCli(file);
+    assert.strictEqual(run.status, 1, run.stdout + run.stderr);
+    assert.ok(run.stdout.includes('未通過') && run.stdout.includes('沒有按鈕'), run.stdout);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+check('命令列：749 的複本通過（結束代碼 0、輸出「通過」）；讀不到的檔案與不是流程管理設定的檔案報錯、結束代碼 1', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'proc-'));
   try {
     const good = path.join(dir, '749_rev9999.json');
-    fs.writeFileSync(good, JSON.stringify({ ...FIXED, revision: '9999' }));
+    fs.writeFileSync(good, JSON.stringify({ ...EXPORT_CURRENT, revision: '9999' }));
     const ok = runCli(good);
     assert.strictEqual(ok.status, 0, ok.stdout + ok.stderr);
     assert.ok(ok.stdout.includes('revision 9999') && /\n通過\n/.test(ok.stdout), ok.stdout);
