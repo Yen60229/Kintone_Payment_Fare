@@ -67,6 +67,36 @@ check('全部合法 → 不擋存檔、不跳視窗', async () => {
   assert.strictEqual(env.swalCalls.length, 0);
 });
 
+check('更早的存檔檢查（帳號權限設定的必填）放進 PR_SAVE_ERRORS → 和這裡的錯誤合成同一個視窗，排在最前面', async () => {
+  const { env, F } = await loadSubmit();
+  env.window.PR_SAVE_ERRORS.add(['尚有必填欄位未填寫\n▸傳票編號']);
+  const ev = await submit(env, goodRecord(F, { [F.COMPANY_NAME]: { value: '' } }));
+  assert.strictEqual(ev.error, '儲存失敗');
+  assert.strictEqual(env.swalCalls.length, 1, '只跳一個視窗');
+  const text = plainText(env.swalCalls[0].html);
+  assert.ok(text.indexOf('尚有必填欄位未填寫') < text.indexOf('需填寫公司名稱欄位'), text);
+  assert.ok(text.includes('傳票編號'));
+  assert.strictEqual(env.window.PR_SAVE_ERRORS.take().length, 0, '顯示後清空');
+});
+
+check('只有更早的檢查有錯（這裡全部合法）→ 照樣擋下並跳視窗', async () => {
+  const { env, F } = await loadSubmit();
+  env.window.PR_SAVE_ERRORS.add(['尚有必填欄位未填寫\n▸傳票日期']);
+  const ev = await submit(env, goodRecord(F));
+  assert.strictEqual(ev.error, '儲存失敗');
+  assert.ok(plainText(env.swalCalls[0].html).includes('傳票日期'));
+});
+
+check('勾了表單作廢（這裡不檢查）但更早的檢查有錯 → 仍擋下並跳視窗；沒錯就直接放行', async () => {
+  const { env, F, C } = await loadSubmit();
+  env.window.PR_SAVE_ERRORS.add(['尚有必填欄位未填寫\n▸傳票編號']);
+  const voided = await submit(env, goodRecord(F, { [C.VOID_FIELD]: { value: ['作廢'] } }));
+  assert.strictEqual(voided.error, '儲存失敗');
+  assert.strictEqual(env.swalCalls.length, 1);
+  const ok = await submit(env, goodRecord(F, { [C.VOID_FIELD]: { value: ['作廢'] } }));
+  assert.strictEqual(ok.error, undefined);
+});
+
 check('新增與編輯畫面的存檔都有註冊', async () => {
   const { env } = await loadSubmit();
   const types = env.registeredTypes();

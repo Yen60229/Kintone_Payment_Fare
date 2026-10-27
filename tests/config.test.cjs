@@ -35,16 +35,16 @@ const isDeepFrozen = (obj) =>
 console.log('config.test.cjs');
 
 // ── 整體結構 ────────────────────────────────────────────────────────────────
-check('PR_CONFIG 的頂層鍵恰為這 18 個（多了或少了都要有意識地改這裡）', () => {
+check('PR_CONFIG 的頂層鍵恰為這 19 個（多了或少了都要有意識地改這裡）', () => {
   assert.deepStrictEqual(
     Object.keys(c).sort(),
-    ['ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'COST_SCOPE', 'EXPECTED_PAY_DATE', 'FIELDS', 'OPTIONS', 'REF_FIELDS', 'SEP', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'TRAFFIC_RULES', 'TRAFFIC_TABLE_LAYOUT', 'VOID_FIELD', 'isAdmin'].sort(),
+    ['ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'COST_SCOPE', 'EXPECTED_PAY_DATE', 'FIELDS', 'INLINE_EDIT', 'OPTIONS', 'REF_FIELDS', 'SEP', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'TRAFFIC_RULES', 'TRAFFIC_TABLE_LAYOUT', 'VOID_FIELD', 'isAdmin'].sort(),
   );
 });
 
 check('PR_CONFIG 與各註冊表皆為凍結物件（不會被其他模組意外改寫）', () => {
   assert.ok(Object.isFrozen(c));
-  ['APPS', 'ACCOUNTING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'TRAFFIC_TABLE_LAYOUT', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'OPTIONS', 'TRAFFIC_RULES', 'COST_SCOPE'].forEach((key) => {
+  ['APPS', 'ACCOUNTING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'TRAFFIC_TABLE_LAYOUT', 'INLINE_EDIT', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'OPTIONS', 'TRAFFIC_RULES', 'COST_SCOPE'].forEach((key) => {
     assert.ok(isDeepFrozen(c[key]), `${key} 應為深層凍結`);
   });
 });
@@ -66,6 +66,15 @@ check('TRAFFIC_TABLE_LAYOUT.COLUMNS 和 MCP 讀出的 749 表單快照一致（�
   assert.deepStrictEqual(c.TRAFFIC_TABLE_LAYOUT.COLUMNS.map((col) => col.code).sort(), Object.values(c.FIELDS.TRAFFIC_TABLE.COLS).sort());
   const w = c.TRAFFIC_TABLE_LAYOUT.WIDTH;
   assert.ok(w.MIN_PX > 0 && w.MIN_PX < w.MAX_PX);
+});
+
+// ── 列表直接編輯 ────────────────────────────────────────────────────────────
+check('INLINE_EDIT.EDITABLE：列表上只留傳票編號、傳票日期、表單作廢（其餘程式管的欄位一律鎖）', () => {
+  assert.deepStrictEqual([...c.INLINE_EDIT.EDITABLE], [c.FIELDS.VOUCHER_NO, c.FIELDS.VOUCHER_DATE, c.VOID_FIELD]);
+  const programOwned = [c.FIELDS.APPLICANT, c.FIELDS.APPLICANT_ORG, c.FIELDS.EXPENSE_OWNER, c.FIELDS.EXPENSE_OWNER_ORG, c.FIELDS.PAYEE,
+    c.FIELDS.COMPANY_NAME, c.FIELDS.ACCOUNTING_UNIT, c.FIELDS.ACCOUNTING_STAFF, c.FIELDS.PERMISSION_STAFF, c.FIELDS.MANUAL_FLOW,
+    c.FIELDS.EXPECTED_PAY_DATE, c.FIELDS.INVOICE_AGG, c.FIELDS.PAY_METHOD, c.FIELDS.PAPER_RECEIPT, c.FIELDS.REASON, c.FIELDS.PAYMENT_DATE];
+  programOwned.forEach((code) => assert.ok(!c.INLINE_EDIT.EDITABLE.includes(code), `${code} 有程式邏輯，不能在列表直接改`));
 });
 
 // ── APPS ────────────────────────────────────────────────────────────────────

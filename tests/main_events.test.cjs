@@ -108,6 +108,50 @@ check('管理員：申請人、受款人可改；請款日期、申請人部門�
   }
 });
 
+// 列表直接編輯：一列的記錄（帶型別；帳號權限設定模組已先套用的 disabled 用 pre 指定）
+const inlineRecord = (F, C, pre = {}) => {
+  const f = (type, code) => ({ type, value: '', ...(code in pre ? { disabled: pre[code] } : {}) });
+  return {
+    [F.APPLICANT]: f('USER_SELECT', F.APPLICANT),
+    [F.APPLICANT_ORG]: f('ORGANIZATION_SELECT', F.APPLICANT_ORG),
+    [F.EXPENSE_OWNER]: f('USER_SELECT', F.EXPENSE_OWNER),
+    [F.EXPENSE_OWNER_ORG]: f('ORGANIZATION_SELECT', F.EXPENSE_OWNER_ORG),
+    [F.PAY_METHOD]: f('CHECK_BOX', F.PAY_METHOD),
+    [F.ACCOUNTING_UNIT]: f('GROUP_SELECT', F.ACCOUNTING_UNIT),
+    [F.EXPECTED_PAY_DATE]: f('DATE', F.EXPECTED_PAY_DATE),
+    [F.REASON]: f('MULTI_LINE_TEXT', F.REASON),
+    單位主管1: f('USER_SELECT', '單位主管1'),
+    [F.VOUCHER_NO]: f('SINGLE_LINE_TEXT', F.VOUCHER_NO),
+    [F.VOUCHER_DATE]: f('DATE', F.VOUCHER_DATE),
+    [C.VOID_FIELD]: f('CHECK_BOX', C.VOID_FIELD),
+    [F.RECORD_NO]: { type: 'RECORD_NUMBER', value: '12' },
+    [F.STATUS_FIELD]: { type: 'STATUS', value: '草稿（未送出）' },
+  };
+};
+
+check('列表直接編輯：程式管的欄位一律鎖住（即使帳號權限設定給可編輯）', async () => {
+  const { env, F, C } = await loadMain();
+  const ev = await env.fire('app.record.index.edit.show', { record: inlineRecord(F, C, { [F.APPLICANT]: false, [F.PAY_METHOD]: false }) });
+  [F.APPLICANT, F.APPLICANT_ORG, F.EXPENSE_OWNER, F.EXPENSE_OWNER_ORG, F.PAY_METHOD, F.ACCOUNTING_UNIT, F.EXPECTED_PAY_DATE, F.REASON, '單位主管1'].forEach((code) =>
+    assert.strictEqual(ev.record[code].disabled, true, code),
+  );
+});
+
+check('列表直接編輯：傳票編號、傳票日期、表單作廢不動，照帳號權限設定的結果', async () => {
+  const { env, F, C } = await loadMain();
+  const ev = await env.fire('app.record.index.edit.show', { record: inlineRecord(F, C, { [F.VOUCHER_NO]: false, [F.VOUCHER_DATE]: true }) });
+  assert.strictEqual(ev.record[F.VOUCHER_NO].disabled, false, '權限給可編輯 → 維持可編輯');
+  assert.strictEqual(ev.record[F.VOUCHER_DATE].disabled, true, '權限鎖住 → 維持鎖住');
+  assert.ok(!('disabled' in ev.record[C.VOID_FIELD]), '沒有規則就不碰');
+});
+
+check('列表直接編輯：記錄號碼、狀態這類系統欄位不設 disabled', async () => {
+  const { env, F, C } = await loadMain();
+  const ev = await env.fire('app.record.index.edit.show', { record: inlineRecord(F, C) });
+  assert.ok(!('disabled' in ev.record[F.RECORD_NO]));
+  assert.ok(!('disabled' in ev.record[F.STATUS_FIELD]));
+});
+
 check('會計單位承辦人、權限開放人員：只有管理員看得到', async () => {
   const user = await loadMain({ loginCode: 'someone' });
   await user.env.fire('app.record.detail.show', { record: baseRecord(user.F) });

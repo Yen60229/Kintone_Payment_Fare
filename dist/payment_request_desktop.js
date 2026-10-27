@@ -68,6 +68,23 @@
     });
     window.PR_KT = PR_KT;
 
+    // ── 同一次存檔的錯誤訊息匯總（window.PR_SAVE_ERRORS）──────────────────────
+    //   比 payment_request_submit 早跑的存檔檢查（帳號權限設定的必填）把訊息放這裡，
+    //   payment_request_submit 在同一個 SweetAlert 視窗一起顯示，避免兩個視窗互相蓋掉。
+    let pendingSaveErrors = [];
+    window.PR_SAVE_ERRORS = Object.freeze({
+      /** 加入要顯示的錯誤訊息（格式同 payment_request_submit：可分行，▸ 開頭＝項目、※ 開頭＝提示） */
+      add: (messages) => {
+        pendingSaveErrors.push(...[].concat(messages).filter(Boolean));
+      },
+      /** 取出並清空 */
+      take: () => {
+        const out = pendingSaveErrors;
+        pendingSaveErrors = [];
+        return out;
+      },
+    });
+
     // ── App ID 對照 ─────────────────────────────────────────────────────────────
     const APPS = Object.freeze({
       PAYMENT: PR_KT.app().getId(), // 本 App（交通費請款單），動態取得
@@ -228,6 +245,14 @@
       WIDTH: Object.freeze({ PX_PER_UNIT: 8, PADDING_PX: 32, MIN_PX: 64, MAX_PX: 320 }),
     });
 
+    // ── 列表直接編輯（payment_request_main 的 index.edit.show）────────────────
+    //   列表直接編輯不會跑新增／編輯畫面的程式（部門帶入、簽核排人、存檔驗證、稅額重算…），
+    //   所以列表上一律鎖住，只留 EDITABLE 這幾欄；這幾欄能不能改再交給帳號權限設定 App 的規則決定。
+    //   要開放其他欄位在列表直接改，先確認那個欄位沒有程式邏輯，再加進 EDITABLE。
+    const INLINE_EDIT = Object.freeze({
+      EDITABLE: Object.freeze([FIELDS.VOUCHER_NO, FIELDS.VOUCHER_DATE, VOID_FIELD]),
+    });
+
     // ── 流程狀態字串註冊表（query 內拼字錯誤會「靜默查不到」，故一併收斂）──────
     //   注意：STATUS.VOID 是「流程狀態值」，VOID_FIELD 是「欄位代碼」，
     //   兩者字串相同（'表單作廢'）但語意不同，刻意分開兩個常數，不可互換使用。
@@ -318,6 +343,7 @@
       SPACES,
       FIELDS,
       TRAFFIC_TABLE_LAYOUT,
+      INLINE_EDIT,
       STATUS,
       ACTIONS,
       AUTO_ADVANCE,
@@ -451,7 +477,55 @@
       'app.record.index.edit.show'
     ];
 
-    const EVENTS_SUBMIT = ['app.record.create.submit', 'app.record.edit.submit'];
+    // 列表直接編輯的存檔也檢查必填（2026-10-27）。kintone 的 index.edit.show 不能標欄位錯誤、也不能擋存檔，
+    //   所以 show 只套顯示／可編輯，必填在 index.edit.submit 檢查。
+    const INDEX_EDIT_SUBMIT = 'app.record.index.edit.submit';
+    const EVENTS_SUBMIT = ['app.record.create.submit', 'app.record.edit.submit', INDEX_EDIT_SUBMIT];
+    // 列表上只有這幾欄能改（其餘由 payment_request_main 鎖住），列表存檔只檢查這幾欄的必填；
+    //   其他欄位改不了，必填在新增／編輯畫面存檔時檢查，不然列表上會被一個改不了的欄位卡住。
+    const INLINE_EDITABLE = window.PR_CONFIG.INLINE_EDIT.EDITABLE;
+
+    // ── 錯誤提醒：一律用全域 SweetAlert（window.Swal，2026-10-27）──────────────
+    //   event.error 只放「儲存失敗」，細節在 SweetAlert 視窗；開畫面出錯的標題是「發生錯誤」。
+    //   新增／編輯存檔：訊息交給 PR_SAVE_ERRORS，由 payment_request_submit 和其他檢查結果合成同一個視窗；
+    //   列表直接編輯存檔（沒有 payment_request_submit）、開畫面讀不到設定：直接跳視窗。
+    const SAVE_FAILED = '儲存失敗';
+    const ERROR_TITLE = '發生錯誤';
+    const escapeHtml = (text) =>
+      String(text ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+
+    /** 用全域 SweetAlert 跳錯誤視窗（樣式同存檔驗證視窗：每條一張卡片）；沒載入 SweetAlert 才退回 alert */
+    const showAlert = (title, messages) => {
+      const swal = window.Swal;
+      if (typeof swal?.fire !== 'function') {
+        window.alert(`${title}\n${messages.join('\n')}`);
+        return;
+      }
+      const items = messages
+        .map((msg, i) => {
+          const [head, ...rest] = String(msg).split('\n');
+          const detail = rest.map((line) => `<div class="pr-v-detail">${escapeHtml(line.replace(/^[▸※]\s*/, ''))}</div>`).join('');
+          return `<li class="pr-validation-item"><span class="pr-validation-no">${i + 1}</span><div class="pr-validation-text"><div class="pr-v-head">${escapeHtml(head)}</div>${detail}</div></li>`;
+        })
+        .join('');
+      swal.fire({
+        icon: 'error',
+        title,
+        html: `<ol class="pr-validation-list">${items}</ol>`,
+        confirmButtonText: '我知道了',
+        confirmButtonColor: '#d33',
+        customClass: { popup: 'pr-validation-popup' },
+      });
+    };
+
+    /** 存檔被擋：event.error＝儲存失敗；新增／編輯交給 PR_SAVE_ERRORS 合併顯示，列表直接編輯直接跳視窗 */
+    const reportSaveErrors = (event, messages) => {
+      event.error = SAVE_FAILED;
+      const collector = window.PR_SAVE_ERRORS;
+      if (event.type !== INDEX_EDIT_SUBMIT && typeof collector?.add === 'function') collector.add(messages);
+      else showAlert(SAVE_FAILED, messages);
+      return event;
+    };
 
     /* =========================================================
      * 二、權限設定 App 欄位代碼設定
@@ -1101,20 +1175,56 @@
       return event;
     };
 
-    const validateRequiredFields = (event, controlMap) => {
+    // ── 欄位標籤（錯誤視窗顯示用）────────────────────────────────────────────
+    //   視窗點名的是畫面上看到的標籤（例如「申請單號（Application Number）」），不是欄位代碼（傳票編號）。
+    //   取本 App 的表單設定：先用 kintone.app.getFormFields()，沒有這個 API 才打 REST；
+    //   整頁只取一次，取不到就退回顯示欄位代碼（不影響擋存檔）。子表格裡的欄位也收進來。
+    let _labelsPromise = null;
+    const fetchFieldLabels = async () => {
+      const appId = kintone.app.getId();
+      const properties =
+        typeof kintone.app.getFormFields === 'function'
+          ? await kintone.app.getFormFields()
+          : (await kintone.api(kintone.api.url('/k/v1/app/form/fields', true), 'GET', { app: appId })).properties;
+      const labels = {};
+      Object.values(properties || {}).forEach((prop) => {
+        if (prop?.code && prop.label) labels[prop.code] = prop.label;
+        Object.values(prop?.fields || {}).forEach((sub) => {
+          if (sub?.code && sub.label) labels[sub.code] = sub.label;
+        });
+      });
+      return labels;
+    };
+    const getFieldLabels = () => {
+      if (_labelsPromise) return _labelsPromise;
+      _labelsPromise = fetchFieldLabels().catch((error) => {
+        _labelsPromise = null; // 下次重試
+        return {};
+      });
+      return _labelsPromise;
+    };
+
+    /**
+     * 檢查必填：沒填的欄位標紅，回傳沒填的欄位 [{ code, row }]（row＝子表格第幾列，主表欄位為 null）。
+     * 列表直接編輯只檢查列表上能改的欄位（INLINE_EDITABLE）。
+     */
+    const collectMissingRequired = (event, controlMap) => {
       const record = event.record;
       const missing = [];
+      const isIndexEdit = event.type === INDEX_EDIT_SUBMIT;
 
       Object.keys(controlMap).forEach((fieldCode) => {
         const control = controlMap[fieldCode];
         const field = record?.[fieldCode];
+
+        if (isIndexEdit && !INLINE_EDITABLE.includes(fieldCode)) return;
 
         if (control.required) {
           if (field) {
             field.error = null;
             if (isEmptyValue(field.value)) {
               field.error = '此欄位為必填';
-              missing.push(fieldCode);
+              missing.push({ code: fieldCode, row: null });
             }
           }
           // 同時支援子表格內明細欄位的必填驗證與高亮
@@ -1125,8 +1235,7 @@
                   row.value[fieldCode].error = null;
                   if (isEmptyValue(row.value[fieldCode].value)) {
                     row.value[fieldCode].error = '此欄位為必填';
-                    const label = `${fieldCode}(第${rowIndex + 1}列)`;
-                    if (!missing.includes(label)) missing.push(label);
+                    if (!missing.some((m) => m.code === fieldCode && m.row === rowIndex + 1)) missing.push({ code: fieldCode, row: rowIndex + 1 });
                   }
                 }
               });
@@ -1135,12 +1244,14 @@
         }
       });
 
-      if (missing.length > 0) {
-        event.error = '尚有必填欄位未填寫';
-      }
-
-      return event;
+      return missing;
     };
+
+    /** 沒填的必填欄位 → 錯誤訊息（點名畫面上的標籤；子表格附上第幾列） */
+    const missingMessage = (missing, labels) =>
+      `尚有必填欄位未填寫\n${missing
+      .map(({ code, row }) => `▸${labels[code] || code}${row ? `（第 ${row} 列）` : ''}`)
+      .join('\n')}\n※ 請填寫後再按一次儲存`;
 
     const buildPermissionContext = async () => {
       const [settings, loginContext] = await Promise.all([
@@ -1185,13 +1296,27 @@
     };
 
     const onShow = async (event) => {
-      const { controlMap, fieldMetaMap } = await resolvePermissions(event);
-      return applyUI(event, controlMap, fieldMetaMap);
+      try {
+        const { controlMap, fieldMetaMap } = await resolvePermissions(event);
+        return applyUI(event, controlMap, fieldMetaMap);
+      } catch (error) {
+        console.error('[帳號權限設定] 讀取權限規則失敗:', error);
+        showAlert(ERROR_TITLE, ['無法讀取帳號權限設定，欄位的顯示與編輯權限沒有套用\n※ 請重新整理頁面，仍有問題請聯絡系統管理員']);
+        return event;
+      }
     };
 
     const onSubmit = async (event) => {
-      const { controlMap } = await resolvePermissions(event);
-      return validateRequiredFields(event, controlMap);
+      try {
+        const { controlMap } = await resolvePermissions(event);
+        const missing = collectMissingRequired(event, controlMap);
+        if (missing.length === 0) return event;
+        // 欄位下方另有紅字標示；視窗點名欄位標籤（列表直接編輯看不出是哪一格）
+        return reportSaveErrors(event, [missingMessage(missing, await getFieldLabels())]);
+      } catch (error) {
+        console.error('[帳號權限設定] 讀取權限規則失敗，無法檢查必填:', error);
+        return reportSaveErrors(event, ['無法讀取帳號權限設定，無法檢查必填欄位\n※ 請稍後再試，仍有問題請聯絡系統管理員']);
+      }
     };
 
     kintone.events.on(EVENTS_SHOW, onShow);
@@ -1644,6 +1769,24 @@
       return handleMainShowEditEvents(event);
     });
 
+    // 列表直接編輯：不會跑新增／編輯畫面的程式（部門帶入、簽核排人、存檔驗證、稅額重算），
+    //   所以 C.INLINE_EDIT.EDITABLE 以外的欄位一律鎖住；EDITABLE 的欄位不動，交給帳號權限設定 App 的規則
+    //   （帳號權限設定模組先載入、先套用，這裡最後執行，程式管的欄位以這裡為準）。
+    //   手機版沒有列表直接編輯，PR_KT 會略過這個事件。
+    const INLINE_INPUT_KINDS = new Set([
+      'SINGLE_LINE_TEXT', 'MULTI_LINE_TEXT', 'RICH_TEXT', 'NUMBER', 'DATE', 'TIME', 'DATETIME', 'LINK',
+      'DROP_DOWN', 'RADIO_BUTTON', 'CHECK_BOX', 'MULTI_SELECT', 'USER_SELECT', 'ORGANIZATION_SELECT', 'GROUP_SELECT',
+    ]);
+    const lockInlineEdit = (event) => {
+      const editable = new Set(C.INLINE_EDIT.EDITABLE);
+      Object.entries(event.record || {}).forEach(([code, field]) => {
+        if (editable.has(code) || !field || !INLINE_INPUT_KINDS.has(field.type)) return;
+        field.disabled = true;
+      });
+      return event;
+    };
+    KT.on('app.record.index.edit.show', lockInlineEdit);
+
     // -------------------------------------------------------------------------
     // 4.2 欄位變更事件 (.change)
     // -------------------------------------------------------------------------
@@ -1975,13 +2118,20 @@
     };
 
     KT.on(['app.record.create.submit', 'app.record.edit.submit'], async (event) => {
+      // 比本程式早跑的存檔檢查（帳號權限設定的必填）留下的訊息，和這裡的檢查結果合成同一個視窗
+      const earlierErrors = window.PR_SAVE_ERRORS?.take() || [];
+
       if (event.record[C.VOID_FIELD]?.value?.length > 0) {
+        if (earlierErrors.length > 0) {
+          event.error = '儲存失敗';
+          showValidationErrors('表單驗證失敗', earlierErrors);
+        }
         return event;
       }
 
       try {
         const record = event.record;
-        const allErrors = [];
+        const allErrors = [...earlierErrors];
 
         // 交通費明細：重算稅額、高鐵固定值、發票號碼記錄（發票重複檢查要讀整理後的記錄欄位，所以排最前）
         const trafficRules = window.PR_TRAFFIC_RULES;

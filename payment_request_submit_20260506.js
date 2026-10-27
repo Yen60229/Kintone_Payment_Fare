@@ -295,13 +295,20 @@
   };
 
   KT.on(['app.record.create.submit', 'app.record.edit.submit'], async (event) => {
+    // 比本程式早跑的存檔檢查（帳號權限設定的必填）留下的訊息，和這裡的檢查結果合成同一個視窗
+    const earlierErrors = window.PR_SAVE_ERRORS?.take() || [];
+
     if (event.record[C.VOID_FIELD]?.value?.length > 0) {
+      if (earlierErrors.length > 0) {
+        event.error = '儲存失敗';
+        showValidationErrors('表單驗證失敗', earlierErrors);
+      }
       return event;
     }
 
     try {
       const record = event.record;
-      const allErrors = [];
+      const allErrors = [...earlierErrors];
 
       // 交通費明細：重算稅額、高鐵固定值、發票號碼記錄（發票重複檢查要讀整理後的記錄欄位，所以排最前）
       const trafficRules = window.PR_TRAFFIC_RULES;

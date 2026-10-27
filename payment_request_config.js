@@ -66,6 +66,23 @@
   });
   window.PR_KT = PR_KT;
 
+  // ── 同一次存檔的錯誤訊息匯總（window.PR_SAVE_ERRORS）──────────────────────
+  //   比 payment_request_submit 早跑的存檔檢查（帳號權限設定的必填）把訊息放這裡，
+  //   payment_request_submit 在同一個 SweetAlert 視窗一起顯示，避免兩個視窗互相蓋掉。
+  let pendingSaveErrors = [];
+  window.PR_SAVE_ERRORS = Object.freeze({
+    /** 加入要顯示的錯誤訊息（格式同 payment_request_submit：可分行，▸ 開頭＝項目、※ 開頭＝提示） */
+    add: (messages) => {
+      pendingSaveErrors.push(...[].concat(messages).filter(Boolean));
+    },
+    /** 取出並清空 */
+    take: () => {
+      const out = pendingSaveErrors;
+      pendingSaveErrors = [];
+      return out;
+    },
+  });
+
   // ── App ID 對照 ─────────────────────────────────────────────────────────────
   const APPS = Object.freeze({
     PAYMENT: PR_KT.app().getId(), // 本 App（交通費請款單），動態取得
@@ -226,6 +243,14 @@
     WIDTH: Object.freeze({ PX_PER_UNIT: 8, PADDING_PX: 32, MIN_PX: 64, MAX_PX: 320 }),
   });
 
+  // ── 列表直接編輯（payment_request_main 的 index.edit.show）────────────────
+  //   列表直接編輯不會跑新增／編輯畫面的程式（部門帶入、簽核排人、存檔驗證、稅額重算…），
+  //   所以列表上一律鎖住，只留 EDITABLE 這幾欄；這幾欄能不能改再交給帳號權限設定 App 的規則決定。
+  //   要開放其他欄位在列表直接改，先確認那個欄位沒有程式邏輯，再加進 EDITABLE。
+  const INLINE_EDIT = Object.freeze({
+    EDITABLE: Object.freeze([FIELDS.VOUCHER_NO, FIELDS.VOUCHER_DATE, VOID_FIELD]),
+  });
+
   // ── 流程狀態字串註冊表（query 內拼字錯誤會「靜默查不到」，故一併收斂）──────
   //   注意：STATUS.VOID 是「流程狀態值」，VOID_FIELD 是「欄位代碼」，
   //   兩者字串相同（'表單作廢'）但語意不同，刻意分開兩個常數，不可互換使用。
@@ -316,6 +341,7 @@
     SPACES,
     FIELDS,
     TRAFFIC_TABLE_LAYOUT,
+    INLINE_EDIT,
     STATUS,
     ACTIONS,
     AUTO_ADVANCE,

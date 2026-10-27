@@ -445,6 +445,24 @@
     return handleMainShowEditEvents(event);
   });
 
+  // 列表直接編輯：不會跑新增／編輯畫面的程式（部門帶入、簽核排人、存檔驗證、稅額重算），
+  //   所以 C.INLINE_EDIT.EDITABLE 以外的欄位一律鎖住；EDITABLE 的欄位不動，交給帳號權限設定 App 的規則
+  //   （帳號權限設定模組先載入、先套用，這裡最後執行，程式管的欄位以這裡為準）。
+  //   手機版沒有列表直接編輯，PR_KT 會略過這個事件。
+  const INLINE_INPUT_KINDS = new Set([
+    'SINGLE_LINE_TEXT', 'MULTI_LINE_TEXT', 'RICH_TEXT', 'NUMBER', 'DATE', 'TIME', 'DATETIME', 'LINK',
+    'DROP_DOWN', 'RADIO_BUTTON', 'CHECK_BOX', 'MULTI_SELECT', 'USER_SELECT', 'ORGANIZATION_SELECT', 'GROUP_SELECT',
+  ]);
+  const lockInlineEdit = (event) => {
+    const editable = new Set(C.INLINE_EDIT.EDITABLE);
+    Object.entries(event.record || {}).forEach(([code, field]) => {
+      if (editable.has(code) || !field || !INLINE_INPUT_KINDS.has(field.type)) return;
+      field.disabled = true;
+    });
+    return event;
+  };
+  KT.on('app.record.index.edit.show', lockInlineEdit);
+
   // -------------------------------------------------------------------------
   // 4.2 欄位變更事件 (.change)
   // -------------------------------------------------------------------------
