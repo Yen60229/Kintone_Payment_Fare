@@ -8,7 +8,7 @@
 // 單獨執行：node tests/applicant_org.test.cjs
 
 const assert = require('assert');
-const { createEnv, createRunner, readSrc } = require('./lib/pr_env.cjs');
+const { createEnv, createRunner, readSrc, readOrgPicker } = require('./lib/pr_env.cjs');
 
 const { check, done } = createRunner('applicant_org.test.cjs');
 
@@ -27,14 +27,15 @@ const ORG_C = org('C', '總務部');
  * @param {Object} o
  * @param {Object<string,Array>} [o.orgs] 使用者代碼 → organizationTitles
  * @param {Object<string,number>} [o.delay] 使用者代碼 → 查詢延遲毫秒
- * @param {Object|Function} [o.swalAnswer]
+ * @param {number|'cancel'} [o.pick] 選單位視窗要點第幾個單位，或按取消；不給就讓視窗開著
  * @param {boolean} [o.apiFail]
  */
-const setup = ({ orgs = {}, delay = {}, swalAnswer = { isConfirmed: false }, apiFail = false } = {}) => {
+const setup = ({ orgs = {}, delay = {}, pick, apiFail = false } = {}) => {
   const calls = [];
+  const dialogs = [];
   const env = createEnv({
     loginCode: 'someone',
-    swalAnswer,
+    swalAnswer: { isConfirmed: true },
     api: (url, method, params) => {
       calls.push({ url, params });
       if (apiFail) return Promise.reject(new Error('boom'));
@@ -42,6 +43,13 @@ const setup = ({ orgs = {}, delay = {}, swalAnswer = { isConfirmed: false }, api
       return Promise.resolve({ records: [] });
     },
   });
+  env.onBodyAppend = (el) => {
+    if (el.className !== 'pr-org-picker-overlay') return;
+    dialogs.push(el);
+    const view = readOrgPicker(el);
+    if (pick === 'cancel') view.cancel.click();
+    else if (typeof pick === 'number') view.options[pick].click();
+  };
   env.load('payment_request_config.js');
   env.load('signing_personnel_manager_20260506.js');
   const before = env.handlers.length;
@@ -61,7 +69,7 @@ const setup = ({ orgs = {}, delay = {}, swalAnswer = { isConfirmed: false }, api
     [F.APPLICANT_ORG]: { value: dept },
     [F.EXPENSE_OWNER_ORG]: { value: [{ code: 'OWNER_ORG', name: '費用所屬人部門' }] },
   });
-  return { env, calls, mine, fire, record, F };
+  return { env, calls, dialogs, mine, fire, record, F };
 };
 
 check('事件註冊：create.show、新增／編輯的 change.申請人', () => {
@@ -80,49 +88,50 @@ check('處理程式同步回傳 event（不是 Promise）', () => {
 });
 
 check('create.show：部門就是申請人的單位 → 不跳視窗、不寫回', async () => {
-  const { env, fire, record } = setup({ orgs: { u1: [ORG_A, ORG_B] } });
+  const { env, dialogs, fire, record } = setup({ orgs: { u1: [ORG_A, ORG_B] } });
   fire('app.record.create.show', record({ dept: [{ code: 'B', name: '總務部-資訊課' }] }));
   await flush();
-  assert.strictEqual(env.swalCalls.length, 0);
+  assert.strictEqual(dialogs.length, 0);
   assert.strictEqual(env.setCalls.length, 0);
 });
 
 check('create.show：部門空白、1 個單位 → 直接帶入並保持鎖住', async () => {
-  const { env, fire, record, F } = setup({ orgs: { u1: [ORG_A] } });
+  const { env, dialogs, fire, record, F } = setup({ orgs: { u1: [ORG_A] } });
   fire('app.record.create.show', record());
   await flush();
-  assert.strictEqual(env.swalCalls.length, 0);
+  assert.strictEqual(dialogs.length, 0);
   assert.deepStrictEqual(plain(env.currentRecord[F.APPLICANT_ORG].value), [{ code: 'A', name: '物流部-業務企劃課' }]);
   assert.strictEqual(env.currentRecord[F.APPLICANT_ORG].disabled, true);
 });
 
-check('create.show：部門不是申請人的單位（複製別人的單）、多個單位 → 跳視窗、不給取消、預選主要單位，選了才帶入', async () => {
-  const { env, fire, record, F } = setup({ orgs: { u1: [ORG_A, ORG_B, ORG_C] }, swalAnswer: { isConfirmed: true, value: '2' } });
+check('create.show：部門不是申請人的單位（複製別人的單）、多個單位 → 跳選單位視窗（每個單位一顆按鈕）、不給取消，點了才帶入', async () => {
+  const { env, dialogs, fire, record, F } = setup({ orgs: { u1: [ORG_A, ORG_B, ORG_C] }, pick: 2 });
   fire('app.record.create.show', record({ dept: [{ code: 'OTHER', name: '別人的部門' }] }));
   await flush();
-  assert.strictEqual(env.swalCalls.length, 1);
-  const opts = env.swalCalls[0];
-  assert.strictEqual(opts.title, '請選擇申請人部門');
-  assert.match(opts.text, /王小明 有 3 個所屬單位/);
-  assert.strictEqual(opts.inputValue, '1');
-  assert.strictEqual(opts.showCancelButton, false);
-  assert.strictEqual(opts.allowEscapeKey, false);
+  assert.strictEqual(dialogs.length, 1);
+  assert.strictEqual(env.swalCalls.length, 0, '不再用 SweetAlert radio');
+  const view = readOrgPicker(dialogs[0]);
+  assert.strictEqual(view.title, '王小明 有多個所屬單位，請選擇申請人部門：');
+  assert.deepStrictEqual(view.labels, ['物流部-業務企劃課', '總務部-資訊課', '總務部']);
+  assert.strictEqual(view.cancel, undefined);
+  assert.strictEqual(dialogs[0].removed, true, '點了就關掉視窗');
   assert.deepStrictEqual(plain(env.currentRecord[F.APPLICANT_ORG].value), [{ code: 'C', name: '總務部' }]);
 });
 
 check('改申請人：原部門也是新申請人的單位 → 視窗可取消；按取消不寫回', async () => {
-  const { env, fire, record, F } = setup({ orgs: { u2: [ORG_A, ORG_B] }, swalAnswer: { isConfirmed: false } });
+  const { env, dialogs, fire, record, F } = setup({ orgs: { u2: [ORG_A, ORG_B] }, pick: 'cancel' });
   fire(`app.record.edit.change.${F.APPLICANT}`, record({ applicant: 'u2', dept: [{ code: 'A', name: '物流部-業務企劃課' }] }));
   await flush();
-  assert.strictEqual(env.swalCalls[0].showCancelButton, true);
+  assert.strictEqual(readOrgPicker(dialogs[0]).cancel.textContent, '取消（保留原本的部門）');
+  assert.strictEqual(dialogs[0].removed, true);
   assert.strictEqual(env.setCalls.length, 0);
 });
 
 check('改申請人：即使原部門有效也一樣讓使用者選（只有新增畫面打開時才保留）', async () => {
-  const { env, fire, record, F } = setup({ orgs: { u2: [ORG_A, ORG_B] }, swalAnswer: { isConfirmed: true, value: '1' } });
+  const { env, dialogs, fire, record, F } = setup({ orgs: { u2: [ORG_A, ORG_B] }, pick: 1 });
   fire(`app.record.create.change.${F.APPLICANT}`, record({ applicant: 'u2', dept: [{ code: 'A', name: '物流部-業務企劃課' }] }));
   await flush();
-  assert.strictEqual(env.swalCalls.length, 1);
+  assert.strictEqual(dialogs.length, 1);
   assert.deepStrictEqual(plain(env.currentRecord[F.APPLICANT_ORG].value), [{ code: 'B', name: '總務部-資訊課' }]);
 });
 

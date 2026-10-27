@@ -990,21 +990,56 @@
   // ── 改費用所屬人後帶入費用所屬人部門並重排簽核人員（所有人適用）──
 
   /**
-   * 費用所屬人的所屬單位 → 選單選項。主要單位排第一並預先選好，職稱附在後面方便辨認身分。
+   * 選單位的視窗（和 723 交際費同一種）：每個所屬單位一顆按鈕，點了就帶入；可取消時最下面多一顆「取消」。
+   * 樣式在 payment_request.css 的 .pr-org-picker*。
    * @param {Array} orgs  /v1/user/organizations.json 的 organizationTitles
-   * @returns {{ options: Object<string,string>, defaultIndex: string }}
+   * @param {{ heading: string, hint: string, keepable: boolean }} p
+   * @returns {Promise<Object|null>} 點到的那筆 organizationTitles；按取消回傳 null
    */
-  const buildOwnerOrgOptions = (orgs) => {
-    const options = {};
-    orgs.forEach((o, i) => {
-      const title = o.title?.name ? `（${o.title.name}）` : '';
-      options[String(i)] = `${o.organization.name}${title}${o.organization.primary ? '　★主要單位' : ''}`;
-    });
-    const primaryIndex = orgs.findIndex((o) => o.organization.primary === true);
-    return { options, defaultIndex: String(primaryIndex >= 0 ? primaryIndex : 0) };
-  };
+  const openOrgDialog = (orgs, { heading, hint, keepable }) =>
+    new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'pr-org-picker-overlay';
+      const box = document.createElement('div');
+      box.className = 'pr-org-picker';
 
-  // 選單位的視窗一次只開一個（申請人、費用所屬人同時要選時排隊，SweetAlert 開第二個會把第一個關掉）
+      const title = document.createElement('p');
+      title.className = 'pr-org-picker__title';
+      title.textContent = heading;
+      box.appendChild(title);
+      if (hint) {
+        const hintEl = document.createElement('p');
+        hintEl.className = 'pr-org-picker__hint';
+        hintEl.textContent = hint;
+        box.appendChild(hintEl);
+      }
+
+      const close = (picked) => {
+        overlay.remove();
+        resolve(picked);
+      };
+      orgs.forEach((o) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'pr-org-picker__option';
+        btn.textContent = o.organization.name;
+        btn.addEventListener('click', () => close(o));
+        box.appendChild(btn);
+      });
+      if (keepable) {
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'pr-org-picker__cancel';
+        cancelBtn.textContent = '取消（保留原本的部門）';
+        cancelBtn.addEventListener('click', () => close(null));
+        box.appendChild(cancelBtn);
+      }
+
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+    });
+
+  // 選單位的視窗一次只開一個（申請人、費用所屬人同時要選時排隊，不會疊在一起）
   let orgDialogQueue = Promise.resolve();
 
   /**
@@ -1018,24 +1053,9 @@
    */
   const pickOrg = (orgs, userName, { subject = '費用所屬人', hint = '', keepable = true, isCurrent = () => true } = {}) => {
     if (orgs.length <= 1) return Promise.resolve(orgs[0] || null);
-    const { options, defaultIndex } = buildOwnerOrgOptions(orgs);
-    if (typeof Swal === 'undefined') return Promise.resolve(orgs[Number(defaultIndex)]);
-    const open = async () => {
+    const open = () => {
       if (!isCurrent()) return null;
-      const result = await Swal.fire({
-        title: `請選擇${subject}部門`,
-        text: `${userName} 有 ${orgs.length} 個所屬單位${hint ? `，${hint}` : '。'}`,
-        input: 'radio',
-        inputOptions: options,
-        inputValue: defaultIndex,
-        showCancelButton: keepable,
-        confirmButtonText: '帶入',
-        cancelButtonText: '取消（保留原本的部門）',
-        allowOutsideClick: false,
-        allowEscapeKey: keepable,
-      });
-      if (!result.isConfirmed) return null;
-      return orgs[Number(result.value)] || null;
+      return openOrgDialog(orgs, { heading: `${userName} 有多個所屬單位，請選擇${subject}部門：`, hint, keepable });
     };
     const picked = orgDialogQueue.then(open, open);
     orgDialogQueue = picked.catch(() => null);

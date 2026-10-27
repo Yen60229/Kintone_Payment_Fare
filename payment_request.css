@@ -143,6 +143,56 @@
 .pr-void-action { color: #d4380d; }
 .pr-void-next { color: #cf1322; }
 
+/* ── 選申請人部門／費用所屬人部門的視窗（簽核人員 PR_ORG_PICKER；和 723 交際費同一種）── */
+.pr-org-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pr-org-picker {
+  background: #fff;
+  border-radius: 8px;
+  padding: 24px;
+  /* 寬度依部門名稱長短自動撐開，太長時不超出畫面 */
+  width: auto;
+  min-width: 300px;
+  max-width: 90vw;
+  box-sizing: border-box;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+  font-family: sans-serif;
+}
+.pr-org-picker__title { margin: 0 0 16px; font-weight: bold; font-size: 14px; }
+.pr-org-picker__hint { margin: -8px 0 16px; font-size: 13px; color: #666; }
+.pr-org-picker__option,
+.pr-org-picker__cancel {
+  display: block;
+  width: 100%;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.pr-org-picker__option {
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  text-align: left;
+  border: 1px solid #ccc;
+  background: #f7f7f7;
+  font-size: 14px;
+}
+.pr-org-picker__option:hover { background: #deeeff; }
+.pr-org-picker__cancel {
+  padding: 8px 14px;
+  margin-top: 4px;
+  text-align: center;
+  border: 1px solid #bbb;
+  background: #fff;
+  font-size: 13px;
+  color: #666;
+}
+
 /* =============================================================================
  * 以下只有桌面版畫面才有（列表頁工具列、附件預覽、列印／PDF、費用歸屬提示、欄寬調整）
  * ============================================================================= */

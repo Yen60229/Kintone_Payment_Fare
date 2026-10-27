@@ -21,16 +21,41 @@ const makeElement = () => {
     id: '',
     style: {},
     children: [],
+    listeners: {},
     removed: false,
     appendChild(child) {
       el.children.push(child);
       return child;
+    },
+    addEventListener(type, fn) {
+      el.listeners[type] = fn;
+    },
+    click() {
+      if (el.listeners.click) el.listeners.click();
     },
     remove() {
       el.removed = true;
     },
   };
   return el;
+};
+
+/**
+ * 讀出選單位視窗（簽核人員的 openOrgDialog，掛在 document.body 的 .pr-org-picker-overlay）。
+ * @param {Object} overlay makeElement 做出來的元素
+ * @returns {{ title: string, hint: string, options: Array, labels: string[], cancel: Object|undefined }}
+ */
+const readOrgPicker = (overlay) => {
+  const box = overlay.children[0];
+  const byClass = (cls) => box.children.filter((c) => c.className === cls);
+  const options = byClass('pr-org-picker__option');
+  return {
+    title: byClass('pr-org-picker__title')[0]?.textContent || '',
+    hint: byClass('pr-org-picker__hint')[0]?.textContent || '',
+    options,
+    labels: options.map((b) => b.textContent),
+    cancel: byClass('pr-org-picker__cancel')[0],
+  };
 };
 
 /**
@@ -46,7 +71,7 @@ const createEnv = ({ appId = 749, loginCode = '24136', api, swalAnswer } = {}) =
   const logs = { log: [], warn: [], error: [] };
   const spaces = {};
   const shown = {};
-  const documentCalls = { querySelectorAll: [], querySelector: [], createdElements: [], headAppended: [] };
+  const documentCalls = { querySelectorAll: [], querySelector: [], createdElements: [], headAppended: [], bodyAppended: [] };
   const swalCalls = [];
 
   const overrides = { querySelectorAll: null, querySelector: null };
@@ -58,6 +83,13 @@ const createEnv = ({ appId = 749, loginCode = '24136', api, swalAnswer } = {}) =
       return el;
     },
     head: { appendChild: (el) => documentCalls.headAppended.push(el) },
+    body: {
+      appendChild: (el) => {
+        documentCalls.bodyAppended.push(el);
+        if (env.onBodyAppend) env.onBodyAppend(el);
+        return el;
+      },
+    },
     querySelectorAll: (selector) => {
       documentCalls.querySelectorAll.push(selector);
       return overrides.querySelectorAll ? overrides.querySelectorAll(selector) : [];
@@ -127,6 +159,8 @@ const createEnv = ({ appId = 749, loginCode = '24136', api, swalAnswer } = {}) =
     handlers,
     currentRecord: null,
     setCalls: [],
+    /** document.body.appendChild 時呼叫（測試用來「點」選單位視窗的按鈕） */
+    onBodyAppend: null,
     /** 換掉 document.querySelectorAll／querySelector 的回傳（仍會記錄被查詢的選擇器） */
     setQuerySelectorAll: (fn) => {
       overrides.querySelectorAll = fn;
@@ -176,4 +210,4 @@ const createRunner = (title) => {
   };
 };
 
-module.exports = { createEnv, createRunner, readSrc, rootDir };
+module.exports = { createEnv, createRunner, readSrc, rootDir, makeElement, readOrgPicker };

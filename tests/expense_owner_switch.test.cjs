@@ -4,7 +4,7 @@
 //   查 /v1/user/organizations.json：
 //     - 0 個單位：Swal 警告「此費用所屬人沒有所屬單位」，不改部門
 //     - 1 個單位：直接帶入
-//     - 多個單位：跳 radio 視窗選（主要單位排第一並預選、職稱附在後面），按取消保留原本的部門
+//     - 多個單位：跳選單位視窗（和 723 交際費同一種：每個單位一顆按鈕），按取消保留原本的部門
 //   帶入後依新的人與部門重排簽核人員；連續快速改人時只讓最後一次結果寫回。
 // 直接用 Node 執行：node tests/expense_owner_switch.test.cjs
 //
@@ -13,6 +13,7 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
+const { makeElement, readOrgPicker } = require('./lib/pr_env.cjs');
 
 const rootDir = path.join(__dirname, '..');
 // 正規化行尾：repo 內 LF／CRLF 混用，regex 擷取需先統一
@@ -37,8 +38,9 @@ const loadSigning = () => {
     setCount: 0,
     orgs: {},
     orgDelay: {},
-    swalAnswer: { isConfirmed: false },
-    swalDelay: 0,
+    dialogs: [],
+    pick: undefined,
+    pickDelay: 0,
   };
   global.window = {};
   global.alert = (m) => env.alerts.push(m);
@@ -46,8 +48,25 @@ const loadSigning = () => {
   const fakeSwal = {
     fire: async (opts) => {
       env.swalCalls.push(opts);
-      if (env.swalDelay) await wait(env.swalDelay);
-      return env.swalAnswer;
+      return { isConfirmed: true };
+    },
+  };
+  // 選單位視窗掛到 body 時依 env.pick 點按鈕：數字＝第幾個單位、'cancel'＝取消、不給＝視窗開著
+  global.document = {
+    createElement: () => makeElement(),
+    body: {
+      appendChild: (el) => {
+        env.dialogs.push(el);
+        const { pick, pickDelay } = env;
+        const view = readOrgPicker(el);
+        const answer = () => {
+          if (pick === 'cancel') view.cancel.click();
+          else if (typeof pick === 'number') view.options[pick].click();
+        };
+        if (pickDelay) setTimeout(answer, pickDelay);
+        else answer();
+        return el;
+      },
     },
   };
   env.useSwal = (on) => {
@@ -109,15 +128,16 @@ const OWNER_EVENT = `app.record.create.change.${F.EXPENSE_OWNER}`;
 const handler = T.handlers[OWNER_EVENT];
 
 const SLOTS = ['單位主管1', '單位主管2', '單位主管3', '單位次長', '單位次長1', '單位部長_支店長'];
-const reset = ({ useSwal = true, swalAnswer = { isConfirmed: false }, swalDelay = 0 } = {}) => {
+const reset = ({ useSwal = true, pick, pickDelay = 0 } = {}) => {
   env.apiCalls.length = 0;
   env.alerts.length = 0;
   env.swalCalls.length = 0;
+  env.dialogs.length = 0;
   env.setCount = 0;
   env.orgs = {};
   env.orgDelay = {};
-  env.swalAnswer = swalAnswer;
-  env.swalDelay = swalDelay;
+  env.pick = pick;
+  env.pickDelay = pickDelay;
   env.useSwal(useSwal);
   env.live = {
     [F.EXPENSE_OWNER]: { type: 'USER_SELECT', value: [] },
@@ -144,11 +164,6 @@ const orgValue = () => env.live[F.EXPENSE_OWNER_ORG].value;
 // 一般單位用組織代碼查簽核流程主檔的「簽核所屬單位」
 const orgQuery = (code) => `簽核所屬單位 in ("${code}") and 使用狀況 in ("使用中")`;
 const approvalQueries = () => env.apiCalls.filter((c) => c.params.app === C.APPS.APPROVAL_FLOW).map((c) => c.params.query);
-
-// 純函式 buildOwnerOrgOptions 從原始檔擷取
-const optionsSrc = readSrc('signing_personnel_manager_20260506.js').match(/const buildOwnerOrgOptions = \(orgs\) => \{[\s\S]*?\n  \};/);
-assert.ok(optionsSrc, '找不到 buildOwnerOrgOptions，來源檔可能已改結構，請同步更新本測試');
-const buildOwnerOrgOptions = new Function(`${optionsSrc[0]}\nreturn buildOwnerOrgOptions;`)();
 
 let passed = 0;
 const check = async (label, fn) => {
@@ -177,14 +192,6 @@ const check = async (label, fn) => {
     handler(changeEvent('u1'));
     await flush();
     assert.deepStrictEqual(orgValue(), [U('A', ORG_A.organization.name)]);
-  });
-
-  await check('選單選項：部門名稱附職稱、主要單位有標示且預先選好；沒有主要單位時預選第一個', () => {
-    const { options, defaultIndex } = buildOwnerOrgOptions([ORG_A, ORG_B, org('C', '總務部', null)]);
-    assert.deepStrictEqual(options, { 0: '物流部-業務企劃課（課長）', 1: '總務部-資訊課（課員）　★主要單位', 2: '總務部' });
-    assert.strictEqual(defaultIndex, '1');
-    assert.strictEqual(buildOwnerOrgOptions([org('X', 'X'), org('Y', 'Y')]).defaultIndex, '0');
-    assert.strictEqual(buildOwnerOrgOptions([org('Y', 'Y', null, false), org('Z', 'Z', '課長', true)]).defaultIndex, '1');
   });
 
   await check('change 事件同步回傳 event（不是 async）', () => {
@@ -278,32 +285,36 @@ const check = async (label, fn) => {
     }
   });
 
-  await check('多個單位：跳 radio 視窗（主要單位預選、職稱附註），選哪個就帶哪個並用它重排；原部門不是新費用所屬人的單位 → 不給取消', async () => {
-    reset({ swalAnswer: { isConfirmed: true, value: '2' } });
+  await check('多個單位：跳選單位視窗（每個單位一顆按鈕、照查到的順序、只寫部門名稱），點哪個就帶哪個並用它重排；原部門不是新費用所屬人的單位 → 不給取消', async () => {
+    reset({ pick: 2 });
     env.orgs.u2 = ORGS;
     handler(changeEvent('u2', '王小明'));
     await flush();
-    assert.strictEqual(env.swalCalls.length, 1);
-    const opts = env.swalCalls[0];
-    assert.strictEqual(opts.input, 'radio');
-    assert.strictEqual(opts.inputValue, '1', '預選主要單位');
-    assert.strictEqual(opts.showCancelButton, false, '部門鎖住，不能留著別人的部門');
-    assert.strictEqual(opts.allowEscapeKey, false);
-    assert.strictEqual(opts.inputOptions[1], '總務部-資訊課（課員）　★主要單位');
-    assert.strictEqual(opts.title, '請選擇費用所屬人部門');
-    assert.match(opts.text, /王小明 有 3 個所屬單位，簽核人員會依選的部門排/);
+    assert.strictEqual(env.dialogs.length, 1);
+    assert.strictEqual(env.swalCalls.length, 0, '不再用 SweetAlert radio');
+    const overlay = env.dialogs[0];
+    assert.strictEqual(overlay.className, 'pr-org-picker-overlay');
+    assert.strictEqual(overlay.children[0].className, 'pr-org-picker');
+    const view = readOrgPicker(overlay);
+    assert.strictEqual(view.title, '王小明 有多個所屬單位，請選擇費用所屬人部門：');
+    assert.strictEqual(view.hint, '簽核人員會依選的部門排。');
+    assert.deepStrictEqual(view.labels, ['物流部-業務企劃課', '總務部-資訊課', '總務部']);
+    view.options.forEach((b) => assert.strictEqual(b.type, 'button', '不能是 submit，免得送出表單'));
+    assert.strictEqual(view.cancel, undefined, '部門鎖住，不能留著別人的部門');
+    assert.strictEqual(overlay.removed, true, '點了就關掉視窗');
     assert.deepStrictEqual(orgValue(), [U('C', '總務部')]);
     assert.deepStrictEqual(approvalQueries(), [orgQuery('C')]);
   });
 
-  await check('多個單位、原部門也是新費用所屬人的單位 → 可以取消保留', async () => {
-    reset({ swalAnswer: { isConfirmed: true, value: '2' } });
+  await check('多個單位、原部門也是新費用所屬人的單位 → 有「取消（保留原本的部門）」', async () => {
+    reset({ pick: 2 });
     env.orgs.u2 = ORGS;
     env.live[F.EXPENSE_OWNER_ORG].value = [U('B', '總務部-資訊課')];
     handler(changeEvent('u2'));
     await flush();
-    assert.strictEqual(env.swalCalls[0].showCancelButton, true);
-    assert.match(env.swalCalls[0].cancelButtonText, /保留原本的部門/);
+    const { cancel } = readOrgPicker(env.dialogs[0]);
+    assert.strictEqual(cancel.textContent, '取消（保留原本的部門）');
+    assert.strictEqual(cancel.type, 'button');
   });
 
   await check('程式帶入的部門保持鎖住（disabled）', async () => {
@@ -314,20 +325,22 @@ const check = async (label, fn) => {
     assert.strictEqual(env.live[F.EXPENSE_OWNER_ORG].disabled, true);
   });
 
-  await check('多個單位、沒有 Swal：直接帶主要單位', async () => {
-    reset({ useSwal: false });
+  await check('多個單位、沒有 Swal：照樣跳選單位視窗（不靠 SweetAlert）', async () => {
+    reset({ useSwal: false, pick: 0 });
     env.orgs.u2 = ORGS;
     handler(changeEvent('u2'));
     await flush();
-    assert.deepStrictEqual(orgValue(), [U('B', '總務部-資訊課')]);
+    assert.strictEqual(env.dialogs.length, 1);
+    assert.deepStrictEqual(orgValue(), [U('A', '物流部-業務企劃課')]);
   });
 
   await check('多個單位按取消（原部門也是他的單位）：費用所屬人部門保留原值、不寫回、不重排', async () => {
-    reset({ swalAnswer: { isConfirmed: false } });
+    reset({ pick: 'cancel' });
     env.orgs.u2 = [...ORGS, org('OLD', '原部門', '課員')];
     handler(changeEvent('u2'));
     await flush();
-    assert.strictEqual(env.swalCalls.length, 1);
+    assert.strictEqual(env.dialogs.length, 1);
+    assert.strictEqual(env.dialogs[0].removed, true);
     assert.strictEqual(env.setCount, 0);
     assert.deepStrictEqual(orgValue(), [U('OLD', '原部門')]);
     assert.strictEqual(approvalQueries().length, 0);
@@ -348,7 +361,7 @@ const check = async (label, fn) => {
   });
 
   await check('第一次正在等使用者選視窗時又改了人：第一次的選擇不再寫回', async () => {
-    reset({ swalAnswer: { isConfirmed: true, value: '0' }, swalDelay: 30 });
+    reset({ pick: 0, pickDelay: 30 });
     env.orgs.u2 = ORGS;
     env.orgs.u4 = [ORG_C];
     handler(changeEvent('u2'));
@@ -392,22 +405,26 @@ const check = async (label, fn) => {
   });
 
   await check('create.show：多個單位 → 跳視窗選，選了才帶入', async () => {
-    reset({ swalAnswer: { isConfirmed: true, value: '2' } });
+    reset({ pick: 2 });
     env.orgs.u2 = ORGS;
     showHandler(showEvent('u2', []));
     await flush();
-    assert.strictEqual(env.swalCalls.length, 1);
-    assert.strictEqual(env.swalCalls[0].title, '請選擇費用所屬人部門');
+    assert.strictEqual(env.dialogs.length, 1);
+    assert.match(readOrgPicker(env.dialogs[0]).title, /請選擇費用所屬人部門/);
     assert.deepStrictEqual(orgValue(), [U('C', '總務部')]);
   });
 
-  await check('create.show：部門空白、多個單位 → 視窗不給取消；萬一沒選（視窗被關掉）部門維持空白', async () => {
-    reset({ swalAnswer: { isConfirmed: false } });
+  await check('create.show：部門空白、多個單位 → 視窗不給取消；還沒點之前部門維持空白', async () => {
+    reset();
     env.orgs.u2 = ORGS;
     showHandler(showEvent('u2', []));
     await flush();
-    assert.strictEqual(env.swalCalls[0].showCancelButton, false);
+    assert.strictEqual(readOrgPicker(env.dialogs[0]).cancel, undefined);
+    assert.strictEqual(env.dialogs[0].removed, false);
     assert.deepStrictEqual(orgValue(), []);
+    // 視窗一次只開一個：這個沒關，後面的會一直排隊，所以測完要點掉
+    readOrgPicker(env.dialogs[0]).options[0].click();
+    await flush();
   });
 
   await check('create.show：0 個單位 → 警告、部門不動', async () => {
@@ -421,11 +438,11 @@ const check = async (label, fn) => {
   });
 
   await check('create.show：部門已有值且是費用所屬人的單位 → 不跳視窗、維持現狀', async () => {
-    reset({ swalAnswer: { isConfirmed: true, value: '2' } });
+    reset({ pick: 2 });
     env.orgs.u1 = ORGS;
     showHandler(showEvent('u1', [U('B', '總務部-資訊課')]));
     await flush();
-    assert.strictEqual(env.swalCalls.length, 0, '不該跳選部門視窗');
+    assert.strictEqual(env.dialogs.length, 0, '不該跳選部門視窗');
     assert.strictEqual(env.setCount > 0, true, '照原部門排簽核');
     assert.deepStrictEqual(orgValue(), [U('B', '總務部-資訊課')]);
   });
@@ -439,12 +456,12 @@ const check = async (label, fn) => {
     assert.ok(approvalQueries().includes(orgQuery(ORG_A.organization.code)));
     assert.strictEqual(env.alerts.length, 0, '不再跳「請選取費用所屬人正確所在的部門」');
 
-    reset({ swalAnswer: { isConfirmed: true, value: '0' } });
+    reset({ pick: 0 });
     env.orgs.u2 = ORGS;
     showHandler(showEvent('u2', [U('OLD', '原部門')]));
     await flush();
-    assert.strictEqual(env.swalCalls.length, 1);
-    assert.strictEqual(env.swalCalls[0].showCancelButton, false);
+    assert.strictEqual(env.dialogs.length, 1);
+    assert.strictEqual(readOrgPicker(env.dialogs[0]).cancel, undefined);
     assert.deepStrictEqual(orgValue(), [U('A', ORG_A.organization.name)]);
   });
 
