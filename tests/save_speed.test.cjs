@@ -188,10 +188,10 @@ const loadSavingHint = () => {
   });
 
   // ── 3. 互不相依的查詢同時送出 ────────────────────────────────────────────────
-  await check('submit 驗證：費用歸屬代碼、發票、掛帳單位檢查同時進行，錯誤訊息順序固定（代碼載入 → 表單 → 交通費明細 → 發票 → 掛帳單位）', () => {
+  await check('submit 驗證：費用歸屬代碼、發票、掛帳單位、部長帶入同時進行，錯誤訊息順序固定（代碼載入 → 表單 → 交通費明細 → 發票 → 掛帳單位 → 部長）', () => {
     const handler = extract(submitSrc, /KT\.on\(\['app\.record\.create\.submit', 'app\.record\.edit\.submit'\][\s\S]*$/, 'submit handler');
-    assert.match(handler, /await Promise\.all\(\[costCentersTask, invoiceTask, scopeTask\]\)/);
-    const order = ['allErrors.push(costCenters.error)', 'allErrors.push(...validateForm(record', 'trafficRules.validate(record)', 'allErrors.push(...invoiceErrors)', 'allErrors.push(...scopeErrors)'].map((s) => handler.indexOf(s));
+    assert.match(handler, /await Promise\.all\(\[costCentersTask, invoiceTask, scopeTask, directorTask\]\)/);
+    const order = ['allErrors.push(costCenters.error)', 'allErrors.push(...validateForm(record', 'trafficRules.validate(record)', 'allErrors.push(...invoiceErrors)', 'allErrors.push(...scopeErrors)', 'allErrors.push(...directorErrors)'].map((s) => handler.indexOf(s));
     assert.ok(handler.indexOf('trafficRules.normalize(record)') < handler.indexOf('checkInvoiceDuplicate(record)'), '發票號碼記錄要先重算再查重複');
     order.forEach((idx) => assert.ok(idx > 0));
     assert.deepStrictEqual([...order].sort((a, b) => a - b), order, '錯誤訊息的加入順序要固定');

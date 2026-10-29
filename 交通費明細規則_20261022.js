@@ -9,7 +9,8 @@
   //
   //   1. 交通工具＝高鐵 → 賣方統編寫 TRAFFIC_RULES.HSR_SELLER_TAX_ID、格式寫 HSR_FORMAT，並鎖住；
   //      改選高鐵以外（變更事件）→ 若賣方統編還是高鐵固定值，賣方統編、格式一起清空並解鎖
-  //   2. 金額變更 → 稅額＝金額 ÷ 1.05 × 0.05，四捨五入到個位數（金額本身含稅），稅額鎖住
+  //   2. 金額／憑證種類變更 → 憑證種類是 TRAFFIC_RULES.TAX_RECEIPT_TYPES（高鐵票／發票）：稅額＝金額 ÷ 1.05 × 0.05，
+  //      四捨五入到個位數（金額本身含稅）；其他種類稅額寫 0。稅額不鎖（2026-10-29）
   //   3. 憑證種類＝高鐵票／發票 → 開放發票號碼；其他種類鎖住並清空。存檔時必填、表單內不可重複，
   //      並重算「發票號碼記錄」（跨單重複由 payment_request_submit 查記錄欄位，不用迴圈讀表格）
   //   4. 有任何一列是計程車 → 是否有紙本憑證自動選「是」，理由動態必填（標籤加紅色 *）
@@ -46,6 +47,7 @@
   };
 
   const isInvoiceReceipt = (row) => RULES.INVOICE_RECEIPT_TYPES.includes(row.value[COLS.RECEIPT_TYPE]?.value);
+  const isTaxReceipt = (row) => RULES.TAX_RECEIPT_TYPES.includes(row.value[COLS.RECEIPT_TYPE]?.value);
   /**
    * 這個交通工具可選的憑證種類；交通工具空白或沒設定 → null（不限制）
    * @param {string} vehicle
@@ -95,9 +97,8 @@
       if (allowed && allowed.length === 1 && !v[COLS.RECEIPT_TYPE].value) v[COLS.RECEIPT_TYPE].value = allowed[0];
     }
 
-    // 2. 稅額
-    if (v[COLS.TAX] && v[COLS.AMOUNT]) v[COLS.TAX].value = calcTax(v[COLS.AMOUNT].value);
-    setLock(COLS.TAX, true);
+    // 2. 稅額：高鐵票／發票才算，其他種類寫 0（不鎖：能不能改交給帳號權限設定／kintone 預設）
+    if (v[COLS.TAX]) v[COLS.TAX].value = isTaxReceipt(row) ? calcTax(v[COLS.AMOUNT]?.value) : '0';
 
     // 3. 發票號碼
     if (v[COLS.INVOICE_NO]) {

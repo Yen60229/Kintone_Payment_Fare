@@ -679,6 +679,9 @@
 
           console.log('title為', title);
 
+          // 費用所屬人是部長：簽核人員排完後，單位部長_支店長改依費用歸屬帶入（部長簽核帶入_20261029.js）
+          if (title === C.DIRECTOR_BY_COST_CENTER.OWNER_TITLE) Promise.resolve().then(() => window.PR_DIRECTOR_BY_CC?.refresh());
+
           // 如果是台中支店長/營業戰略部長/總務部長/事業本部長，不用後續的設定
           if (isSpecificDirector) {
             // 隱藏其餘欄位

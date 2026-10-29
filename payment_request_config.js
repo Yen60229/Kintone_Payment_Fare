@@ -123,6 +123,8 @@
       IN_USE: '使用狀況', // 值 '使用中'；query 篩選用
       // ORGANIZATION_SELECT（單選），值一律為「部」層級。掛帳單位限部內（COST_SCOPE）靠它判斷代碼屬於哪個部門
       DEPT: '所屬部門',
+      // GROUP_SELECT：這個代碼／部門的部長群組。費用所屬人是部長時用來帶單位部長（DIRECTOR_BY_COST_CENTER）
+      DIRECTOR_GROUP: '部門部長',
     }),
     // 簽核流程主檔（APPS.APPROVAL_FLOW）：一般單位用「簽核所屬單位」（組織欄位，存組織代碼）查，
     //   改組織名稱不用改程式；依職稱改查的合併流程（特殊簽核流程，例如「物流部次長級」）才用「簽核流程名稱」查。
@@ -317,6 +319,8 @@
     HSR_FORMAT: '22',
     // 金額含稅；稅額＝金額 ÷ (1＋稅率) × 稅率，四捨五入到個位數
     TAX_RATE_PERCENT: 5,
+    // 這些憑證種類才算稅額；其他種類（含空白）稅額一律寫 0
+    TAX_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.HSR_TICKET, OPTIONS.RECEIPT_TYPE.INVOICE]),
     // 這些憑證種類才開放填發票號碼（存檔時必填、不可重複）
     INVOICE_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.HSR_TICKET, OPTIONS.RECEIPT_TYPE.INVOICE]),
     // 交通工具 → 可選的憑證種類（沒列在這裡的交通工具不限制）。
@@ -349,6 +353,22 @@
     }),
   });
 
+  // ── 費用所屬人是部長時的單位部長（部長簽核帶入_20261029.js 用）──────────────
+  //   費用所屬人在費用所屬人部門的職稱是 OWNER_TITLE → 依明細第一個費用歸屬代碼查費用歸屬主檔（APPS.COST_CENTER）：
+  //     代碼的所屬部門（往上爬）是 HQ_CODE 的所屬部門之一 → 用該代碼那筆的「部門部長」群組（沒設就用 HQ_CODE 同部門那筆的）
+  //     其他 → 用 DEFAULT_CODE 的「部門部長」群組
+  //   群組成員（去掉費用所屬人本人）寫入 TARGET_FIELD。
+  //   只在新增、EDITABLE_STATUSES 與駁回狀態（名稱以 REJECT_SUFFIX 結尾）重算，且值沒變不寫
+  //   （送出後沒有該欄位編輯權限的人存檔會被 kintone 退回）。
+  const DIRECTOR_BY_COST_CENTER = Object.freeze({
+    OWNER_TITLE: '部長',
+    HQ_CODE: 'AJ30', // 總公司：營業戰略部／安全品質推動部／總務部共用
+    DEFAULT_CODE: 'AJ36', // 事業本部
+    TARGET_FIELD: '單位部長_支店長',
+    EDITABLE_STATUSES: Object.freeze([STATUS.REIMBURSEMENT_FILL, STATUS.APPLY_START]),
+    REJECT_SUFFIX: '駁回',
+  });
+
   window.PR_CONFIG = Object.freeze({
     APPS,
     ACCOUNTING,
@@ -368,6 +388,7 @@
     OPTIONS,
     TRAFFIC_RULES,
     COST_SCOPE,
+    DIRECTOR_BY_COST_CENTER,
     isAdmin,
   });
 })();

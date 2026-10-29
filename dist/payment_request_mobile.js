@@ -129,6 +129,8 @@
         IN_USE: '使用狀況', // 值 '使用中'；query 篩選用
         // ORGANIZATION_SELECT（單選），值一律為「部」層級。掛帳單位限部內（COST_SCOPE）靠它判斷代碼屬於哪個部門
         DEPT: '所屬部門',
+        // GROUP_SELECT：這個代碼／部門的部長群組。費用所屬人是部長時用來帶單位部長（DIRECTOR_BY_COST_CENTER）
+        DIRECTOR_GROUP: '部門部長',
       }),
       // 簽核流程主檔（APPS.APPROVAL_FLOW）：一般單位用「簽核所屬單位」（組織欄位，存組織代碼）查，
       //   改組織名稱不用改程式；依職稱改查的合併流程（特殊簽核流程，例如「物流部次長級」）才用「簽核流程名稱」查。
@@ -323,6 +325,8 @@
       HSR_FORMAT: '22',
       // 金額含稅；稅額＝金額 ÷ (1＋稅率) × 稅率，四捨五入到個位數
       TAX_RATE_PERCENT: 5,
+      // 這些憑證種類才算稅額；其他種類（含空白）稅額一律寫 0
+      TAX_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.HSR_TICKET, OPTIONS.RECEIPT_TYPE.INVOICE]),
       // 這些憑證種類才開放填發票號碼（存檔時必填、不可重複）
       INVOICE_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.HSR_TICKET, OPTIONS.RECEIPT_TYPE.INVOICE]),
       // 交通工具 → 可選的憑證種類（沒列在這裡的交通工具不限制）。
@@ -355,6 +359,22 @@
       }),
     });
 
+    // ── 費用所屬人是部長時的單位部長（部長簽核帶入_20261029.js 用）──────────────
+    //   費用所屬人在費用所屬人部門的職稱是 OWNER_TITLE → 依明細第一個費用歸屬代碼查費用歸屬主檔（APPS.COST_CENTER）：
+    //     代碼的所屬部門（往上爬）是 HQ_CODE 的所屬部門之一 → 用該代碼那筆的「部門部長」群組（沒設就用 HQ_CODE 同部門那筆的）
+    //     其他 → 用 DEFAULT_CODE 的「部門部長」群組
+    //   群組成員（去掉費用所屬人本人）寫入 TARGET_FIELD。
+    //   只在新增、EDITABLE_STATUSES 與駁回狀態（名稱以 REJECT_SUFFIX 結尾）重算，且值沒變不寫
+    //   （送出後沒有該欄位編輯權限的人存檔會被 kintone 退回）。
+    const DIRECTOR_BY_COST_CENTER = Object.freeze({
+      OWNER_TITLE: '部長',
+      HQ_CODE: 'AJ30', // 總公司：營業戰略部／安全品質推動部／總務部共用
+      DEFAULT_CODE: 'AJ36', // 事業本部
+      TARGET_FIELD: '單位部長_支店長',
+      EDITABLE_STATUSES: Object.freeze([STATUS.REIMBURSEMENT_FILL, STATUS.APPLY_START]),
+      REJECT_SUFFIX: '駁回',
+    });
+
     window.PR_CONFIG = Object.freeze({
       APPS,
       ACCOUNTING,
@@ -374,6 +394,7 @@
       OPTIONS,
       TRAFFIC_RULES,
       COST_SCOPE,
+      DIRECTOR_BY_COST_CENTER,
       isAdmin,
     });
   })();
@@ -1290,7 +1311,10 @@
               return ['掛帳單位檢查失敗：請稍後再試或聯絡系統管理員'];
             })
           : Promise.resolve([]);
-        const [costCenters, invoiceErrors, scopeErrors] = await Promise.all([costCentersTask, invoiceTask, scopeTask]);
+        // 費用所屬人是部長：依費用歸屬帶入單位部長_支店長（直接寫進 record；查不到資料回錯誤）
+        const director = window.PR_DIRECTOR_BY_CC;
+        const directorTask = director ? director.apply(record) : Promise.resolve([]);
+        const [costCenters, invoiceErrors, scopeErrors, directorErrors] = await Promise.all([costCentersTask, invoiceTask, scopeTask, directorTask]);
 
         if (costCenters.error) allErrors.push(costCenters.error);
         else console.log(`✅ 已載入 ${costCenters.set.size} 筆合法費用歸屬代碼`);
@@ -1306,6 +1330,9 @@
 
         // 4. 掛帳單位限費用所屬人部內、不可跨部門（排除群組的申請人不檢查）
         allErrors.push(...scopeErrors);
+
+        // 5. 費用所屬人是部長時的單位部長
+        allErrors.push(...directorErrors);
 
         if (allErrors.length > 0) {
           event.error = '儲存失敗';
@@ -1338,7 +1365,8 @@
     //       必須包含費用所屬人部門沿組織樹往上爬到的那個部。
     //       同一代碼可在主檔建多筆、各屬不同部門（例如總公司代碼由好幾個部共用）→ 任一個部符合就算部內
     //   (2) 不能跨部門：所有列的代碼要有共同的部
-    //   (3) 申請人在 COST_SCOPE.EXEMPT_GROUP 群組內 → 不受 (1)(2) 限制
+    //   (5) 申請人與費用所屬人要同部門：申請部門、費用所屬人部門各自往上爬到的部要相同（2026-10-29）
+    //   (3) 申請人在 COST_SCOPE.EXEMPT_GROUP 群組內 → 不受 (1)(2)(5) 限制
     //   (4) 同上的人新增單時，自動切成「手動設定簽核流程」，簽核人員自選（signing_personnel_manager 接手）
     //
     //   create.show／edit.show 時先查申請人在不在排除群組，結果存在模組變數（isExempt() 直接讀）；
@@ -1501,7 +1529,28 @@
     };
 
     /**
+     * 申請人與費用所屬人要同部門（純函式）：兩邊的部門各自往上爬到的部要相同。
+     * @param {Object} p
+     * @param {{code:string,name:string}} p.applicantOrg 申請部門
+     * @param {{code:string,name:string}} p.ownerOrg 費用所屬人部門
+     * @param {string} p.applicantDept 申請部門往上爬到的部
+     * @param {string} p.ownerDept 費用所屬人部門往上爬到的部
+     * @param {Object<string,string>} [p.orgNames] 組織代碼 → 名稱（訊息用）
+     * @returns {string[]} 錯誤訊息
+     */
+    const checkSameDept = ({ applicantOrg, ownerOrg, applicantDept, ownerDept, orgNames = {} }) => {
+      if (applicantDept === ownerDept) return [];
+      const nameOf = (code) => orgNames[code] || code;
+      const line = (label, org, dept) => `▸${label}：${org.name || org.code}${org.code === dept ? '' : `（屬 ${nameOf(dept)}）`}`;
+      return [
+        `申請人與費用所屬人**必須同部門**\n${line('申請部門', applicantOrg, applicantDept)}\n${line('費用所屬人部門', ownerOrg, ownerDept)}\n※ 請改選同部門的費用所屬人`,
+      ];
+    };
+
+    /**
      * 存檔驗證。排除群組內的申請人直接通過；費用所屬人部門沒填也略過（簽核排不出來，另有必填擋）。
+     *   (A) 申請人與費用所屬人同部門（申請部門沒填就略過）
+     *   (B) 掛帳單位限部內、不可跨部門（沒有任何費用歸屬就略過）
      * @param {Object} record
      * @returns {Promise<string[]>}
      */
@@ -1511,10 +1560,12 @@
 
       const ownerOrg = record[F.EXPENSE_OWNER_ORG]?.value?.[0];
       if (!ownerOrg?.code) return [];
+      const applicantOrg = record[F.APPLICANT_ORG]?.value?.[0];
 
       const rows = record[TRAFFIC.CODE]?.value || [];
       const codes = rows.map((row) => row?.value?.[TRAFFIC.COLS.EXPENSE]?.value || '');
-      if (!codes.some((c) => String(c).trim())) return [];
+      const hasCodes = codes.some((c) => String(c).trim());
+      if (!hasCodes && !applicantOrg?.code) return [];
 
       const cc = window.PR_COST_CENTER;
       let deptsOfCode;
@@ -1525,15 +1576,26 @@
         parentOf = await loadOrgParents();
       } catch (err) {
         console.error('[費用歸屬部門限制] 載入主檔或組織資料失敗:', err);
-        return ['無法取得費用歸屬主檔或組織資料，無法檢查掛帳單位，請稍後再試或聯絡系統管理員'];
+        return ['無法取得費用歸屬主檔或組織資料，無法檢查申請人部門與掛帳單位，請稍後再試或聯絡系統管理員'];
       }
 
-      // 主檔裡沒有（或不是使用中）的代碼，payment_request_submit 已經會報錯，這裡略過不重複報
-      const known = new Set([...(cc.getValidCodes() || [])].map((c) => String(c).trim().toUpperCase()));
-      const knownCodes = codes.map((c) => (known.has(String(c).trim().toUpperCase()) ? c : ''));
+      const deptSet = new Set(Object.values(deptsOfCode).flat());
+      const ownerDept = resolveDeptOfOrg(ownerOrg.code, parentOf, deptSet);
+      const orgNames = { ...(cc.getDeptNames?.() || {}), [ownerOrg.code]: ownerOrg.name };
+      const errors = [];
 
-      const ownerDept = resolveDeptOfOrg(ownerOrg.code, parentOf, new Set(Object.values(deptsOfCode).flat()));
-      return checkScope({ codes: knownCodes, deptsOfCode, ownerDept, orgNames: { ...(cc.getDeptNames?.() || {}), [ownerOrg.code]: ownerOrg.name } });
+      if (applicantOrg?.code) {
+        const applicantDept = resolveDeptOfOrg(applicantOrg.code, parentOf, deptSet);
+        errors.push(...checkSameDept({ applicantOrg, ownerOrg, applicantDept, ownerDept, orgNames: { ...orgNames, [applicantOrg.code]: applicantOrg.name } }));
+      }
+
+      if (hasCodes) {
+        // 主檔裡沒有（或不是使用中）的代碼，payment_request_submit 已經會報錯，這裡略過不重複報
+        const known = new Set([...(cc.getValidCodes() || [])].map((c) => String(c).trim().toUpperCase()));
+        const knownCodes = codes.map((c) => (known.has(String(c).trim().toUpperCase()) ? c : ''));
+        errors.push(...checkScope({ codes: knownCodes, deptsOfCode, ownerDept, orgNames }));
+      }
+      return errors;
     };
 
     // ── 事件 ───────────────────────────────────────────────────────────────
@@ -1558,6 +1620,7 @@
       inExemptGroup,
       resolveDeptOfOrg,
       checkScope,
+      checkSameDept,
       validate,
       loadOrgParents,
       /** 測試用：清掉記憶體裡的快取，模擬重新開頁 */
@@ -2250,6 +2313,9 @@
 
             console.log('title為', title);
 
+            // 費用所屬人是部長：簽核人員排完後，單位部長_支店長改依費用歸屬帶入（部長簽核帶入_20261029.js）
+            if (title === C.DIRECTOR_BY_COST_CENTER.OWNER_TITLE) Promise.resolve().then(() => window.PR_DIRECTOR_BY_CC?.refresh());
+
             // 如果是台中支店長/營業戰略部長/總務部長/事業本部長，不用後續的設定
             if (isSpecificDirector) {
               // 隱藏其餘欄位
@@ -2860,6 +2926,216 @@
     const KT = window.PR_KT;
 
     // =============================================================================
+    // 費用所屬人是部長 → 單位部長_支店長 依費用歸屬帶入（2026-10-29）
+    //
+    //   費用所屬人在費用所屬人部門的職稱是部長時，簽核流程主檔排的部長不適用（本人或同層），
+    //   改依明細第一個費用歸屬代碼查費用歸屬主檔（APPS.COST_CENTER）：
+    //     (1) 代碼的所屬部門（往上爬）是 DIRECTOR_BY_COST_CENTER.HQ_CODE（總公司）的所屬部門之一
+    //         → 用該代碼那筆的「部門部長」群組（沒設就用總公司同部門那筆的）
+    //     (2) 其他 → 用 DEFAULT_CODE（事業本部）的「部門部長」群組
+    //   群組成員去掉費用所屬人本人後寫入單位部長_支店長（只剩本人＝清空，部長本人不簽自己）。
+    //   同一代碼有好幾筆（例如總公司由三個部共用）→ 取費用所屬人的部那一筆。
+    //
+    //   存檔：payment_request_submit 呼叫 apply()，查不到資料時擋存檔（錯誤一起顯示）。
+    //   畫面：費用歸屬變更、簽核人員排完（signing_personnel_manager 呼叫 refresh()）時先帶給使用者看。
+    //   手動設定簽核流程、表單作廢不處理；送出後（不在可編輯狀態）不重算。
+    // =============================================================================
+
+    const C = window.PR_CONFIG;
+    const F = C.FIELDS;
+    const CFG = C.DIRECTOR_BY_COST_CENTER;
+    const CC = C.REF_FIELDS.COST_CENTER;
+    const TRAFFIC = F.TRAFFIC_TABLE;
+
+    // ── 純函式 ──────────────────────────────────────────────────────────────
+
+    /** 明細裡第一個有填的費用歸屬代碼（大寫）；都沒填回空字串 */
+    const firstCostCenter = (record) => {
+      const rows = record?.[TRAFFIC.CODE]?.value || [];
+      for (const row of rows) {
+        const code = String(row?.value?.[TRAFFIC.COLS.EXPENSE]?.value || '').trim().toUpperCase();
+        if (code) return code;
+      }
+      return '';
+    };
+
+    /** 這個狀態還能重算（新增畫面沒有狀態欄位值，一律可以） */
+    const isEditableStatus = (status) => !status || CFG.EDITABLE_STATUSES.includes(status) || String(status).endsWith(CFG.REJECT_SUFFIX);
+
+    /**
+     * 決定要用哪個部長群組。
+     * @param {Object} p
+     * @param {string} p.code 費用歸屬代碼（大寫）
+     * @param {string} p.ownerDept 費用所屬人部門往上爬到的部（共用代碼時選哪一筆）
+     * @param {Array<{code:string, dept:string, groups:string[]}>} p.records 費用歸屬主檔的記錄（至少含 code、HQ_CODE、DEFAULT_CODE）
+     * @param {Object<string,string|null>} [p.parentOf] 組織代碼 → 上一層
+     * @param {Function} p.resolveDeptOfOrg PR_COST_SCOPE.resolveDeptOfOrg
+     * @returns {{ groups: string[], source: 'HQ'|'DEFAULT', dept: string }|null} 代碼不在主檔 → null
+     */
+    const pickDirectorGroups = ({ code, ownerDept, records, parentOf = {}, resolveDeptOfOrg }) => {
+      const ofCode = (c) => records.filter((r) => r.code === c);
+      const own = ofCode(code);
+      if (own.length === 0) return null;
+      const picked = own.find((r) => r.dept === ownerDept) || own[0];
+
+      const hq = ofCode(CFG.HQ_CODE);
+      const hqDepts = new Set(hq.map((r) => r.dept).filter(Boolean));
+      const top = picked.dept ? resolveDeptOfOrg(picked.dept, parentOf, hqDepts) : '';
+      if (top && hqDepts.has(top)) {
+        const groups = picked.groups.length > 0 ? picked.groups : hq.find((r) => r.dept === top)?.groups || [];
+        return { groups, source: 'HQ', dept: top };
+      }
+      const fallback = ofCode(CFG.DEFAULT_CODE);
+      return { groups: [...new Set(fallback.flatMap((r) => r.groups))], source: 'DEFAULT', dept: picked.dept };
+    };
+
+    /** 兩組使用者是否相同（只看代碼、不看順序） */
+    const sameUsers = (a, b) => {
+      const key = (list) => (list || []).map((u) => u?.code).filter(Boolean).sort().join(',');
+      return key(a) === key(b);
+    };
+
+    // ── 查資料 ──────────────────────────────────────────────────────────────
+
+    /** 費用所屬人在費用所屬人部門的職稱；查不到該部門回空字串 */
+    const fetchOwnerTitle = async (ownerCode, ownerOrgCode) => {
+      const resp = await kintone.api(kintone.api.url('/v1/user/organizations.json', true), 'GET', { code: ownerCode });
+      const hit = (resp.organizationTitles || []).find((o) => o.organization?.code === ownerOrgCode);
+      return hit?.title?.name || '';
+    };
+
+    /** 費用歸屬主檔裡這幾個代碼（使用中）的所屬部門與部長群組 */
+    const fetchCostCenterRecords = async (codes) => {
+      const list = [...new Set(codes)].map((c) => `"${c}"`).join(',');
+      const resp = await kintone.api(kintone.api.url('/k/v1/records', true), 'GET', {
+        app: C.APPS.COST_CENTER,
+        fields: [CC.CODE, CC.DEPT, CC.DIRECTOR_GROUP],
+        query: `${CC.CODE} in (${list}) and ${CC.IN_USE} in ("使用中") limit 500`,
+      });
+      return (resp.records || []).map((r) => ({
+        code: String(r[CC.CODE]?.value || '').trim().toUpperCase(),
+        dept: r[CC.DEPT]?.value?.[0]?.code || '',
+        groups: (r[CC.DIRECTOR_GROUP]?.value || []).map((g) => g.code).filter(Boolean),
+      }));
+    };
+
+    /** 群組（角色）成員，分頁抓完 */
+    const fetchGroupUsers = async (groupCode) => {
+      const users = [];
+      for (let offset = 0; offset < 2000; offset += 100) {
+        const resp = await kintone.api(kintone.api.url('/v1/group/users.json', true), 'GET', { code: groupCode, size: 100, offset });
+        const page = resp.users || [];
+        users.push(...page.map((u) => ({ code: u.code, name: u.name })));
+        if (page.length < 100) break;
+      }
+      return users;
+    };
+
+    /** 費用所屬人部門往上爬到的部；組織樹或主檔拿不到就用部門自己（只影響共用代碼選哪一筆） */
+    const ownerDeptOf = async (ownerOrgCode) => {
+      try {
+        const scope = window.PR_COST_SCOPE;
+        const cc = window.PR_COST_CENTER;
+        await cc.ensureLoaded();
+        const parentOf = await scope.loadOrgParents();
+        return { dept: scope.resolveDeptOfOrg(ownerOrgCode, parentOf, new Set(Object.values(cc.getDeptsOfCode()).flat())), parentOf };
+      } catch (err) {
+        console.warn('[部長簽核帶入] 取得組織樹失敗，改用費用所屬人部門本身判斷:', err);
+        return { dept: ownerOrgCode, parentOf: {} };
+      }
+    };
+
+    /**
+     * 算出單位部長_支店長應該是誰。
+     * @param {Object} record
+     * @returns {Promise<{ users: Array }|{ skip: string }>} skip：不處理（不是部長、沒填費用歸屬、代碼不在主檔…）
+     */
+    const resolveDirector = async (record) => {
+      if (record?.[F.MANUAL_FLOW]?.value?.length > 0) return { skip: 'manual' };
+      const owner = record?.[F.EXPENSE_OWNER]?.value?.[0];
+      const ownerOrg = record?.[F.EXPENSE_OWNER_ORG]?.value?.[0];
+      if (!owner?.code || !ownerOrg?.code) return { skip: 'no-owner' };
+      const code = firstCostCenter(record);
+      if (!code) return { skip: 'no-cost-center' };
+
+      const title = await fetchOwnerTitle(owner.code, ownerOrg.code);
+      if (title !== CFG.OWNER_TITLE) return { skip: 'not-director' };
+
+      const [records, { dept: ownerDept, parentOf }] = await Promise.all([
+        fetchCostCenterRecords([code, CFG.HQ_CODE, CFG.DEFAULT_CODE]),
+        ownerDeptOf(ownerOrg.code),
+      ]);
+      const plan = pickDirectorGroups({ code, ownerDept, records, parentOf, resolveDeptOfOrg: window.PR_COST_SCOPE.resolveDeptOfOrg });
+      if (!plan) return { skip: 'unknown-cost-center' }; // 代碼不在主檔：存檔驗證另有錯誤訊息
+      if (plan.groups.length === 0) throw new Error(`費用歸屬主檔沒有設定「${CC.DIRECTOR_GROUP}」（${plan.source === 'HQ' ? code : CFG.DEFAULT_CODE}）`);
+
+      const members = (await Promise.all(plan.groups.map(fetchGroupUsers))).flat();
+      const seen = new Set([owner.code]); // 部長本人不簽自己
+      const users = members.filter((u) => u?.code && !seen.has(u.code) && seen.add(u.code));
+      console.log(`[部長簽核帶入] ${code} → ${plan.source === 'HQ' ? '總公司' : '預設'}部長群組 ${plan.groups.join('、')}：`, users.map((u) => u.code));
+      return { users };
+    };
+
+    // ── 存檔／畫面 ────────────────────────────────────────────────────────────
+
+    /**
+     * 存檔時呼叫：算好就寫進 record（值沒變不寫）。查不到資料回錯誤訊息擋存檔。
+     * @param {Object} record event.record
+     * @returns {Promise<string[]>}
+     */
+    const apply = async (record) => {
+      if (record?.[C.VOID_FIELD]?.value?.length > 0) return [];
+      if (!isEditableStatus(record?.[F.STATUS_FIELD]?.value)) return [];
+      try {
+        const result = await resolveDirector(record);
+        if (result.skip) return [];
+        const field = record[CFG.TARGET_FIELD];
+        if (field && !sameUsers(field.value, result.users)) field.value = result.users;
+        return [];
+      } catch (err) {
+        console.error('[部長簽核帶入] 帶入單位部長失敗:', err);
+        return [`費用所屬人是部長，**無法帶入「${CFG.TARGET_FIELD}」**\n※ ${err?.message || '請稍後再試'}；仍無法存檔請聯絡系統管理員`];
+      }
+    };
+
+    // 連續觸發時只讓最後一次的結果寫回畫面
+    let refreshSeq = 0;
+
+    /**
+     * 畫面上先帶給使用者看（非同步，寫回用 get()/set()）。失敗只記 log，存檔時 apply() 會再算並擋下。
+     * @param {Object} [snapshot] 變更事件的 event.record（change 事件裡不能同步 get()）；沒給就讀畫面
+     */
+    const refresh = (snapshot) => {
+      const seq = ++refreshSeq;
+      const record = snapshot || KT.record().get().record;
+      if (!isEditableStatus(record?.[F.STATUS_FIELD]?.value)) return Promise.resolve();
+      return resolveDirector(record)
+        .then((result) => {
+          if (result.skip || seq !== refreshSeq) return;
+          const current = KT.record().get();
+          if (current.record[F.MANUAL_FLOW]?.value?.length > 0 || !current.record[CFG.TARGET_FIELD]) return;
+          current.record[CFG.TARGET_FIELD].value = result.users;
+          KT.record().set(current);
+          KT.record().setFieldShown(CFG.TARGET_FIELD, result.users.length > 0);
+        })
+        .catch((err) => console.warn('[部長簽核帶入] 畫面帶入單位部長失敗（存檔時會再試）:', err));
+    };
+
+    const changeEvents = [TRAFFIC.CODE, TRAFFIC.COLS.EXPENSE].flatMap((code) => [`app.record.create.change.${code}`, `app.record.edit.change.${code}`]);
+    KT.on(changeEvents, (event) => {
+      refresh(event.record);
+      return event;
+    });
+
+    window.PR_DIRECTOR_BY_CC = Object.freeze({ firstCostCenter, isEditableStatus, pickDirectorGroups, resolveDirector, apply, refresh });
+  })();
+
+  (() => {
+
+    // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
+    const KT = window.PR_KT;
+
+    // =============================================================================
     // 申請人部門依申請人帶入（2026-10-22）
     //
     //   申請人部門一律鎖住（main 的 show 事件），只能依申請人帶入：
@@ -2939,7 +3215,8 @@
     //
     //   1. 交通工具＝高鐵 → 賣方統編寫 TRAFFIC_RULES.HSR_SELLER_TAX_ID、格式寫 HSR_FORMAT，並鎖住；
     //      改選高鐵以外（變更事件）→ 若賣方統編還是高鐵固定值，賣方統編、格式一起清空並解鎖
-    //   2. 金額變更 → 稅額＝金額 ÷ 1.05 × 0.05，四捨五入到個位數（金額本身含稅），稅額鎖住
+    //   2. 金額／憑證種類變更 → 憑證種類是 TRAFFIC_RULES.TAX_RECEIPT_TYPES（高鐵票／發票）：稅額＝金額 ÷ 1.05 × 0.05，
+    //      四捨五入到個位數（金額本身含稅）；其他種類稅額寫 0。稅額不鎖（2026-10-29）
     //   3. 憑證種類＝高鐵票／發票 → 開放發票號碼；其他種類鎖住並清空。存檔時必填、表單內不可重複，
     //      並重算「發票號碼記錄」（跨單重複由 payment_request_submit 查記錄欄位，不用迴圈讀表格）
     //   4. 有任何一列是計程車 → 是否有紙本憑證自動選「是」，理由動態必填（標籤加紅色 *）
@@ -2976,6 +3253,7 @@
     };
 
     const isInvoiceReceipt = (row) => RULES.INVOICE_RECEIPT_TYPES.includes(row.value[COLS.RECEIPT_TYPE]?.value);
+    const isTaxReceipt = (row) => RULES.TAX_RECEIPT_TYPES.includes(row.value[COLS.RECEIPT_TYPE]?.value);
     /**
      * 這個交通工具可選的憑證種類；交通工具空白或沒設定 → null（不限制）
      * @param {string} vehicle
@@ -3025,9 +3303,8 @@
         if (allowed && allowed.length === 1 && !v[COLS.RECEIPT_TYPE].value) v[COLS.RECEIPT_TYPE].value = allowed[0];
       }
 
-      // 2. 稅額
-      if (v[COLS.TAX] && v[COLS.AMOUNT]) v[COLS.TAX].value = calcTax(v[COLS.AMOUNT].value);
-      setLock(COLS.TAX, true);
+      // 2. 稅額：高鐵票／發票才算，其他種類寫 0（不鎖：能不能改交給帳號權限設定／kintone 預設）
+      if (v[COLS.TAX]) v[COLS.TAX].value = isTaxReceipt(row) ? calcTax(v[COLS.AMOUNT]?.value) : '0';
 
       // 3. 發票號碼
       if (v[COLS.INVOICE_NO]) {

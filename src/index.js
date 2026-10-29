@@ -28,6 +28,8 @@ import '../payment_request_main_20260521.js';
 import '../payment_request_submit_20260506.js';
 import '../費用歸屬部門限制_20261022.js';
 import '../signing_personnel_manager_20260506.js';
+// 費用所屬人是部長時依費用歸屬帶單位部長：用 PR_COST_SCOPE／PR_COST_CENTER，由 submit 與簽核人員程式呼叫
+import '../部長簽核帶入_20261029.js';
 // 申請人部門依申請人帶入：用簽核人員程式提供的 PR_ORG_PICKER，排在它後面
 import '../申請人部門帶入_20261022.js';
 import '../交通費明細規則_20261022.js';

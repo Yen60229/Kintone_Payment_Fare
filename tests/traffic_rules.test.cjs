@@ -2,7 +2,7 @@
 
 // 測試：交通費明細規則_20261022.js
 //   1. 高鐵 → 賣方統編 00000000、格式 22，並鎖住；改選其他交通工具清空並解鎖
-//   2. 稅額＝含稅金額 ÷ 1.05 × 0.05，四捨五入到個位數，稅額鎖住
+//   2. 稅額＝含稅金額 ÷ 1.05 × 0.05，四捨五入到個位數（只算高鐵票／發票，其他寫 0），稅額不鎖
 //   3. 憑證種類＝高鐵票／發票才開放發票號碼；其他種類清空並鎖住；存檔必填、本單不可重複、重算發票號碼記錄
 //   4. 有計程車 → 是否有紙本憑證自動選「是」、理由動態必填（紅色 *）；存檔驗證
 //   5. 交通工具限制憑證種類：變更事件清掉不能用的、只有一種就帶入；存檔擋；桌面版選單藏起不能選的項目
@@ -63,13 +63,51 @@ check('calcTax：空白／非數字 → 空字串；負數（退款）照絕對�
   assert.strictEqual(R.calcTax('-5'), '0');
 });
 
-check('金額變更事件 → 每一列重算稅額並鎖住稅額', async () => {
+check('金額變更事件 → 每一列重算稅額；稅額不鎖', async () => {
   const { env } = setup();
-  const r = record([row({ [COLS.AMOUNT]: '1050' }), row({ [COLS.AMOUNT]: '315' })]);
+  const r = record([row({ [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '發票' }), row({ [COLS.AMOUNT]: '315', [COLS.RECEIPT_TYPE]: '高鐵票' })]);
   const ev = await env.fire(`app.record.create.change.${COLS.AMOUNT}`, { record: r });
   assert.strictEqual(ev.record[T.CODE].value[0].value[COLS.TAX].value, '50');
   assert.strictEqual(ev.record[T.CODE].value[1].value[COLS.TAX].value, '15');
-  assert.strictEqual(ev.record[T.CODE].value[0].value[COLS.TAX].disabled, true);
+  assert.notStrictEqual(ev.record[T.CODE].value[0].value[COLS.TAX].disabled, true);
+});
+
+check('稅額只算高鐵票／發票：收據、車票、無、沒選憑證種類 → 稅額寫 0', async () => {
+  const { env } = setup();
+  const r = record([
+    row({ [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '收據', [COLS.TAX]: '50' }),
+    row({ [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '車票（高鐵外）' }),
+    row({ [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '無' }),
+    row({ [COLS.AMOUNT]: '1050' }),
+  ]);
+  const ev = await env.fire(`app.record.edit.change.${COLS.AMOUNT}`, { record: r });
+  ev.record[T.CODE].value.forEach((rw, i) => assert.strictEqual(rw.value[COLS.TAX].value, '0', `第 ${i + 1} 列`));
+});
+
+check('憑證種類改成發票 → 稅額重算；改回收據 → 稅額變 0', async () => {
+  const { env } = setup();
+  const r = record([row({ [COLS.AMOUNT]: '1490', [COLS.RECEIPT_TYPE]: '發票' })]);
+  let ev = await env.fire(`app.record.create.change.${COLS.RECEIPT_TYPE}`, { record: r });
+  assert.strictEqual(ev.record[T.CODE].value[0].value[COLS.TAX].value, '71');
+  ev.record[T.CODE].value[0].value[COLS.RECEIPT_TYPE].value = '收據';
+  ev = await env.fire(`app.record.create.change.${COLS.RECEIPT_TYPE}`, { record: ev.record });
+  assert.strictEqual(ev.record[T.CODE].value[0].value[COLS.TAX].value, '0');
+});
+
+check('高鐵票／發票但金額空白 → 稅額空白', () => {
+  const { R } = setup();
+  const r = record([row({ [COLS.RECEIPT_TYPE]: '發票' })]);
+  R.applyRecordRules(r, true);
+  assert.strictEqual(r[T.CODE].value[0].value[COLS.TAX].value, '');
+});
+
+check('開畫面不鎖稅額，也不解開帳號權限設定已鎖的稅額', async () => {
+  const { env } = setup();
+  const r = record([row({ [COLS.AMOUNT]: '1050' }), row({ [COLS.AMOUNT]: '315' })]);
+  r[T.CODE].value[1].value[COLS.TAX].disabled = true; // 權限模組鎖的
+  const ev = await env.fire('app.record.edit.show', { record: r });
+  assert.notStrictEqual(ev.record[T.CODE].value[0].value[COLS.TAX].disabled, true);
+  assert.strictEqual(ev.record[T.CODE].value[1].value[COLS.TAX].disabled, true);
 });
 
 // ── 1. 高鐵 ─────────────────────────────────────────────────────────────────

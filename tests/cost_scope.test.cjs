@@ -3,6 +3,7 @@
 // 測試：費用歸屬部門限制_20261022.js
 //   (1) 掛帳單位（費用歸屬）只能是費用所屬人部內  (2) 不能跨部門
 //   (3) 申請人在「費用歸屬不限部門」群組 → 不受限制；create.show／edit.show 先算好存起來
+//   (5) 申請人與費用所屬人要同部門（申請部門、費用所屬人部門各自往上爬到的部相同）
 //   組織樹：費用所屬人部門沿上層爬到費用歸屬主檔出現過的部門
 // 單獨執行：node tests/cost_scope.test.cjs
 
@@ -66,8 +67,9 @@ const { C } = setup();
 const F = C.FIELDS;
 const T = F.TRAFFIC_TABLE;
 
-const record = ({ applicant = 'ME', ownerOrg = { code: 'LOG-N1-CS', name: '物流部-NEXT1-CS課' }, codes = [] } = {}) => ({
+const record = ({ applicant = 'ME', applicantOrg = null, ownerOrg = { code: 'LOG-N1-CS', name: '物流部-NEXT1-CS課' }, codes = [] } = {}) => ({
   [F.APPLICANT]: { value: applicant ? [{ code: applicant, name: applicant }] : [] },
+  [F.APPLICANT_ORG]: { value: applicantOrg ? [applicantOrg] : [] },
   [F.EXPENSE_OWNER_ORG]: { value: ownerOrg ? [ownerOrg] : [] },
   [T.CODE]: { value: codes.map((c) => ({ value: { [T.COLS.EXPENSE]: { value: c } } })) },
 });
@@ -227,6 +229,56 @@ check('validate：組織 API 失敗 → 一條「無法檢查」錯誤擋下存�
   const errs = await S.validate(record({ codes: ['AJ50'] }));
   assert.strictEqual(errs.length, 1);
   assert.ok(errs[0].includes('無法取得'), errs[0]);
+});
+
+// ── 申請人與費用所屬人同部門 ────────────────────────────────────────────────
+check('checkSameDept：同一個部 → 通過；不同部 → 列出兩邊的單位與所屬的部', () => {
+  const { S } = setup();
+  const a = { code: 'LOG-N1', name: '物流部-NEXT1' };
+  const o = { code: 'GA-1', name: '總務課' };
+  assert.strictEqual(S.checkSameDept({ applicantOrg: a, ownerOrg: a, applicantDept: 'LOG', ownerDept: 'LOG' }).length, 0);
+  const errs = S.checkSameDept({ applicantOrg: a, ownerOrg: o, applicantDept: 'LOG', ownerDept: 'GA', orgNames: ORG_NAMES });
+  assert.strictEqual(errs.length, 1);
+  assert.ok(errs[0].includes('必須同部門'), errs[0]);
+  assert.ok(errs[0].includes('▸申請部門：物流部-NEXT1（屬 物流部）'), errs[0]);
+  assert.ok(errs[0].includes('▸費用所屬人部門：總務課（屬 總務部）'), errs[0]);
+});
+
+check('checkSameDept：單位本身就是部 → 不重複寫「屬 XX」', () => {
+  const { S } = setup();
+  const errs = S.checkSameDept({ applicantOrg: { code: 'LOG', name: '物流部' }, ownerOrg: { code: 'QA', name: '安全品質推動部' }, applicantDept: 'LOG', ownerDept: 'QA', orgNames: ORG_NAMES });
+  assert.ok(errs[0].includes('▸申請部門：物流部\n') && !errs[0].includes('（屬'), errs[0]);
+});
+
+check('validate：申請部門與費用所屬人部門往上爬到同一個部（物流部的不同課）→ 通過', async () => {
+  const { S } = setup();
+  const errs = await S.validate(record({ applicantOrg: { code: 'LOG-N1', name: '物流部-NEXT1' }, codes: ['AJ50'] }));
+  assert.strictEqual(errs.length, 0, errs.join('\n'));
+});
+
+check('validate：申請人與費用所屬人不同部門 → 擋下（沒有填費用歸屬也照樣檢查）', async () => {
+  const { S } = setup();
+  const errs = await S.validate(record({ applicantOrg: { code: 'GA-1', name: '總務課' } }));
+  assert.strictEqual(errs.length, 1);
+  assert.ok(errs[0].includes('必須同部門') && errs[0].includes('總務部') && errs[0].includes('物流部'), errs[0]);
+});
+
+check('validate：不同部門＋部外代碼 → 兩條錯誤一起列出，同部門的排前面', async () => {
+  const { S } = setup();
+  const errs = await S.validate(record({ applicantOrg: { code: 'GA-1', name: '總務課' }, codes: ['AJ99'] }));
+  assert.strictEqual(errs.length, 2);
+  assert.ok(errs[0].includes('必須同部門'), errs[0]);
+  assert.ok(errs[1].includes('只能是費用所屬人的部內'), errs[1]);
+});
+
+check('validate：排除群組的申請人不檢查同部門', async () => {
+  const { S } = setup({ groups: { BOSS: ['費用歸屬不限部門'] } });
+  assert.strictEqual((await S.validate(record({ applicant: 'BOSS', applicantOrg: { code: 'GA-1', name: '總務課' } }))).length, 0);
+});
+
+check('validate：申請部門沒填 → 不檢查同部門', async () => {
+  const { S } = setup();
+  assert.strictEqual((await S.validate(record({ codes: ['AJ50'] }))).length, 0);
 });
 
 check('組織樹：分頁抓完後記在記憶體，第二次不再呼叫 API', async () => {

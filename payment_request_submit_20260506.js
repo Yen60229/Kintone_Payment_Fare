@@ -332,7 +332,10 @@
             return ['掛帳單位檢查失敗：請稍後再試或聯絡系統管理員'];
           })
         : Promise.resolve([]);
-      const [costCenters, invoiceErrors, scopeErrors] = await Promise.all([costCentersTask, invoiceTask, scopeTask]);
+      // 費用所屬人是部長：依費用歸屬帶入單位部長_支店長（直接寫進 record；查不到資料回錯誤）
+      const director = window.PR_DIRECTOR_BY_CC;
+      const directorTask = director ? director.apply(record) : Promise.resolve([]);
+      const [costCenters, invoiceErrors, scopeErrors, directorErrors] = await Promise.all([costCentersTask, invoiceTask, scopeTask, directorTask]);
 
       if (costCenters.error) allErrors.push(costCenters.error);
       else console.log(`✅ 已載入 ${costCenters.set.size} 筆合法費用歸屬代碼`);
@@ -348,6 +351,9 @@
 
       // 4. 掛帳單位限費用所屬人部內、不可跨部門（排除群組的申請人不檢查）
       allErrors.push(...scopeErrors);
+
+      // 5. 費用所屬人是部長時的單位部長
+      allErrors.push(...directorErrors);
 
       if (allErrors.length > 0) {
         event.error = '儲存失敗';

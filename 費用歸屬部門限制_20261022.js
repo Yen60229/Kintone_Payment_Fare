@@ -11,7 +11,8 @@
   //       必須包含費用所屬人部門沿組織樹往上爬到的那個部。
   //       同一代碼可在主檔建多筆、各屬不同部門（例如總公司代碼由好幾個部共用）→ 任一個部符合就算部內
   //   (2) 不能跨部門：所有列的代碼要有共同的部
-  //   (3) 申請人在 COST_SCOPE.EXEMPT_GROUP 群組內 → 不受 (1)(2) 限制
+  //   (5) 申請人與費用所屬人要同部門：申請部門、費用所屬人部門各自往上爬到的部要相同（2026-10-29）
+  //   (3) 申請人在 COST_SCOPE.EXEMPT_GROUP 群組內 → 不受 (1)(2)(5) 限制
   //   (4) 同上的人新增單時，自動切成「手動設定簽核流程」，簽核人員自選（signing_personnel_manager 接手）
   //
   //   create.show／edit.show 時先查申請人在不在排除群組，結果存在模組變數（isExempt() 直接讀）；
@@ -174,7 +175,28 @@
   };
 
   /**
+   * 申請人與費用所屬人要同部門（純函式）：兩邊的部門各自往上爬到的部要相同。
+   * @param {Object} p
+   * @param {{code:string,name:string}} p.applicantOrg 申請部門
+   * @param {{code:string,name:string}} p.ownerOrg 費用所屬人部門
+   * @param {string} p.applicantDept 申請部門往上爬到的部
+   * @param {string} p.ownerDept 費用所屬人部門往上爬到的部
+   * @param {Object<string,string>} [p.orgNames] 組織代碼 → 名稱（訊息用）
+   * @returns {string[]} 錯誤訊息
+   */
+  const checkSameDept = ({ applicantOrg, ownerOrg, applicantDept, ownerDept, orgNames = {} }) => {
+    if (applicantDept === ownerDept) return [];
+    const nameOf = (code) => orgNames[code] || code;
+    const line = (label, org, dept) => `▸${label}：${org.name || org.code}${org.code === dept ? '' : `（屬 ${nameOf(dept)}）`}`;
+    return [
+      `申請人與費用所屬人**必須同部門**\n${line('申請部門', applicantOrg, applicantDept)}\n${line('費用所屬人部門', ownerOrg, ownerDept)}\n※ 請改選同部門的費用所屬人`,
+    ];
+  };
+
+  /**
    * 存檔驗證。排除群組內的申請人直接通過；費用所屬人部門沒填也略過（簽核排不出來，另有必填擋）。
+   *   (A) 申請人與費用所屬人同部門（申請部門沒填就略過）
+   *   (B) 掛帳單位限部內、不可跨部門（沒有任何費用歸屬就略過）
    * @param {Object} record
    * @returns {Promise<string[]>}
    */
@@ -184,10 +206,12 @@
 
     const ownerOrg = record[F.EXPENSE_OWNER_ORG]?.value?.[0];
     if (!ownerOrg?.code) return [];
+    const applicantOrg = record[F.APPLICANT_ORG]?.value?.[0];
 
     const rows = record[TRAFFIC.CODE]?.value || [];
     const codes = rows.map((row) => row?.value?.[TRAFFIC.COLS.EXPENSE]?.value || '');
-    if (!codes.some((c) => String(c).trim())) return [];
+    const hasCodes = codes.some((c) => String(c).trim());
+    if (!hasCodes && !applicantOrg?.code) return [];
 
     const cc = window.PR_COST_CENTER;
     let deptsOfCode;
@@ -198,15 +222,26 @@
       parentOf = await loadOrgParents();
     } catch (err) {
       console.error('[費用歸屬部門限制] 載入主檔或組織資料失敗:', err);
-      return ['無法取得費用歸屬主檔或組織資料，無法檢查掛帳單位，請稍後再試或聯絡系統管理員'];
+      return ['無法取得費用歸屬主檔或組織資料，無法檢查申請人部門與掛帳單位，請稍後再試或聯絡系統管理員'];
     }
 
-    // 主檔裡沒有（或不是使用中）的代碼，payment_request_submit 已經會報錯，這裡略過不重複報
-    const known = new Set([...(cc.getValidCodes() || [])].map((c) => String(c).trim().toUpperCase()));
-    const knownCodes = codes.map((c) => (known.has(String(c).trim().toUpperCase()) ? c : ''));
+    const deptSet = new Set(Object.values(deptsOfCode).flat());
+    const ownerDept = resolveDeptOfOrg(ownerOrg.code, parentOf, deptSet);
+    const orgNames = { ...(cc.getDeptNames?.() || {}), [ownerOrg.code]: ownerOrg.name };
+    const errors = [];
 
-    const ownerDept = resolveDeptOfOrg(ownerOrg.code, parentOf, new Set(Object.values(deptsOfCode).flat()));
-    return checkScope({ codes: knownCodes, deptsOfCode, ownerDept, orgNames: { ...(cc.getDeptNames?.() || {}), [ownerOrg.code]: ownerOrg.name } });
+    if (applicantOrg?.code) {
+      const applicantDept = resolveDeptOfOrg(applicantOrg.code, parentOf, deptSet);
+      errors.push(...checkSameDept({ applicantOrg, ownerOrg, applicantDept, ownerDept, orgNames: { ...orgNames, [applicantOrg.code]: applicantOrg.name } }));
+    }
+
+    if (hasCodes) {
+      // 主檔裡沒有（或不是使用中）的代碼，payment_request_submit 已經會報錯，這裡略過不重複報
+      const known = new Set([...(cc.getValidCodes() || [])].map((c) => String(c).trim().toUpperCase()));
+      const knownCodes = codes.map((c) => (known.has(String(c).trim().toUpperCase()) ? c : ''));
+      errors.push(...checkScope({ codes: knownCodes, deptsOfCode, ownerDept, orgNames }));
+    }
+    return errors;
   };
 
   // ── 事件 ───────────────────────────────────────────────────────────────
@@ -231,6 +266,7 @@
     inExemptGroup,
     resolveDeptOfOrg,
     checkScope,
+    checkSameDept,
     validate,
     loadOrgParents,
     /** 測試用：清掉記憶體裡的快取，模擬重新開頁 */
