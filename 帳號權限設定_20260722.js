@@ -10,6 +10,8 @@
  *   - SETTINGS_APP_ID = PR_CONFIG.APPS.PERMISSION：權限設定 App。內每筆記錄以 APP_ID 欄位對應「表單 App」，
  *   - DEBUG = true：會輸出 [KDEBUG] console；正式環境請改為 false。
  *   - 本模組僅綁桌面版事件，未含 mobile.*；行動版不套用此權限控管。
+ *   - 子表格新增／刪除列時，依開畫面時算好的權限重新鎖定每一列（子表格 change 事件，載入時依表單設定自動註冊）。
+ *     若同一表單有其他程式也在子表格 change 事件設定 disabled，後執行的會覆蓋先執行的。
  * ============================================================
  */
 (function () {
@@ -730,6 +732,31 @@
     });
   };
 
+  /**
+   * 依 controlMap 設定欄位可否編輯：主表欄位，以及所有子表格「每一列」的明細欄位。
+   * 開畫面時套用一次；子表格新增列時，新列的欄位預設可編輯，所以子表格 change 事件要再套一次（2026-10-29）。
+   */
+  const applyDisabled = (record, controlMap, fieldMetaMap) => {
+    const subtableRows = Object.values(record || {})
+      .filter((field) => field?.type === 'SUBTABLE' && Array.isArray(field.value))
+      .flatMap((field) => field.value);
+
+    Object.keys(controlMap).forEach((fieldCode) => {
+      const configuredType = fieldMetaMap[fieldCode]?.configuredType;
+      if (getFieldBehavior(configuredType) === FIELD_ACTION.SKIP || isRelatedFieldType(configuredType)) return;
+
+      const disabled = !controlMap[fieldCode].editable;
+      if (record[fieldCode]) {
+        record[fieldCode].disabled = disabled;
+      }
+      subtableRows.forEach((row) => {
+        if (row?.value?.[fieldCode]) {
+          row.value[fieldCode].disabled = disabled;
+        }
+      });
+    });
+  };
+
   const applyUI = (event, controlMap, fieldMetaMap) => {
     const record = event.record;
     const eventType = event.type;
@@ -737,7 +764,6 @@
     Object.keys(controlMap).forEach((fieldCode) => {
       const control = controlMap[fieldCode];
       const meta = fieldMetaMap[fieldCode];
-      const field = record?.[fieldCode];
       const behavior = getFieldBehavior(meta?.configuredType);
 
       if (behavior === FIELD_ACTION.SKIP) return;
@@ -752,25 +778,13 @@
       } catch (error) {
         warn(`setFieldShown failed: ${fieldCode}`, error);
       }
-
-      // detail.show 與 print.show 為唯讀頁面，不設 disabled；其餘（create/edit 的 show）皆套用
-      const isReadOnlyView = eventType === 'app.record.detail.show' || eventType === 'app.record.print.show';
-      if (!isReadOnlyView) {
-        if (field) {
-          field.disabled = !control.editable;
-        }
-        // 同時掃描並支援子表格內的明細欄位 disabled 控制
-        Object.keys(record).forEach((key) => {
-          if (record[key]?.type === 'SUBTABLE' && Array.isArray(record[key].value)) {
-            record[key].value.forEach((row) => {
-              if (row.value && row.value[fieldCode]) {
-                row.value[fieldCode].disabled = !control.editable;
-              }
-            });
-          }
-        });
-      }
     });
+
+    // detail.show 與 print.show 為唯讀頁面，不設 disabled；其餘（create/edit 的 show）皆套用
+    const isReadOnlyView = eventType === 'app.record.detail.show' || eventType === 'app.record.print.show';
+    if (!isReadOnlyView) {
+      applyDisabled(record, controlMap, fieldMetaMap);
+    }
 
     return event;
   };
@@ -779,13 +793,25 @@
   //   視窗點名的是畫面上看到的標籤（例如「申請單號（Application Number）」），不是欄位代碼（傳票編號）。
   //   取本 App 的表單設定：先用 kintone.app.getFormFields()，沒有這個 API 才打 REST；
   //   整頁只取一次，取不到就退回顯示欄位代碼（不影響擋存檔）。子表格裡的欄位也收進來。
+  // 本 App 的表單設定：欄位標籤與子表格清單共用，整頁只取一次（失敗則清除以便重試）。
+  let _formPropertiesPromise = null;
+  const getFormProperties = () => {
+    if (_formPropertiesPromise) return _formPropertiesPromise;
+    const appId = kintone.app.getId();
+    _formPropertiesPromise = (
+      typeof kintone.app.getFormFields === 'function'
+        ? kintone.app.getFormFields()
+        : kintone.api(kintone.api.url('/k/v1/app/form/fields', true), 'GET', { app: appId }).then((resp) => resp.properties)
+    ).catch((error) => {
+      _formPropertiesPromise = null;
+      throw error;
+    });
+    return _formPropertiesPromise;
+  };
+
   let _labelsPromise = null;
   const fetchFieldLabels = async () => {
-    const appId = kintone.app.getId();
-    const properties =
-      typeof kintone.app.getFormFields === 'function'
-        ? await kintone.app.getFormFields()
-        : (await kintone.api(kintone.api.url('/k/v1/app/form/fields', true), 'GET', { app: appId })).properties;
+    const properties = await getFormProperties();
     const labels = {};
     Object.values(properties || {}).forEach((prop) => {
       if (prop?.code && prop.label) labels[prop.code] = prop.label;
@@ -896,9 +922,17 @@
     return { controlMap, fieldMetaMap };
   };
 
+  // 新增／編輯畫面開啟時算好的權限，供子表格 change 事件重新鎖定新列。
+  // change 事件不可非同步，不能在裡面重新讀取設定；畫面上的登入者與流程狀態不會變，沿用開畫面時的結果即可。
+  // （指定的欄位值只影響必填，必填在存檔時會重新計算。）
+  const EDIT_SCREENS = ['app.record.create.show', 'app.record.edit.show'];
+  let _screenPermissions = null;
+
   const onShow = async (event) => {
+    if (EDIT_SCREENS.includes(event.type)) _screenPermissions = null;
     try {
       const { controlMap, fieldMetaMap } = await resolvePermissions(event);
+      if (EDIT_SCREENS.includes(event.type)) _screenPermissions = { controlMap, fieldMetaMap };
       return applyUI(event, controlMap, fieldMetaMap);
     } catch (error) {
       console.error('[帳號權限設定] 讀取權限規則失敗:', error);
@@ -920,6 +954,31 @@
     }
   };
 
+  /** 子表格新增／刪除列：新列的欄位預設可編輯，依開畫面時的權限重新鎖定所有列（同步處理） */
+  const onSubtableChange = (event) => {
+    if (!_screenPermissions) return event; // 開畫面讀取權限失敗或尚未完成：維持現狀
+    applyDisabled(event.record, _screenPermissions.controlMap, _screenPermissions.fieldMetaMap);
+    return event;
+  };
+
+  // 子表格的欄位代碼每張表單不同，載入時讀取本 App 的表單設定，再替每個子表格註冊 change 事件
+  const registerSubtableChange = async () => {
+    const properties = await getFormProperties();
+    const subtableCodes = Object.values(properties || {})
+      .filter((prop) => prop?.type === 'SUBTABLE')
+      .map((prop) => prop.code);
+    if (subtableCodes.length === 0) return;
+
+    kintone.events.on(
+      subtableCodes.flatMap((code) => [`app.record.create.change.${code}`, `app.record.edit.change.${code}`]),
+      onSubtableChange,
+    );
+    log('subtable change registered', subtableCodes);
+  };
+
   kintone.events.on(EVENTS_SHOW, onShow);
   kintone.events.on(EVENTS_SUBMIT, onSubmit);
+  registerSubtableChange().catch((error) => {
+    console.error('[帳號權限設定] 讀取子表格清單失敗，子表格新增列不會套用編輯權限:', error);
+  });
 })();
