@@ -3215,8 +3215,8 @@
     //
     //   1. 交通工具＝高鐵 → 賣方統編寫 TRAFFIC_RULES.HSR_SELLER_TAX_ID、格式寫 HSR_FORMAT，並鎖住；
     //      改選高鐵以外（變更事件）→ 若賣方統編還是高鐵固定值，賣方統編、格式一起清空並解鎖
-    //   2. 金額／憑證種類變更 → 憑證種類是 TRAFFIC_RULES.TAX_RECEIPT_TYPES（高鐵票／發票）：稅額＝金額 ÷ 1.05 × 0.05，
-    //      四捨五入到個位數（金額本身含稅）；其他種類稅額寫 0。稅額不鎖（2026-10-29）
+    //   2. 某一列的金額、憑證種類、交通工具變更或新增列 → 只重算「那一列」的稅額：憑證種類是 TRAFFIC_RULES.TAX_RECEIPT_TYPES（高鐵票／發票）
+    //      → 金額 ÷ 1.05 × 0.05 四捨五入到個位數（金額含稅），其他種類寫 0；開畫面、存檔、改別列都不動稅額（會計手改的保留）。稅額不鎖
     //   3. 憑證種類＝高鐵票／發票 → 開放發票號碼；其他種類鎖住並清空。存檔時必填、表單內不可重複，
     //      並重算「發票號碼記錄」（跨單重複由 payment_request_submit 查記錄欄位，不用迴圈讀表格）
     //   4. 有任何一列是計程車 → 是否有紙本憑證自動選「是」，理由動態必填（標籤加紅色 *）
@@ -3303,14 +3303,34 @@
         if (allowed && allowed.length === 1 && !v[COLS.RECEIPT_TYPE].value) v[COLS.RECEIPT_TYPE].value = allowed[0];
       }
 
-      // 2. 稅額：高鐵票／發票才算，其他種類寫 0（不鎖：能不能改交給帳號權限設定／kintone 預設）
-      if (v[COLS.TAX]) v[COLS.TAX].value = isTaxReceipt(row) ? calcTax(v[COLS.AMOUNT]?.value) : '0';
-
       // 3. 發票號碼
       if (v[COLS.INVOICE_NO]) {
         if (!isInvoiceReceipt(row)) v[COLS.INVOICE_NO].value = '';
         setLock(COLS.INVOICE_NO, !isInvoiceReceipt(row));
       }
+    };
+
+    /**
+     * 2. 重算這一列的稅額：高鐵票／發票才算，其他種類寫 0。
+     * 只在變更事件對「被改的那一列」呼叫（見 changeEvents）；開畫面、新增別列、存檔都不動稅額，
+     * 會計（帳號權限設定開放編輯）手改的稅額才不會被蓋掉。稅額不鎖：能不能改交給帳號權限設定。
+     * @param {Object} row 子表格的一列
+     */
+    const recalcRowTax = (row) => {
+      const v = row?.value;
+      if (v?.[COLS.TAX]) v[COLS.TAX].value = isTaxReceipt(row) ? calcTax(v[COLS.AMOUNT]?.value) : '0';
+    };
+
+    /**
+     * 變更事件改到的是哪一列（kintone 的 event.changes.row）；刪除列或不是子表格的變更 → null
+     * @param {Object} event
+     * @returns {Object|null}
+     */
+    const changedRow = (event) => {
+      const target = event?.changes?.row;
+      if (!target) return null;
+      const rows = getRows(event.record);
+      return rows.find((row) => row === target) || (target.id ? rows.find((row) => row.id === target.id) : null) || target;
     };
 
     /**
@@ -3326,7 +3346,7 @@
     };
 
     /**
-     * 存檔前整理：重算稅額、高鐵固定值、清掉不該有的發票號碼，並重算「發票號碼記錄」。
+     * 存檔前整理：高鐵固定值、清掉不該有的發票號碼，並重算「發票號碼記錄」。
      * 程式寫入的值不會觸發 change 事件，所以存檔時一律再算一次，以這裡為準。
      * @param {Object} record
      * @returns {Object} record
@@ -3505,6 +3525,9 @@
 
     KT.on(changeEvents, (event) => {
       applyRecordRules(event.record, true);
+      // 稅額只重算被改的那一列（憑證種類可能剛被上面的規則清空或帶入，所以排在後面）
+      const row = changedRow(event);
+      if (row) recalcRowTax(row);
       // 憑證種類改掉會清空發票號碼，發票號碼記錄要跟著重算（程式寫入不會觸發發票號碼的 change）
       const agg = window.PR_INVOICE_AGG;
       if (event.record[F.INVOICE_AGG] && typeof agg?.buildInvoiceAgg === 'function') {
@@ -3514,7 +3537,7 @@
       return event;
     });
 
-    window.PR_TRAFFIC_RULES = Object.freeze({ calcTax, hasTaxi, allowedReceiptTypes, filterMenuItems, menuContext, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
+    window.PR_TRAFFIC_RULES = Object.freeze({ calcTax, recalcRowTax, changedRow, hasTaxi, allowedReceiptTypes, filterMenuItems, menuContext, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
   })();
 
   (() => {

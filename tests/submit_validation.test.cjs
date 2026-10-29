@@ -401,14 +401,14 @@ const trafficRecord = (F, rows, over = {}) => {
   };
 };
 
-check('整合：部內代碼、高鐵票有號碼 → 通過；存檔時寫入稅額、高鐵固定值、發票號碼記錄', async () => {
+check('整合：部內代碼、高鐵票有號碼 → 通過；存檔時寫入高鐵固定值、發票號碼記錄，稅額保留畫面上的值（會計可手改）', async () => {
   const { env, F } = await loadFull();
   const C = F.TRAFFIC_TABLE.COLS;
-  const r = trafficRecord(F, [{ [C.EXPENSE]: 'AJ50', [C.VEHICLE]: '高鐵', [C.AMOUNT]: '1490', [C.RECEIPT_TYPE]: '高鐵票', [C.INVOICE_NO]: 'T1' }]);
+  const r = trafficRecord(F, [{ [C.EXPENSE]: 'AJ50', [C.VEHICLE]: '高鐵', [C.AMOUNT]: '1490', [C.RECEIPT_TYPE]: '高鐵票', [C.INVOICE_NO]: 'T1', [C.TAX]: '70' }]);
   const ev = await submit(env, r);
   assert.strictEqual(ev.error, undefined, popupText(env));
   const v = ev.record[F.TRAFFIC_TABLE.CODE].value[0].value;
-  assert.strictEqual(v[C.TAX].value, '71');
+  assert.strictEqual(v[C.TAX].value, '70', '存檔不重算稅額');
   assert.strictEqual(v[C.SELLER_TAX_ID].value, '00000000');
   assert.strictEqual(v[C.FORMAT].value, '22');
   assert.strictEqual(ev.record[F.INVOICE_AGG].value, `${env.window.PR_CONFIG.SEP}T1${env.window.PR_CONFIG.SEP}`);

@@ -2,7 +2,7 @@
 
 // 測試：交通費明細規則_20261022.js
 //   1. 高鐵 → 賣方統編 00000000、格式 22，並鎖住；改選其他交通工具清空並解鎖
-//   2. 稅額＝含稅金額 ÷ 1.05 × 0.05，四捨五入到個位數（只算高鐵票／發票，其他寫 0），稅額不鎖
+//   2. 稅額＝含稅金額 ÷ 1.05 × 0.05，四捨五入到個位數（只算高鐵票／發票，其他寫 0）；只重算變更事件改到的那一列，開畫面／存檔不動；稅額不鎖
 //   3. 憑證種類＝高鐵票／發票才開放發票號碼；其他種類清空並鎖住；存檔必填、本單不可重複、重算發票號碼記錄
 //   4. 有計程車 → 是否有紙本憑證自動選「是」、理由動態必填（紅色 *）；存檔驗證
 //   5. 交通工具限制憑證種類：變更事件清掉不能用的、只有一種就帶入；存檔擋；桌面版選單藏起不能選的項目
@@ -63,49 +63,76 @@ check('calcTax：空白／非數字 → 空字串；負數（退款）照絕對�
   assert.strictEqual(R.calcTax('-5'), '0');
 });
 
-check('金額變更事件 → 每一列重算稅額；稅額不鎖', async () => {
+// 變更事件：kintone 用 event.changes.row 指出改到的那一列
+const fireRowChange = (env, type, r, index) => env.fire(type, { record: r, changes: { row: r[T.CODE].value[index], field: {} } });
+const taxOf = (r, i) => r[T.CODE].value[i].value[COLS.TAX].value;
+
+check('金額變更事件 → 只重算被改的那一列；其他列（例如會計手改的）不動；稅額不鎖', async () => {
   const { env } = setup();
-  const r = record([row({ [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '發票' }), row({ [COLS.AMOUNT]: '315', [COLS.RECEIPT_TYPE]: '高鐵票' })]);
-  const ev = await env.fire(`app.record.create.change.${COLS.AMOUNT}`, { record: r });
-  assert.strictEqual(ev.record[T.CODE].value[0].value[COLS.TAX].value, '50');
-  assert.strictEqual(ev.record[T.CODE].value[1].value[COLS.TAX].value, '15');
+  const r = record([row({ [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '發票' }), row({ [COLS.AMOUNT]: '315', [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.TAX]: '14' })]);
+  const ev = await fireRowChange(env, `app.record.create.change.${COLS.AMOUNT}`, r, 0);
+  assert.strictEqual(taxOf(ev.record, 0), '50');
+  assert.strictEqual(taxOf(ev.record, 1), '14', '第 2 列手改的 14 保留（系統算是 15）');
   assert.notStrictEqual(ev.record[T.CODE].value[0].value[COLS.TAX].disabled, true);
 });
 
-check('稅額只算高鐵票／發票：收據、車票、無、沒選憑證種類 → 稅額寫 0', async () => {
+check('稅額只算高鐵票／發票：收據、車票、無、沒選憑證種類 → 改到那一列時稅額寫 0', async () => {
   const { env } = setup();
-  const r = record([
-    row({ [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '收據', [COLS.TAX]: '50' }),
-    row({ [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '車票（高鐵外）' }),
-    row({ [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '無' }),
-    row({ [COLS.AMOUNT]: '1050' }),
-  ]);
-  const ev = await env.fire(`app.record.edit.change.${COLS.AMOUNT}`, { record: r });
-  ev.record[T.CODE].value.forEach((rw, i) => assert.strictEqual(rw.value[COLS.TAX].value, '0', `第 ${i + 1} 列`));
+  for (const receipt of ['收據', '車票（高鐵外）', '無', '']) {
+    const r = record([row({ [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: receipt, [COLS.TAX]: '50' })]);
+    const ev = await fireRowChange(env, `app.record.edit.change.${COLS.AMOUNT}`, r, 0);
+    assert.strictEqual(taxOf(ev.record, 0), '0', receipt || '沒選');
+  }
 });
 
-check('憑證種類改成發票 → 稅額重算；改回收據 → 稅額變 0', async () => {
+check('憑證種類改成發票 → 那一列稅額重算；改回收據 → 變 0', async () => {
   const { env } = setup();
   const r = record([row({ [COLS.AMOUNT]: '1490', [COLS.RECEIPT_TYPE]: '發票' })]);
-  let ev = await env.fire(`app.record.create.change.${COLS.RECEIPT_TYPE}`, { record: r });
-  assert.strictEqual(ev.record[T.CODE].value[0].value[COLS.TAX].value, '71');
+  let ev = await fireRowChange(env, `app.record.create.change.${COLS.RECEIPT_TYPE}`, r, 0);
+  assert.strictEqual(taxOf(ev.record, 0), '71');
   ev.record[T.CODE].value[0].value[COLS.RECEIPT_TYPE].value = '收據';
-  ev = await env.fire(`app.record.create.change.${COLS.RECEIPT_TYPE}`, { record: ev.record });
-  assert.strictEqual(ev.record[T.CODE].value[0].value[COLS.TAX].value, '0');
+  ev = await fireRowChange(env, `app.record.create.change.${COLS.RECEIPT_TYPE}`, ev.record, 0);
+  assert.strictEqual(taxOf(ev.record, 0), '0');
+});
+
+check('改交通工具成高鐵 → 自動帶入高鐵票後，那一列稅額照高鐵票算', async () => {
+  const { env } = setup();
+  const r = record([row({ [COLS.VEHICLE]: '高鐵', [COLS.AMOUNT]: '1490' })]);
+  const ev = await fireRowChange(env, `app.record.edit.change.${COLS.VEHICLE}`, r, 0);
+  assert.strictEqual(ev.record[T.CODE].value[0].value[COLS.RECEIPT_TYPE].value, '高鐵票');
+  assert.strictEqual(taxOf(ev.record, 0), '71');
+});
+
+check('新增列（子表格變更）→ 只算新的那一列，舊列手改的稅額不動；刪除列（沒有 changes.row）→ 都不動', async () => {
+  const { env } = setup();
+  const r = record([row({ [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '發票', [COLS.TAX]: '49' }), row()]);
+  let ev = await fireRowChange(env, `app.record.edit.change.${T.CODE}`, r, 1);
+  assert.strictEqual(taxOf(ev.record, 0), '49');
+  assert.strictEqual(taxOf(ev.record, 1), '0', '新列沒有憑證種類 → 0');
+  ev = await env.fire(`app.record.edit.change.${T.CODE}`, { record: ev.record, changes: { row: null } });
+  assert.strictEqual(taxOf(ev.record, 0), '49');
+});
+
+check('changes.row 是另一份物件（同列 id）時也找得到畫面上那一列', () => {
+  const { R } = setup();
+  const r = record([{ id: '11', ...row() }, { id: '22', ...row() }]);
+  assert.strictEqual(R.changedRow({ record: r, changes: { row: { id: '22', value: {} } } }), r[T.CODE].value[1]);
+  assert.strictEqual(R.changedRow({ record: r }), null);
 });
 
 check('高鐵票／發票但金額空白 → 稅額空白', () => {
   const { R } = setup();
   const r = record([row({ [COLS.RECEIPT_TYPE]: '發票' })]);
-  R.applyRecordRules(r, true);
-  assert.strictEqual(r[T.CODE].value[0].value[COLS.TAX].value, '');
+  R.recalcRowTax(r[T.CODE].value[0]);
+  assert.strictEqual(taxOf(r, 0), '');
 });
 
-check('開畫面不鎖稅額，也不解開帳號權限設定已鎖的稅額', async () => {
+check('開畫面不動稅額、不鎖稅額，也不解開帳號權限設定已鎖的稅額', async () => {
   const { env } = setup();
-  const r = record([row({ [COLS.AMOUNT]: '1050' }), row({ [COLS.AMOUNT]: '315' })]);
+  const r = record([row({ [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '發票', [COLS.TAX]: '49' }), row({ [COLS.AMOUNT]: '315' })]);
   r[T.CODE].value[1].value[COLS.TAX].disabled = true; // 權限模組鎖的
   const ev = await env.fire('app.record.edit.show', { record: r });
+  assert.strictEqual(taxOf(ev.record, 0), '49', '會計手改的保留');
   assert.notStrictEqual(ev.record[T.CODE].value[0].value[COLS.TAX].disabled, true);
   assert.strictEqual(ev.record[T.CODE].value[1].value[COLS.TAX].disabled, true);
 });
@@ -197,17 +224,19 @@ check('validate：同一張發票在本單填兩次 → 錯誤列出重複的行
   assert.ok(errs[0].includes('AB12345678') && errs[0].includes('1、3'), errs[0]);
 });
 
-check('normalize：存檔前重算稅額、高鐵固定值、清掉非發票列的號碼並重算發票號碼記錄（去重）', () => {
+check('normalize：存檔前不動稅額（會計手改的保留），高鐵固定值、清掉非發票列的號碼並重算發票號碼記錄（去重）', () => {
   const { R } = setup();
   const r = record([
-    row({ [COLS.VEHICLE]: '高鐵', [COLS.AMOUNT]: '1490', [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.INVOICE_NO]: ' T9 ' }),
+    row({ [COLS.VEHICLE]: '高鐵', [COLS.AMOUNT]: '1490', [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.INVOICE_NO]: ' T9 ', [COLS.TAX]: '71' }),
     row({ [COLS.AMOUNT]: '200', [COLS.RECEIPT_TYPE]: '收據', [COLS.INVOICE_NO]: 'ZZ' }),
     row({ [COLS.AMOUNT]: '300', [COLS.RECEIPT_TYPE]: '發票', [COLS.INVOICE_NO]: 'T9' }),
   ]);
   r[F.INVOICE_AGG].value = `${SEP}OLD${SEP}`;
+  r[T.CODE].value[2].value[COLS.TAX].value = '13'; // 會計手改（系統算是 14）
   R.normalize(r);
   const rows = r[T.CODE].value;
   assert.strictEqual(rows[0].value[COLS.TAX].value, '71');
+  assert.strictEqual(rows[2].value[COLS.TAX].value, '13');
   assert.strictEqual(rows[0].value[COLS.SELLER_TAX_ID].value, '00000000');
   assert.strictEqual(rows[0].value[COLS.FORMAT].value, '22');
   assert.strictEqual(rows[0].value[COLS.INVOICE_NO].value, 'T9');
