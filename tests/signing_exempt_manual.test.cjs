@@ -183,7 +183,11 @@ const manualOn = () => env.live[F.MANUAL_FLOW].value.length > 0;
   await check('排除群組的申請人新增：自動勾手動設定簽核流程，原本的簽核欄位清空鎖住、不查簽核流程主檔', async () => {
     env.groups = { APPLICANT: ['費用歸屬不限部門'] };
     global.window.PR_COST_SCOPE._reset(); // 模擬重新開頁（同一申請人的群組結果會快取）
+    const enterCalls = [];
+    global.window.PR_MANUAL_SIGNERS = { signersOf: () => [null, null, null], enter: (r, opts) => enterCalls.push(opts), leave: () => {} };
     await run({ orgName: NAME, title: '一般', eventType: CREATE });
+    delete global.window.PR_MANUAL_SIGNERS;
+    assert.deepStrictEqual(enterCalls, [{ openNow: false }], '開新增畫面不直接跳「指定簽核人」視窗，要按「設定簽核人」');
     assert.strictEqual(manualOn(), true);
     assert.deepStrictEqual(filledSlots(), []);
     assert.strictEqual(approvalCall(), undefined, '手動模式不排人');

@@ -268,12 +268,13 @@
 }
 .pr-route--column .pr-route__dot { position: relative; z-index: 1; }
 .pr-route--column .pr-route__text { flex-direction: row; align-items: baseline; gap: 10px; }
-.pr-route--column .pr-route__label { flex: none; min-width: 3.2em; }
+.pr-route--column .pr-route__label { flex: none; }
 /* 表單上：路線和按鈕同列，放不下時整條路線換到下一列 */
 .pr-signer-entry .pr-route { flex: 1 1 360px; min-width: 0; }
 
 /* 指定簽核人視窗：SweetAlert（buttonsStyling: false，按鈕樣式在 .pr-signer-btn） */
-.pr-signer-popup { width: 560px !important; max-width: calc(100vw - 24px); padding: 26px 26px 22px !important; border-radius: 14px !important; }
+/* 寬度依內容自動（名字長就撐寬），有下限和上限 */
+.pr-signer-popup { width: auto !important; min-width: 480px; max-width: min(720px, calc(100vw - 24px)); padding: 26px 26px 22px !important; border-radius: 14px !important; }
 .pr-signer-popup__title { padding: 0 !important; font-size: 22px !important; font-weight: bold; color: #1f2d3a !important; text-align: left !important; }
 .pr-signer-popup__body { margin: 6px 0 0 !important; padding: 0 !important; text-align: left !important; overflow: visible !important; }
 .pr-signer-popup__actions {
@@ -430,7 +431,7 @@
 
 /* 手機：視窗佔滿寬度，按鈕各佔一半好按 */
 @media (max-width: 600px) {
-  .pr-signer-popup { width: 100% !important; max-width: 100%; padding: 20px 14px 16px !important; }
+  .pr-signer-popup { width: 100% !important; min-width: 0; max-width: 100%; padding: 20px 14px 16px !important; }
   .pr-signer-popup__actions { flex-wrap: nowrap !important; }
   .pr-signer-btn { flex: 1; min-width: 0; padding: 12px; }
   .pr-signer__input { font-size: 16px; }

@@ -775,15 +775,16 @@
   /**
    * 申請人在「費用歸屬不限部門」群組（COST_SCOPE.EXEMPT_GROUP）→ 簽核人員自選：勾上手動設定簽核流程。
    * @param {Object} record
+   * @param {{ openNow?: boolean }} [opts] openNow：還沒指定簽核人就跳「指定簽核人」視窗（使用者自己勾的才跳；開新增畫面時不跳，改按「設定簽核人」）
    */
-  function enterManualModeForExempt(record) {
+  function enterManualModeForExempt(record, { openNow = true } = {}) {
     record[F.MANUAL_FLOW].value = [OPT.MANUAL_FLOW.ON];
     record[F.ACCOUNTING_UNIT].value = [];
     KT.record().setFieldShown(F.ACCOUNTING_UNIT, false);
     if (typeof KT.record().setGroupFieldOpen === 'function') KT.record().setGroupFieldOpen(F.SIGN_FLOW_GROUP, true);
     // 還沒指定簽核人才跳視窗（複製的單已經有人就不吵他，要改按「更改簽核人」）
     const hasSigners = window.PR_MANUAL_SIGNERS?.signersOf(record).some(Boolean);
-    initManualSigningMode(record, { openNow: !hasSigners });
+    initManualSigningMode(record, { openNow: openNow && !hasSigners });
   }
 
   /** 不在「費用歸屬不限部門」群組的人勾了手動設定簽核流程 */
@@ -817,7 +818,7 @@
     const scope = window.PR_COST_SCOPE;
     if (!scope) return syncOwnerOrgOnCreate(event);
     return scope.ensureExempt(scope.applicantCodeOf(event.record)).then((exempt) => {
-      if (exempt && !isManualSigningMode(event.record)) enterManualModeForExempt(event.record);
+      if (exempt && !isManualSigningMode(event.record)) enterManualModeForExempt(event.record, { openNow: false });
       return syncOwnerOrgOnCreate(event);
     });
   }
