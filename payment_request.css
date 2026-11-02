@@ -193,6 +193,251 @@
   color: #666;
 }
 
+/* ── 手動簽核人：「簽核流程」群組裡的按鈕與指定簽核人視窗（手動簽核人設定_20261102.js）── */
+/* 表單上：按鈕＋簽核路線 */
+.pr-signer-entry {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid #d6e4f0;
+  border-radius: 10px;
+  background: #f7fbff;
+}
+.pr-signer-entry__btn {
+  min-height: 40px;
+  padding: 8px 18px;
+  border: 1px solid #2b7bc0;
+  border-radius: 8px;
+  background: #2b7bc0;
+  color: #fff;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.pr-signer-entry__btn:hover { background: #1f659f; border-color: #1f659f; }
+.pr-signer-entry__btn:focus-visible { outline: 3px solid #a9d0f2; outline-offset: 2px; }
+.pr-signer-entry__summary { font-size: 14px; color: #b45309; }
+
+/* 簽核路線：申請人 → 第 1～3 關 → 會計（表單上與視窗上方共用）。
+   每一站一顆圓燈，名字寫在燈旁邊、完整顯示不截斷；表單上橫排（放不下才換列），視窗裡直排（--column），最多 5 站 */
+.pr-route { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; margin: 0; padding: 0; list-style: none; }
+.pr-route__stop { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pr-route__dot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #2b7bc0;
+  border-radius: 50%;
+  background: #2b7bc0;
+  box-sizing: border-box;
+}
+.pr-route__text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.pr-route__label { font-size: 11px; color: #7a8a99; }
+.pr-route__name { font-size: 15px; font-weight: bold; color: #1f3b57; overflow-wrap: anywhere; }
+.pr-route__stop--start .pr-route__dot { border-color: #9aa5b0; background: #9aa5b0; }
+.pr-route__stop--start .pr-route__name { color: #555; font-weight: normal; }
+.pr-route__stop--end .pr-route__dot { border-color: #27965a; background: #27965a; }
+.pr-route__stop--end .pr-route__name { color: #1e7a45; }
+.pr-route__stop.is-empty .pr-route__dot { border-color: #d9534f; background: #fff; }
+.pr-route__stop.is-empty .pr-route__name { color: #c0392b; font-weight: normal; }
+.pr-route__stop.is-optional .pr-route__dot { border-style: dashed; border-color: #aab4be; background: #fff; }
+.pr-route__stop.is-optional .pr-route__name { color: #9aa5b0; font-weight: normal; }
+/* 呼吸燈：下一個要填的那一站的燈慢慢明滅，提醒「接下來輪到這一站」 */
+.pr-route__stop.is-next .pr-route__dot { animation: pr-route-breathe 1.8s ease-in-out infinite; }
+.pr-route__stop.is-next .pr-route__label { color: #2b7bc0; font-weight: bold; }
+@keyframes pr-route-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(43, 123, 192, 0); transform: scale(0.9); }
+  50% { box-shadow: 0 0 0 6px rgba(43, 123, 192, 0.3); transform: scale(1.12); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pr-route__stop.is-next .pr-route__dot { animation: none; box-shadow: 0 0 0 4px rgba(43, 123, 192, 0.3); }
+}
+/* 視窗裡直排，燈之間用細線串起來 */
+.pr-route--column { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 0; }
+.pr-route--column .pr-route__stop { padding: 5px 0; }
+.pr-route--column .pr-route__stop:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  bottom: -50%;
+  left: 6px;
+  border-left: 2px solid #d6e0ea;
+}
+.pr-route--column .pr-route__dot { position: relative; z-index: 1; }
+.pr-route--column .pr-route__text { flex-direction: row; align-items: baseline; gap: 10px; }
+.pr-route--column .pr-route__label { flex: none; min-width: 3.2em; }
+/* 表單上：路線和按鈕同列，放不下時整條路線換到下一列 */
+.pr-signer-entry .pr-route { flex: 1 1 360px; min-width: 0; }
+
+/* 指定簽核人視窗：SweetAlert（buttonsStyling: false，按鈕樣式在 .pr-signer-btn） */
+.pr-signer-popup { width: 560px !important; max-width: calc(100vw - 24px); padding: 26px 26px 22px !important; border-radius: 14px !important; }
+.pr-signer-popup__title { padding: 0 !important; font-size: 22px !important; font-weight: bold; color: #1f2d3a !important; text-align: left !important; }
+.pr-signer-popup__body { margin: 6px 0 0 !important; padding: 0 !important; text-align: left !important; overflow: visible !important; }
+.pr-signer-popup__actions {
+  width: 100%;
+  justify-content: flex-end !important;
+  gap: 10px;
+  margin: 18px 0 0 !important;
+  padding: 16px 0 0 !important;
+  border-top: 1px solid #edf0f3;
+}
+.pr-signer-popup__message {
+  margin: 14px 0 0 !important;
+  padding: 10px 14px !important;
+  border-radius: 8px;
+  background: #fdecea !important;
+  color: #b42318 !important;
+  font-size: 14px !important;
+  font-weight: bold;
+}
+.pr-signer-btn {
+  min-width: 110px;
+  min-height: 44px;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.pr-signer-btn:focus-visible { outline: 3px solid #a9d0f2; outline-offset: 2px; }
+.pr-signer-btn--primary { border: 1px solid #2b7bc0; background: #2b7bc0; color: #fff; font-weight: bold; }
+.pr-signer-btn--primary:hover { border-color: #1f659f; background: #1f659f; }
+.pr-signer-btn--ghost { border: 1px solid #cdd5dd; background: #fff; color: #4a5560; }
+.pr-signer-btn--ghost:hover { background: #f3f5f7; }
+
+.pr-signer { color: #2c3742; font-size: 14px; }
+.pr-signer__lead { margin: 0 0 14px; font-size: 14px; line-height: 1.6; color: #66727e; }
+.pr-signer__route { margin: 0 0 20px; padding: 12px 14px; border-radius: 10px; background: #f5f8fb; }
+.pr-signer__route-title { margin: 0 0 8px; font-size: 12px; font-weight: bold; color: #66727e; }
+
+/* 每一關一張卡片；正在填的那張（游標在裡面）加藍框 */
+.pr-signer__steps { list-style: none; margin: 0; padding: 0; }
+.pr-signer__step {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border: 1px solid #e3e8ed;
+  border-radius: 10px;
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pr-signer__step:focus-within { border-color: #2b7bc0; box-shadow: 0 0 0 3px rgba(43, 123, 192, 0.15); }
+.pr-signer__step.is-filled { border-color: #cfe0ef; background: #f7fbff; }
+.pr-signer__step.is-locked { border-style: dashed; background: #fafbfc; }
+.pr-signer__step--accounting { margin-top: 30px; border-color: #cde9d7; }
+.pr-signer__step--accounting.is-filled { border-color: #bfe3cc; background: #f3fbf6; }
+.pr-signer__step--accounting::before {
+  content: '簽核完成後交給會計';
+  position: absolute;
+  top: -22px;
+  left: 2px;
+  font-size: 12px;
+  color: #8a96a1;
+}
+.pr-signer__no {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid #2b7bc0;
+  background: #fff;
+  color: #2b7bc0;
+  font-size: 15px;
+  font-weight: bold;
+  line-height: 30px;
+  text-align: center;
+  box-sizing: border-box;
+}
+.pr-signer__step.is-filled .pr-signer__no { background: #2b7bc0; color: #fff; }
+.pr-signer__step.is-locked .pr-signer__no { border-color: #cfd5db; color: #b3bcc5; }
+.pr-signer__step--accounting .pr-signer__no { border-color: #27965a; color: #27965a; font-size: 11px; }
+.pr-signer__step--accounting.is-filled .pr-signer__no { background: #27965a; color: #fff; }
+.pr-signer__body { flex: 1; min-width: 0; }
+.pr-signer__label { display: flex; align-items: center; gap: 8px; margin: 6px 0 8px; font-size: 15px; font-weight: bold; }
+.pr-signer__tag { padding: 1px 8px; border-radius: 10px; background: #eef1f4; color: #7a8692; font-size: 12px; font-weight: normal; }
+.pr-signer__tag.is-required { background: #fdecea; color: #c0392b; }
+.pr-signer__hint { margin: -4px 0 8px; font-size: 12px; color: #8a96a1; }
+.pr-signer__locked { margin: 2px 0; font-size: 13px; color: #9aa5b0; }
+
+.pr-signer__chosen { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.pr-signer__name { font-size: 16px; font-weight: bold; color: #1f3b57; }
+.pr-signer__step--accounting .pr-signer__name { color: #1e7a45; }
+.pr-signer__code { font-size: 12px; color: #8a96a1; }
+.pr-signer__change {
+  margin-left: auto;
+  min-height: 34px;
+  padding: 4px 16px;
+  border: 1px solid #c5d6e6;
+  border-radius: 17px;
+  background: #fff;
+  color: #2b7bc0;
+  font-size: 14px;
+  cursor: pointer;
+}
+.pr-signer__change:hover { border-color: #2b7bc0; background: #eaf3fb; }
+.pr-signer__change:focus-visible { outline: 3px solid #a9d0f2; outline-offset: 1px; }
+
+/* 搜尋框（左邊放大鏡）與結果清單 */
+.pr-signer__search { position: relative; }
+.pr-signer__input {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 12px 9px 36px;
+  border: 1px solid #c6ced6;
+  border-radius: 8px;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238a96a1' stroke-width='2'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='M11 11l4 4'/%3E%3C/svg%3E") no-repeat 12px center;
+  font-size: 15px;
+  box-sizing: border-box;
+}
+.pr-signer__input:focus { outline: none; border-color: #2b7bc0; }
+.pr-signer__results {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid #e3e8ed;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 6px 16px rgba(31, 45, 58, 0.08);
+}
+.pr-signer__results:empty { display: none; }
+.pr-signer__results-note { padding: 8px 12px; font-size: 12px; color: #8a96a1; }
+.pr-signer__result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 15px;
+  cursor: pointer;
+}
+.pr-signer__result:hover,
+.pr-signer__result.is-active { background: #e6f1fb; }
+.pr-signer__result-name { font-weight: bold; color: #1f3b57; }
+.pr-signer__result-code { font-size: 12px; color: #8a96a1; }
+.pr-signer__result.is-blocked { cursor: not-allowed; }
+.pr-signer__result.is-blocked .pr-signer__result-name { color: #b3bcc5; font-weight: normal; }
+.pr-signer__result.is-blocked .pr-signer__result-code { color: #c0392b; }
+.pr-signer__result.is-blocked:hover { background: none; }
+
+/* 手機：視窗佔滿寬度，按鈕各佔一半好按 */
+@media (max-width: 600px) {
+  .pr-signer-popup { width: 100% !important; max-width: 100%; padding: 20px 14px 16px !important; }
+  .pr-signer-popup__actions { flex-wrap: nowrap !important; }
+  .pr-signer-btn { flex: 1; min-width: 0; padding: 12px; }
+  .pr-signer__input { font-size: 16px; }
+  .pr-signer__step { gap: 10px; padding: 12px 10px; }
+  .pr-signer-entry__btn { width: 100%; }
+}
+
 /* =============================================================================
  * 以下只有桌面版畫面才有（列表頁工具列、附件預覽、列印／PDF、費用歸屬提示、欄寬調整）
  * ============================================================================= */

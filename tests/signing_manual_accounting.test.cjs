@@ -7,7 +7,7 @@
 //      2. 自動：改費用所屬人部門 → 會計單位照常填入
 //      3. 呼叫時是自動、API 回來前使用者勾了手動 → 看寫入當下的畫面，仍然不填
 //      4. 取消手動（確認）→ 會計單位恢復填入
-//   二、手動模式的人數欄位連動與存檔驗證（人數與實際填寫要一致、固定欄位必填、管理員與作廢略過）
+//   二、勾選／取消手動模式：6 格與人數欄位清空鎖住、只限「費用歸屬不限部門」群組、簽核人交給手動簽核人設定
 // 直接用 Node 執行：node tests/signing_manual_accounting.test.cjs
 
 const assert = require('assert');
@@ -79,8 +79,6 @@ const T = loadSigning();
 const F = T.C.FIELDS;
 const ORG_CHANGE = `app.record.create.change.${F.EXPENSE_OWNER_ORG}`;
 const MANUAL_CHANGE = `app.record.create.change.${F.MANUAL_FLOW}`;
-const MANAGER_COUNT_CHANGE = `app.record.create.change.${COUNT_M}`;
-const DEPUTY_COUNT_CHANGE = `app.record.create.change.${COUNT_D}`;
 const SUBMIT = 'app.record.create.submit';
 
 const makeLive = ({ manual }) => {
@@ -91,6 +89,7 @@ const makeLive = ({ manual }) => {
     [F.ACCOUNTING_UNIT]: { type: 'GROUP_SELECT', value: [] },
     [F.ACCOUNTING_STAFF]: { type: 'USER_SELECT', value: [] },
     [F.PERMISSION_STAFF]: { type: 'USER_SELECT', value: [] },
+    [T.C.MANUAL_SIGNERS.ACCOUNTING_FIELD]: { type: 'USER_SELECT', value: [] },
     [COUNT_M]: { value: '' },
     [COUNT_D]: { value: '' },
     [T.C.VOID_FIELD]: { type: 'CHECK_BOX', value: [] },
@@ -111,17 +110,6 @@ const fire = async (type, { flushBefore } = {}) => {
   T.env.accountingCallbacks.splice(0).forEach((cb) => cb());
 };
 const accountingOf = () => T.env.live[F.ACCOUNTING_UNIT].value.map((g) => g.code);
-
-/** 跑存檔事件：回傳 event（有 error 代表被擋下） */
-const submit = (record) => T.handlers[SUBMIT][0]({ type: SUBMIT, record });
-/** 手動模式下的存檔資料：給人數與各格的人 */
-const manualRecord = ({ managers = '0人', deputies = '0人', fill = {} }) => {
-  const r = makeLive({ manual: true });
-  r[COUNT_M].value = managers;
-  r[COUNT_D].value = deputies;
-  Object.entries(fill).forEach(([slot, code]) => (r[slot].value = [U(code)]));
-  return r;
-};
 
 let passed = 0;
 const check = async (label, fn) => {
@@ -186,6 +174,34 @@ const check = async (label, fn) => {
     T.env.accountingRecord[ACC.PERMISSION_USER] = { value: [] };
   });
 
+  await check('手動時：會計單位承辦人照舊自動帶入；手動會計承辦人已選的不蓋掉，空的才帶預設並鎖住、通知開著的視窗補上', async () => {
+    const ACC = T.C.REF_FIELDS.ACCOUNTING_MAP;
+    const MANUAL_ACC = T.C.MANUAL_SIGNERS.ACCOUNTING_FIELD;
+    const offered = [];
+    global.window.PR_MANUAL_SIGNERS = { offerAccounting: (list) => offered.push(list.map((u) => u.code)) };
+    T.env.accountingRecord[ACC.ACCOUNTING_STAFF] = { value: [U('S1')] };
+    T.env.live = makeLive({ manual: true });
+    T.env.live[MANUAL_ACC].value = [U('PICKED')];
+    T.env.live[F.ACCOUNTING_STAFF].value = [U('OLD')];
+    await fire(ORG_CHANGE);
+    assert.deepStrictEqual(T.env.live[F.ACCOUNTING_STAFF].value.map((u) => u.code), ['S1'], '原本的欄位照舊重帶');
+    assert.deepStrictEqual(T.env.live[MANUAL_ACC].value.map((u) => u.code), ['PICKED']);
+    assert.strictEqual(offered.length, 0);
+
+    T.env.live = makeLive({ manual: true });
+    await fire(ORG_CHANGE);
+    assert.deepStrictEqual(T.env.live[MANUAL_ACC].value.map((u) => u.code), ['S1']);
+    assert.strictEqual(T.env.live[MANUAL_ACC].disabled, true);
+    assert.deepStrictEqual(offered, [['S1']]);
+
+    T.env.live = makeLive({ manual: false });
+    await fire(ORG_CHANGE);
+    assert.deepStrictEqual(T.env.live[MANUAL_ACC].value, [], '自動模式不動手動會計承辦人');
+    assert.strictEqual(offered.length, 1);
+    T.env.accountingRecord[ACC.ACCOUNTING_STAFF] = { value: [] };
+    delete global.window.PR_MANUAL_SIGNERS;
+  });
+
   await check('勾手動：會計單位清空；取消手動（按確定）：會計單位恢復填入', async () => {
     T.env.live = makeLive({ manual: false });
     await fire(ORG_CHANGE);
@@ -198,6 +214,7 @@ const check = async (label, fn) => {
     T.env.live[F.MANUAL_FLOW].value = [];
     await fire(MANUAL_CHANGE);
     assert.deepStrictEqual(accountingOf(), ['ACC_TPE']);
+    await fire(MANUAL_CHANGE); // kintone 在 set() 之後會再觸發一次 change，程式自己取消的那次要直接放行
   });
 
   await check('取消手動但按「取消」：維持手動模式（重新勾回核取方塊），會計單位仍空白', async () => {
@@ -211,92 +228,195 @@ const check = async (label, fn) => {
     assert.deepStrictEqual(accountingOf(), []);
   });
 
-  // ── 二、手動模式連動與驗證 ──
-  await check('勾手動：人數欄位開放且歸 0 人，主管／次長欄位先隱藏，部長與會計承辦人欄位開放顯示', async () => {
+  // ── 二、勾選／取消手動模式（簽核人的三格與視窗在手動簽核人設定，這裡用替身確認有交給它）──
+  const signerCalls = [];
+  global.window.PR_MANUAL_SIGNERS = {
+    signersOf: () => [null, null, null],
+    enter: (record, opts) => signerCalls.push({ type: 'enter', opts }),
+    leave: () => signerCalls.push({ type: 'leave' }),
+  };
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+  };
+
+  await check('勾手動：人數歸 0人並鎖住隱藏，6 格清空隱藏，原本的會計單位承辦人不動，馬上開指定簽核人視窗', async () => {
     T.env.live = makeLive({ manual: true });
+    SLOTS.forEach((f) => (T.env.live[f].value = [U('OLD')]));
     T.env.shown = {};
+    signerCalls.length = 0;
     await fire(MANUAL_CHANGE);
-    assert.strictEqual(T.env.live[COUNT_M].value, '0人');
-    assert.strictEqual(T.env.live[COUNT_D].value, '0人');
-    assert.strictEqual(T.env.live[COUNT_M].disabled, false);
-    ['單位主管1', '單位主管2', '單位主管3', '單位次長', '單位次長1'].forEach((f) => assert.strictEqual(T.env.shown[f], false, f));
-    ['單位部長_支店長', F.ACCOUNTING_STAFF].forEach((f) => assert.strictEqual(T.env.shown[f], true, f));
-    assert.strictEqual(T.env.shown[COUNT_M], true);
-    assert.strictEqual(T.env.shown[COUNT_D], true);
+    [COUNT_M, COUNT_D].forEach((f) => {
+      assert.strictEqual(T.env.live[f].value, '0人', f);
+      assert.strictEqual(T.env.live[f].disabled, true, f);
+      assert.strictEqual(T.env.shown[f], false, f);
+    });
+    SLOTS.forEach((f) => {
+      assert.strictEqual(T.env.live[f].value.length, 0, f);
+      assert.strictEqual(T.env.shown[f], false, f);
+    });
+    assert.strictEqual(T.env.live[F.ACCOUNTING_STAFF].disabled, undefined, '原本的會計單位承辦人不歸手動管');
+    assert.strictEqual(T.env.shown[F.ACCOUNTING_STAFF], undefined);
+    assert.strictEqual(signerCalls.length, 1);
+    assert.strictEqual(signerCalls[0].type, 'enter');
+    assert.strictEqual(signerCalls[0].opts.openNow, true);
   });
 
-  await check('主管人數 2 人：顯示主管2、主管3，隱藏並清空主管1；次長 1 人：只顯示次長1', async () => {
+  await check('不在「費用歸屬不限部門」群組的人勾手動：取消勾選、說明原因，不進手動模式', async () => {
+    const alerts = [];
+    global.alert = (m) => alerts.push(m);
+    global.window.PR_COST_SCOPE = { isExempt: () => false, ensureExempt: () => Promise.resolve(false), applicantCodeOf: () => 'ME' };
     T.env.live = makeLive({ manual: true });
-    T.env.live['單位主管1'].value = [U('OLD')];
-    T.env.live[COUNT_M].value = '2人';
-    T.env.shown = {};
-    await fire(MANAGER_COUNT_CHANGE);
-    assert.deepStrictEqual([T.env.shown['單位主管1'], T.env.shown['單位主管2'], T.env.shown['單位主管3']], [false, true, true]);
-    assert.deepStrictEqual(T.env.live['單位主管1'].value, []);
-    T.env.live[COUNT_D].value = '1人';
-    await fire(DEPUTY_COUNT_CHANGE);
-    assert.deepStrictEqual([T.env.shown['單位次長'], T.env.shown['單位次長1']], [false, true]);
+    T.env.live['單位主管3'].value = [U('AUTO')];
+    signerCalls.length = 0;
+    await fire(MANUAL_CHANGE);
+    await settle();
+    assert.strictEqual(T.env.live[F.MANUAL_FLOW].value.length, 0);
+    assert.strictEqual(T.env.live['單位主管3'].value[0].code, 'AUTO', '自動排的人不動');
+    assert.strictEqual(signerCalls.length, 0);
+    assert.strictEqual(alerts.length, 1);
+    assert.match(alerts[0], /費用歸屬不限部門/);
+    global.alert = () => {};
   });
 
-  await check('非手動模式：改人數欄位什麼都不做', async () => {
+  await check('開畫面的群組查詢還沒回來就勾手動：先取消勾選，查完確定在群組再勾回去並開視窗', async () => {
+    global.window.PR_COST_SCOPE = { isExempt: () => false, ensureExempt: () => Promise.resolve(true), applicantCodeOf: () => 'ME' };
+    T.env.live = makeLive({ manual: true });
+    signerCalls.length = 0;
+    const out = T.handlers[MANUAL_CHANGE][0]({ type: MANUAL_CHANGE, record: clone(T.env.live) });
+    assert.strictEqual(out.record[F.MANUAL_FLOW].value.length, 0, '事件當下先取消');
+    T.env.live = clone(out.record);
+    await settle();
+    assert.deepStrictEqual(T.env.live[F.MANUAL_FLOW].value, [T.C.OPTIONS.MANUAL_FLOW.ON]);
+    assert.strictEqual(T.env.live[COUNT_M].value, '0人');
+    assert.strictEqual(signerCalls[0].opts.openNow, true);
+  });
+
+  await check('群組成員勾手動：照常進手動模式', async () => {
+    global.window.PR_COST_SCOPE = { isExempt: () => true, ensureExempt: () => Promise.resolve(true), applicantCodeOf: () => 'ME' };
+    T.env.live = makeLive({ manual: true });
+    signerCalls.length = 0;
+    await fire(MANUAL_CHANGE);
+    assert.deepStrictEqual(T.env.live[F.MANUAL_FLOW].value, [F.MANUAL_FLOW]);
+    assert.strictEqual(signerCalls[0].type, 'enter');
+    delete global.window.PR_COST_SCOPE;
+  });
+
+  await check('取消手動按「確定」：清掉手動簽核人（交給 leave），改回自動排人', async () => {
     T.env.live = makeLive({ manual: false });
-    T.env.live[COUNT_M].value = '3人';
-    T.env.shown = {};
-    await fire(MANAGER_COUNT_CHANGE);
-    assert.deepStrictEqual(T.env.shown, {});
+    signerCalls.length = 0;
+    await fire(MANUAL_CHANGE);
+    assert.deepStrictEqual(
+      signerCalls.map((c) => c.type),
+      ['leave'],
+    );
+    assert.deepStrictEqual(accountingOf(), ['ACC_TPE']);
   });
 
-  await check('存檔驗證：非手動模式不檢查；表單作廢略過檢查', () => {
-    const auto = makeLive({ manual: false });
-    assert.strictEqual(submit(auto).error, undefined);
-    const voided = manualRecord({ managers: '3人' });
-    voided[T.C.VOID_FIELD].value = [T.C.VOID_FIELD];
-    assert.strictEqual(submit(voided).error, undefined);
+  await check('指定簽核人視窗按取消且沒選人（PR_MANUAL_MODE.exitManualMode）：取消勾選、清掉手動簽核人、改回自動排人，不跳確認', async () => {
+    T.env.live = makeLive({ manual: true });
+    signerCalls.length = 0;
+    T.env.confirmAnswer = false; // 有跳確認的話會被「取消」擋住
+    T.env.accountingCallbacks.length = 0;
+    global.window.PR_MANUAL_MODE.exitManualMode();
+    await Promise.resolve();
+    T.env.accountingCallbacks.splice(0).forEach((cb) => cb());
+    T.env.confirmAnswer = true;
+    assert.deepStrictEqual(T.env.live[F.MANUAL_FLOW].value, []);
+    assert.deepStrictEqual(
+      signerCalls.map((c) => c.type),
+      ['leave'],
+    );
+    assert.deepStrictEqual(accountingOf(), ['ACC_TPE']);
+
+    T.env.live = makeLive({ manual: false });
+    signerCalls.length = 0;
+    global.window.PR_MANUAL_MODE.exitManualMode();
+    assert.strictEqual(signerCalls.length, 0, '已經是自動就不動');
   });
 
-  await check('存檔驗證：主管人數與實際填寫不一致 → 擋下並說明', () => {
-    const ev = submit(manualRecord({ managers: '2人', fill: { 單位主管3: 'M3', 單位部長_支店長: 'H' } }));
-    assert.match(ev.error, /簽核流程驗證失敗/);
-    assert.match(ev.error, /部門主管簽核人數選擇 2人，但實際填寫 1 位/);
+  await check('不會無限循環：exitManualMode 取消勾選引起的 change 事件直接放行（不再勾回、不再確認）；之後使用者自己取消勾選才再確認', async () => {
+    let asked = 0;
+    global.Swal = { fire: () => { asked += 1; return Promise.resolve({ isConfirmed: false }); } };
+    T.env.live = makeLive({ manual: true });
+    global.window.PR_MANUAL_MODE.exitManualMode();
+    T.env.accountingCallbacks.length = 0;
+    // kintone 在 set() 之後會對勾選欄位再觸發一次 change（這時已是未勾選）
+    await fire(MANUAL_CHANGE);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    assert.deepStrictEqual(T.env.live[F.MANUAL_FLOW].value, [], '沒有被勾回去');
+    assert.strictEqual(asked, 0, '沒有再跳確認');
+
+    T.env.live = makeLive({ manual: false });
+    await fire(MANUAL_CHANGE);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    assert.strictEqual(asked, 1, '使用者自己取消勾選：照樣確認一次');
+    delete global.Swal;
   });
 
-  await check('存檔驗證：次長人數與實際填寫不一致 → 擋下；一致則不報次長的錯', () => {
-    const ev = submit(manualRecord({ deputies: '2人', fill: { 單位次長1: 'D1', 單位部長_支店長: 'H' } }));
-    assert.match(ev.error, /部門次長簽核人數選擇 2人，但實際填寫 1 位/);
-    const ok = submit(manualRecord({ deputies: '1人', fill: { 單位次長1: 'D1', 單位部長_支店長: 'H' } }));
-    assert.ok(!/次長簽核人數/.test(ok.error || ''));
+  await check('有 SweetAlert 時：取消勾選手動用 SweetAlert 確認（先維持勾選，按「改回自動」才取消）；找不到會計單位用 SweetAlert 提示', async () => {
+    const swalCalls = [];
+    let answer = false;
+    global.Swal = {
+      fire: (opts) => {
+        swalCalls.push(opts);
+        return Promise.resolve({ isConfirmed: answer });
+      },
+    };
+    global.confirm = () => assert.fail('不應再用瀏覽器 confirm');
+    const settleAll = async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      T.env.accountingCallbacks.splice(0).forEach((cb) => cb());
+    };
+
+    T.env.live = makeLive({ manual: false });
+    signerCalls.length = 0;
+    await fire(MANUAL_CHANGE);
+    assert.deepStrictEqual(T.env.live[F.MANUAL_FLOW].value, [T.C.OPTIONS.MANUAL_FLOW.ON], '視窗回答前維持勾選');
+    await settleAll();
+    assert.strictEqual(swalCalls[0].title, '改回系統自動排簽核人員？');
+    assert.strictEqual(swalCalls[0].confirmButtonText, '改回自動');
+    assert.strictEqual(swalCalls[0].cancelButtonText, '維持手動');
+    assert.deepStrictEqual(T.env.live[F.MANUAL_FLOW].value, [T.C.OPTIONS.MANUAL_FLOW.ON], '按維持手動');
+    assert.strictEqual(signerCalls.length, 0);
+
+    answer = true;
+    T.env.live[F.MANUAL_FLOW].value = [];
+    await fire(MANUAL_CHANGE);
+    await settleAll();
+    assert.deepStrictEqual(T.env.live[F.MANUAL_FLOW].value, [], '按改回自動');
+    assert.deepStrictEqual(
+      signerCalls.map((c) => c.type),
+      ['leave'],
+    );
+    assert.deepStrictEqual(accountingOf(), ['ACC_TPE']);
+
+    swalCalls.length = 0;
+    const saved = T.env.accountingRecord;
+    T.env.accountingRecord = undefined;
+    const origApi = global.kintone.api;
+    global.kintone.api = Object.assign((url, method, params, onOk) => (typeof onOk === 'function' ? onOk({ records: [] }) : origApi(url, method, params)), { url: origApi.url });
+    T.env.live = makeLive({ manual: false });
+    await fire(ORG_CHANGE);
+    assert.ok(swalCalls.some((o) => o.icon === 'warning' && o.title === '找不到對應的會計單位'));
+    global.kintone.api = origApi;
+    T.env.accountingRecord = saved;
+    delete global.Swal;
+    global.confirm = () => T.env.confirmAnswer;
   });
 
-  await check('存檔驗證：一般使用者的部長與會計單位承辦人必填；填了就通過', () => {
-    const ev = submit(manualRecord({}));
-    assert.match(ev.error, /請填寫「單位部長\/支店長」欄位/);
-    assert.match(ev.error, /請填寫「會計單位承辦人」欄位/);
-    const full = manualRecord({ fill: { 單位部長_支店長: 'H' } });
-    full[F.ACCOUNTING_STAFF].value = [U('S1')];
-    assert.strictEqual(submit(full).error, undefined);
-  });
-
-  await check('存檔驗證：管理員略過固定欄位必填，人數對不上仍然擋', () => {
-    T.env.loginCode = T.C.ADMIN_USERS[0];
-    assert.strictEqual(submit(manualRecord({})).error, undefined);
-    assert.match(submit(manualRecord({ managers: '1人' })).error, /部門主管簽核人數選擇 1人，但實際填寫 0 位/);
-    T.env.loginCode = 'x';
-  });
-
-  await check('已選人數卻沒填任何人 → 擋下', () => {
-    const ev = submit(manualRecord({ managers: '1人', deputies: '1人', fill: { 單位部長_支店長: 'H' } }));
-    assert.match(ev.error, /已選擇部門主管簽核人數，但未填寫任何主管人員/);
-    assert.match(ev.error, /已選擇部門次長簽核人數，但未填寫任何次長人員/);
-  });
-
-  await check('編輯畫面：手動記錄依人數顯示欄位並開放人數與固定欄位', () => {
-    const r = manualRecord({ managers: '1人', deputies: '2人', fill: { 單位主管3: 'M3', 單位次長: 'D0', 單位次長1: 'D1', 單位部長_支店長: 'H' } });
+  await check('編輯畫面：手動記錄不顯示人數欄位，會計單位承辦人照一般規則（不歸手動管）', () => {
+    const r = makeLive({ manual: true });
     T.env.shown = {};
     T.handlers['app.record.edit.show'].forEach((fn) => fn({ type: 'app.record.edit.show', record: r }));
-    assert.strictEqual(r[COUNT_M].disabled, false);
-    assert.strictEqual(T.env.shown['單位主管3'], true);
-    assert.strictEqual(T.env.shown['單位次長'], true);
-    assert.strictEqual(r[F.ACCOUNTING_STAFF].disabled, false);
+    assert.strictEqual(T.env.shown[COUNT_M], false);
+    assert.strictEqual(T.env.shown[COUNT_D], false);
+    assert.strictEqual(r[F.ACCOUNTING_STAFF].disabled, undefined, '照一般規則，不歸手動管');
+    assert.strictEqual(T.env.shown[F.ACCOUNTING_STAFF], undefined);
+  });
+
+  await check('存檔驗證改由 payment_request_submit 呼叫手動簽核人設定：簽核人員程式不再自己擋存檔', () => {
+    assert.strictEqual(T.handlers[SUBMIT], undefined);
+    assert.strictEqual(T.handlers[`app.record.create.change.${COUNT_M}`], undefined, '人數欄位在手動模式鎖住，不用再跟著顯示欄位');
   });
 
   console.log = origLog;

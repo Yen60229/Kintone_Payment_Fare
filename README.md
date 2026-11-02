@@ -34,8 +34,8 @@ kintone **交通費請款單（測試區 App 749）** 的自訂 JavaScript 原�
 ```bash
 npm test && bash tests/syntax.test.sh && npm run scan
 ```
-- `npm test`：28 支測試（共 495 項斷言）。
-- `bash tests/syntax.test.sh`：對根目錄所有 `*.js` 跑 `node --check`（目前 25 檔）。
+- `npm test`：29 支測試（共 531 項斷言）。
+- `bash tests/syntax.test.sh`：對根目錄所有 `*.js` 跑 `node --check`（目前 26 檔）。
 - `npm run scan`：統計剩餘的 App ID／狀態／選項／欄位代碼硬編碼（目前 11 處）。
 
 ### 檢查流程管理設定
@@ -89,7 +89,7 @@ npm run build
 - 換版時把舊的 `payment_request_bundle.min.js`、`payment_request_desktop.css`／`payment_request_mobile.css` 從後台刪掉（舊 bundle 和新的同時存在會重複註冊事件）。
 
 ### 手機版有／沒有的功能
-- **有**：說明文字、欄位鎖定、申請人部門／費用所屬人部門帶入、簽核人員與會計單位（含部長的單位部長帶入）、交通費明細規則、存檔驗證（費用歸屬、發票重複、掛帳單位限部內、手動簽核）、
+- **有**：說明文字、欄位鎖定、申請人部門／費用所屬人部門帶入、簽核人員與會計單位（含部長的單位部長帶入、手動設定簽核的「指定簽核人」視窗）、交通費明細規則、存檔驗證（費用歸屬、發票重複、掛帳單位限部內、手動簽核）、
   預計付款日、受款人「同申請人」、建單後自動推進流程、作廢確認、「儲存中」提示。
 - **沒有**（桌面版專用，見 `src/mobile.js` 開頭）：帳號權限設定（欄位顯示／可編輯／必填規則）、列表頁批次下載／PDF／SAP 轉檔、列印頁、附件預覽、費用歸屬中文名稱提示、欄寬調整。
 

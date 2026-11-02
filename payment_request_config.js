@@ -163,6 +163,7 @@
     NOTI_3: 'Space_Noti_3',
     APPLY_BUTTON: 'apply_button', // 「同申請人」受款人按鈕
     EXPECTED_PAY_DATE_NOTE: 'Space_Expected_Pay_Date', // 預計付款日旁的說明文字
+    MANUAL_SIGNERS: 'Space_Manual_Signers', // 簽核流程群組裡的「設定簽核人」按鈕（手動簽核人設定）
   });
 
   // ── 欄位代碼註冊表：邏輯名 → kintone 欄位代碼（單一事實來源）───────────────
@@ -369,6 +370,22 @@
     REJECT_SUFFIX: '駁回',
   });
 
+  // ── 手動簽核人（手動簽核人設定_20261102.js 用）────────────────────────────
+  //   勾「手動設定簽核流程」→ 跳視窗由申請人指定 1～3 位簽核人，依 FIELDS 順序簽，簽完送 ACCOUNTING_FIELD 指定的會計承辦人。
+  //   手動模式不用原本的 6 格（單位主管1～單位部長_支店長）：人數歸 0人、欄位清空。
+  //   只限 COST_SCOPE.EXEMPT_GROUP 群組的申請人；流程管理依 COUNT_FIELD 決定第 1 關之後送到哪。
+  const MANUAL_SIGNERS = Object.freeze({
+    FIELDS: Object.freeze(['手動簽核人1', '手動簽核人2', '手動簽核人3']),
+    COUNT_FIELD: '手動簽核人數', // DROP_DOWN（1人／2人／3人）；程式依實際填的人數寫入，畫面不顯示
+    ACCOUNTING_FIELD: '手動會計承辦人', // USER_SELECT：簽完送「單位會計處理中」的人（視窗第 4 格）；原本的會計單位承辦人照舊自動帶入
+    COUNT_UNIT: '人',
+    EDITABLE_STATUSES: Object.freeze([STATUS.REIMBURSEMENT_FILL, STATUS.APPLY_START]), // 另加駁回狀態（REJECT_SUFFIX 結尾）
+    REJECT_SUFFIX: '駁回',
+    RECENT_KEY: 'pr_manual_signers_recent', // localStorage：這台電腦最近選過的簽核人（只是方便，讀不到也沒關係）
+    RECENT_MAX: 6,
+    USER_PAGE_SIZE: 100, // /v1/users.json 一次最多 100 筆
+  });
+
   window.PR_CONFIG = Object.freeze({
     APPS,
     ACCOUNTING,
@@ -389,6 +406,7 @@
     TRAFFIC_RULES,
     COST_SCOPE,
     DIRECTOR_BY_COST_CENTER,
+    MANUAL_SIGNERS,
     isAdmin,
   });
 })();

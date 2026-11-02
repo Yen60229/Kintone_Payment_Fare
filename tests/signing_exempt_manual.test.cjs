@@ -180,7 +180,7 @@ const manualOn = () => env.live[F.MANUAL_FLOW].value.length > 0;
     assert.ok(env.apiCalls.some((c) => c.url === '/v1/user/groups.json' && c.params.code === 'APPLICANT'));
   });
 
-  await check('排除群組的申請人新增：自動勾手動設定簽核流程，簽核欄位空白可自填、不查簽核流程主檔', async () => {
+  await check('排除群組的申請人新增：自動勾手動設定簽核流程，原本的簽核欄位清空鎖住、不查簽核流程主檔', async () => {
     env.groups = { APPLICANT: ['費用歸屬不限部門'] };
     global.window.PR_COST_SCOPE._reset(); // 模擬重新開頁（同一申請人的群組結果會快取）
     await run({ orgName: NAME, title: '一般', eventType: CREATE });
@@ -188,8 +188,8 @@ const manualOn = () => env.live[F.MANUAL_FLOW].value.length > 0;
     assert.deepStrictEqual(filledSlots(), []);
     assert.strictEqual(approvalCall(), undefined, '手動模式不排人');
     assert.strictEqual(env.live[COUNT_M].value, '0人');
-    assert.strictEqual(env.live[COUNT_M].disabled, false);
-    assert.strictEqual(env.live['單位部長_支店長'].disabled, false);
+    assert.strictEqual(env.live[COUNT_M].disabled, true, '手動模式不用人數欄位，鎖住');
+    assert.strictEqual(env.live['單位部長_支店長'].disabled, true, '原本的 6 格不用，鎖住');
     assert.strictEqual(env.shown[F.ACCOUNTING_UNIT], false, '手動模式不顯示會計單位');
     assert.deepStrictEqual(env.live[F.ACCOUNTING_UNIT].value, []);
     assert.ok(env.apiCalls.some((c) => c.params?.app === C.APPS.ACCOUNTING_MAP), '仍帶入會計單位承辦人／權限開放人員');

@@ -35,16 +35,16 @@ const isDeepFrozen = (obj) =>
 console.log('config.test.cjs');
 
 // ── 整體結構 ────────────────────────────────────────────────────────────────
-check('PR_CONFIG 的頂層鍵恰為這 20 個（多了或少了都要有意識地改這裡）', () => {
+check('PR_CONFIG 的頂層鍵恰為這 21 個（多了或少了都要有意識地改這裡）', () => {
   assert.deepStrictEqual(
     Object.keys(c).sort(),
-    ['ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'COST_SCOPE', 'DIRECTOR_BY_COST_CENTER', 'EXPECTED_PAY_DATE', 'FIELDS', 'INLINE_EDIT', 'OPTIONS', 'REF_FIELDS', 'SEP', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'TRAFFIC_RULES', 'TRAFFIC_TABLE_LAYOUT', 'VOID_FIELD', 'isAdmin'].sort(),
+    ['ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'COST_SCOPE', 'DIRECTOR_BY_COST_CENTER', 'EXPECTED_PAY_DATE', 'FIELDS', 'INLINE_EDIT', 'MANUAL_SIGNERS', 'OPTIONS', 'REF_FIELDS', 'SEP', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'TRAFFIC_RULES', 'TRAFFIC_TABLE_LAYOUT', 'VOID_FIELD', 'isAdmin'].sort(),
   );
 });
 
 check('PR_CONFIG 與各註冊表皆為凍結物件（不會被其他模組意外改寫）', () => {
   assert.ok(Object.isFrozen(c));
-  ['APPS', 'ACCOUNTING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'TRAFFIC_TABLE_LAYOUT', 'INLINE_EDIT', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'OPTIONS', 'TRAFFIC_RULES', 'COST_SCOPE', 'DIRECTOR_BY_COST_CENTER'].forEach((key) => {
+  ['APPS', 'ACCOUNTING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'TRAFFIC_TABLE_LAYOUT', 'INLINE_EDIT', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'OPTIONS', 'TRAFFIC_RULES', 'COST_SCOPE', 'DIRECTOR_BY_COST_CENTER', 'MANUAL_SIGNERS'].forEach((key) => {
     assert.ok(isDeepFrozen(c[key]), `${key} 應為深層凍結`);
   });
 });
@@ -120,7 +120,7 @@ check('isAdmin：指定代碼／預設取目前登入者', () => {
   loadConfig(749);
 });
 
-check('SPACES 空白欄位 ID 正確（說明文字三格、受款人按鈕、預計付款日說明；沒有已刪的使用須知／受款人統計）', () => {
+check('SPACES 空白欄位 ID 正確（說明文字三格、受款人按鈕、預計付款日說明、設定簽核人按鈕；沒有已刪的使用須知／受款人統計）', () => {
   assert.deepStrictEqual(
     { ...c.SPACES },
     {
@@ -129,6 +129,7 @@ check('SPACES 空白欄位 ID 正確（說明文字三格、受款人按鈕、�
       NOTI_3: 'Space_Noti_3',
       APPLY_BUTTON: 'apply_button',
       EXPECTED_PAY_DATE_NOTE: 'Space_Expected_Pay_Date',
+      MANUAL_SIGNERS: 'Space_Manual_Signers',
     },
   );
 });
@@ -289,6 +290,18 @@ check('DIRECTOR_BY_COST_CENTER：部長的單位部長依費用歸屬帶入，�
   assert.deepStrictEqual([...d.EDITABLE_STATUSES], [c.STATUS.REIMBURSEMENT_FILL, c.STATUS.APPLY_START]);
   assert.strictEqual(d.REJECT_SUFFIX, '駁回');
   assert.strictEqual(d.TARGET_FIELD, '單位部長_支店長');
+});
+
+check('MANUAL_SIGNERS：手動簽核人三格依序、人數欄位、可改簽核人的狀態與 749 的欄位代碼一致', () => {
+  const m = c.MANUAL_SIGNERS;
+  assert.deepStrictEqual([...m.FIELDS], ['手動簽核人1', '手動簽核人2', '手動簽核人3']);
+  assert.strictEqual(m.COUNT_FIELD, '手動簽核人數');
+  assert.strictEqual(m.ACCOUNTING_FIELD, '手動會計承辦人');
+  assert.notStrictEqual(m.ACCOUNTING_FIELD, c.FIELDS.ACCOUNTING_STAFF, '不和原本自動帶入的會計單位承辦人共用');
+  assert.strictEqual(m.COUNT_UNIT, '人');
+  assert.deepStrictEqual([...m.EDITABLE_STATUSES], [c.STATUS.REIMBURSEMENT_FILL, c.STATUS.APPLY_START]);
+  assert.strictEqual(m.REJECT_SUFFIX, '駁回');
+  assert.ok(m.USER_PAGE_SIZE <= 100, '/v1/users.json 一次最多 100 筆');
 });
 
 check('TRAFFIC_RULES.RECEIPT_BY_VEHICLE：每種交通工具都有設定，值都是有效的憑證種類；高鐵只能高鐵票、高鐵票只給高鐵', () => {

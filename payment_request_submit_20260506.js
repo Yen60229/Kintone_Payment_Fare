@@ -335,7 +335,15 @@
       // 費用所屬人是部長：依費用歸屬帶入單位部長_支店長（直接寫進 record；查不到資料回錯誤）
       const director = window.PR_DIRECTOR_BY_CC;
       const directorTask = director ? director.apply(record) : Promise.resolve([]);
-      const [costCenters, invoiceErrors, scopeErrors, directorErrors] = await Promise.all([costCentersTask, invoiceTask, scopeTask, directorTask]);
+      // 手動設定簽核流程：檢查指定的簽核人（1～3 位、依序、不重複、不是申請人），並寫入手動簽核人數
+      const manualSigners = window.PR_MANUAL_SIGNERS;
+      const manualTask = manualSigners
+        ? manualSigners.validate(record).catch((e) => {
+            console.error('手動簽核人檢查失敗:', e);
+            return ['手動簽核人檢查失敗：請稍後再試或聯絡系統管理員'];
+          })
+        : Promise.resolve([]);
+      const [costCenters, invoiceErrors, scopeErrors, directorErrors, manualErrors] = await Promise.all([costCentersTask, invoiceTask, scopeTask, directorTask, manualTask]);
 
       if (costCenters.error) allErrors.push(costCenters.error);
       else console.log(`✅ 已載入 ${costCenters.set.size} 筆合法費用歸屬代碼`);
@@ -354,6 +362,9 @@
 
       // 5. 費用所屬人是部長時的單位部長
       allErrors.push(...directorErrors);
+
+      // 6. 手動設定簽核流程的簽核人
+      allErrors.push(...manualErrors);
 
       if (allErrors.length > 0) {
         event.error = '儲存失敗';

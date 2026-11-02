@@ -15,7 +15,7 @@
   //   事件：
   //     - 費用所屬人部門變更（新增畫面開啟時也跑一次）→ 重排簽核人員
   //     - 費用所屬人變更 → 查他的所屬單位、帶入費用所屬人部門，再重排
-  //     - 勾選「手動設定簽核流程」→ 由使用者自己填人數與人員，存檔時驗證
+  //     - 勾選「手動設定簽核流程」（只限費用歸屬不限部門群組）→ 6 格清空，改由手動簽核人設定_20261102.js 的視窗指定 1～3 位
   // =============================================================================
 
   // =========================
@@ -101,42 +101,15 @@
   // 手動簽核流程相關常數
   // =========================
 
-  // 手動模式欄位配置
+  // 手動模式：簽核人改由手動簽核人設定（PR_MANUAL_SIGNERS）的三格指定，原本的 6 格與人數欄位不用
+  const MANUAL_ACCOUNTING_FIELD = C.MANUAL_SIGNERS.ACCOUNTING_FIELD; // 手動模式的會計承辦人（指定簽核人視窗第 4 格）
   const MANUAL_MODE_CONFIG = {
     // 核取方塊欄位名稱
     checkbox: F.MANUAL_FLOW,
-
-    // A類：人數欄位
+    // 人數欄位：手動模式固定 0人（流程管理的自動關卡條件才不會成立）
     countFields: COUNT_FIELDS,
-
-    // B類：主管欄位
-    managerFields: [
-      { field: '單位主管1', order: 1 },
-      { field: '單位主管2', order: 2 },
-      { field: '單位主管3', order: 3 },
-    ],
-    deputyFields: [
-      { field: '單位次長', order: 1 },
-      { field: '單位次長1', order: 2 },
-    ],
-
-    // C類：固定顯示欄位（必填）
-    fixedFields: ['單位部長_支店長', F.ACCOUNTING_STAFF],
-  };
-
-  // 人數對應主管欄位
-  const MANUAL_DISPLAY_RULES = {
-    manager: {
-      '0人': [],
-      '1人': ['單位主管3'],
-      '2人': ['單位主管2', '單位主管3'],
-      '3人': ['單位主管1', '單位主管2', '單位主管3'],
-    },
-    deputy: {
-      '0人': [],
-      '1人': ['單位次長1'],
-      '2人': ['單位次長', '單位次長1'],
-    },
+    // 手動模式要清空的簽核欄位
+    slotFields: getEnabledFields(),
   };
 
   // =========================
@@ -510,6 +483,12 @@
     };
   };
 
+  /** 提示視窗：一律用 SweetAlert；載不到 SweetAlert 才退回瀏覽器的 alert */
+  function notify(icon, title, text) {
+    if (typeof Swal !== 'undefined') Swal.fire({ icon, title, text, confirmButtonText: '好' });
+    else alert(text ? `${title}\n${text}` : title);
+  }
+
   /**
    * 取得會計單位並設定
    * @param {string} orgName - 費用所屬人部門名稱
@@ -528,7 +507,7 @@
       params_acc,
       function (resp) {
         if (!resp.records || resp.records.length === 0) {
-          alert('找不到對應的會計單位，請確認費用所屬人部門');
+          notify('warning', '找不到對應的會計單位', '請確認費用所屬人部門是否正確；仍有問題請洽系統管理員。');
           return;
         }
 
@@ -556,15 +535,21 @@
           };
         }
 
-        updateRecord.record[F.ACCOUNTING_STAFF] = {
-          value: has_account_member
-            ? AccountData[ACC.ACCOUNTING_STAFF].value.map((member) => ({
-                code: member.code || member,
-                name: member.name || member,
-              }))
-            : [],
-          type: 'USER_SELECT',
-        };
+        const staff = has_account_member
+          ? AccountData[ACC.ACCOUNTING_STAFF].value.map((member) => ({
+              code: member.code || member,
+              name: member.name || member,
+            }))
+          : [];
+        updateRecord.record[F.ACCOUNTING_STAFF] = { value: staff, type: 'USER_SELECT' };
+
+        // 手動模式另有「手動會計承辦人」（指定簽核人視窗第 4 格）：還空著才帶這個預設，申請人選過的不蓋掉
+        const manualStaffField = updateRecord.record[MANUAL_ACCOUNTING_FIELD];
+        const offerManualStaff = isManual && manualStaffField && !(manualStaffField.value?.length > 0) && staff.length > 0;
+        if (offerManualStaff) {
+          manualStaffField.value = staff;
+          manualStaffField.disabled = true;
+        }
 
         // 左側是請款單主表的欄位（F），右側是會計對應主檔的欄位（ACC）——同名但不同 App
         updateRecord.record[F.PERMISSION_STAFF] = {
@@ -579,10 +564,11 @@
 
         KT.record().setFieldShown(F.ACCOUNTING_UNIT, has_account && !isManual);
         KT.record().set(updateRecord);
+        if (offerManualStaff) window.PR_MANUAL_SIGNERS?.offerAccounting?.(staff);
       },
       function (error) {
         console.error('API錯誤:', error);
-        alert('取得會計單位資料時發生錯誤');
+        notify('error', '取得會計單位資料時發生錯誤', '請稍後再試，或重新選一次費用所屬人。');
       },
     );
   }
@@ -732,7 +718,7 @@
         },
         function (error) {
           console.error('API錯誤:', error);
-          alert('取得主管資料時發生錯誤');
+          notify('error', '取得主管資料時發生錯誤', '請稍後再試，或重新選一次費用所屬人。');
         },
       );
     });
@@ -745,186 +731,29 @@
   // =========================
 
   /**
-   * 初始化手動簽核模式
+   * 初始化手動簽核模式：人數歸 0人並鎖住、6 格清空隱藏；
+   * 手動簽核人三格、手動會計承辦人與「設定簽核人」按鈕交給 PR_MANUAL_SIGNERS（只能從指定簽核人視窗改）。
    * @param {Object} record - Kintone record 物件
+   * @param {{ openNow?: boolean }} [opts] openNow：馬上開「指定簽核人」視窗
    * @returns {Object} 更新後的 record
    */
-  function initManualSigningMode(record) {
-    console.log('=== 初始化手動簽核模式 ===');
-
-    // A類：人數欄位啟用
-    record[MANUAL_MODE_CONFIG.countFields.manager].disabled = false;
-    record[MANUAL_MODE_CONFIG.countFields.deputy].disabled = false;
-    record[MANUAL_MODE_CONFIG.countFields.manager].value = '0人';
-    record[MANUAL_MODE_CONFIG.countFields.deputy].value = '0人';
-
-    KT.record().setFieldShown(MANUAL_MODE_CONFIG.countFields.manager, true);
-    KT.record().setFieldShown(MANUAL_MODE_CONFIG.countFields.deputy, true);
-
-    // B類：主管欄位先全部隱藏
-    MANUAL_MODE_CONFIG.managerFields.forEach(({ field }) => {
-      record[field].value = [];
-      record[field].disabled = false;
+  function initManualSigningMode(record, { openNow = false } = {}) {
+    Object.values(MANUAL_MODE_CONFIG.countFields).forEach((field) => {
+      if (!record[field]) return;
+      record[field].value = '0人';
+      record[field].disabled = true;
       KT.record().setFieldShown(field, false);
     });
 
-    MANUAL_MODE_CONFIG.deputyFields.forEach(({ field }) => {
+    MANUAL_MODE_CONFIG.slotFields.forEach((field) => {
+      if (!record[field]) return;
       record[field].value = [];
-      record[field].disabled = false;
+      record[field].disabled = true;
       KT.record().setFieldShown(field, false);
     });
 
-    // C類：固定欄位顯示
-    MANUAL_MODE_CONFIG.fixedFields.forEach((field) => {
-      record[field].disabled = false;
-      KT.record().setFieldShown(field, true);
-    });
-
-    console.log('手動簽核模式初始化完成');
+    window.PR_MANUAL_SIGNERS?.enter(record, { openNow });
     return record;
-  }
-
-  /**
-   * 根據主管人數動態顯示欄位
-   * @param {string} count - 人數選擇（"0人", "1人", "2人", "3人"）
-   * @param {Object} record - Kintone record 物件
-   */
-  function handleManagerCountChangeForManual(count, record) {
-    console.log(`=== 處理主管人數變更: ${count} ===`);
-
-    const fieldsToShow = MANUAL_DISPLAY_RULES.manager[count] || [];
-
-    MANUAL_MODE_CONFIG.managerFields.forEach(({ field }) => {
-      const shouldShow = fieldsToShow.includes(field);
-
-      if (shouldShow) {
-        record[field].disabled = false;
-        KT.record().setFieldShown(field, true);
-
-        console.log(`顯示欄位: ${field}`);
-      } else {
-        record[field].value = [];
-        record[field].disabled = false;
-        KT.record().setFieldShown(field, false);
-
-        console.log(`隱藏欄位: ${field}`);
-      }
-    });
-  }
-
-  /**
-   * 根據次長人數動態顯示欄位
-   * @param {string} count - 人數選擇（"0人", "1人", "2人"）
-   * @param {Object} record - Kintone record 物件
-   */
-  function handleDeputyCountChangeForManual(count, record) {
-    console.log(`=== 處理次長人數變更: ${count} ===`);
-
-    const fieldsToShow = MANUAL_DISPLAY_RULES.deputy[count] || [];
-
-    MANUAL_MODE_CONFIG.deputyFields.forEach(({ field }) => {
-      const shouldShow = fieldsToShow.includes(field);
-
-      if (shouldShow) {
-        record[field].disabled = false;
-        KT.record().setFieldShown(field, true);
-
-        console.log(`顯示欄位: ${field}`);
-      } else {
-        record[field].value = [];
-        record[field].disabled = false;
-        KT.record().setFieldShown(field, false);
-
-        console.log(`隱藏欄位: ${field}`);
-      }
-    });
-  }
-
-  /**
-   * 驗證手動簽核流程
-   * @param {Object} record - Kintone record 物件
-   * @returns {Object} { isValid: boolean, errors: string[] }
-   */
-  function validateManualSigningFlow(record) {
-    console.log('=== 開始驗證手動簽核流程 ===');
-
-    const errors = [];
-
-    // 1. 驗證主管人數與實際填寫是否一致
-    const managerCountStr = record[MANUAL_MODE_CONFIG.countFields.manager].value;
-    if (managerCountStr) {
-      const declaredCount = parseInt(managerCountStr.charAt(0));
-      let actualCount = 0;
-
-      MANUAL_MODE_CONFIG.managerFields.forEach(({ field }) => {
-        if (record[field].value && record[field].value.length > 0) {
-          actualCount++;
-        }
-      });
-
-      if (declaredCount !== actualCount) {
-        errors.push(`❌ 部門主管簽核人數選擇 ${declaredCount}人，但實際填寫 ${actualCount} 位，請補齊或調整人數`);
-      }
-
-      console.log(`主管人數驗證: 宣告=${declaredCount}, 實際=${actualCount}`);
-    }
-
-    // 2. 驗證次長人數與實際填寫是否一致
-    const deputyCountStr = record[MANUAL_MODE_CONFIG.countFields.deputy].value;
-    if (deputyCountStr) {
-      const declaredCount = parseInt(deputyCountStr.charAt(0));
-      let actualCount = 0;
-
-      MANUAL_MODE_CONFIG.deputyFields.forEach(({ field }) => {
-        if (record[field].value && record[field].value.length > 0) {
-          actualCount++;
-        }
-      });
-
-      if (declaredCount !== actualCount) {
-        errors.push(`❌ 部門次長簽核人數選擇 ${declaredCount}人，但實際填寫 ${actualCount} 位，請補齊或調整人數`);
-      }
-
-      console.log(`次長人數驗證: 宣告=${declaredCount}, 實際=${actualCount}`);
-    }
-
-    // 3. 驗證 C類固定欄位必填(管理員略過)
-    if (!C.isAdmin()) {
-      MANUAL_MODE_CONFIG.fixedFields.forEach((field) => {
-        const value = record[field].value;
-        const isEmpty = !value || value.length === 0;
-
-        if (isEmpty) {
-          const fieldLabel = field === '單位部長_支店長' ? '單位部長/支店長' : '會計單位承辦人';
-          errors.push(`❌ 請填寫「${fieldLabel}」欄位`);
-        }
-
-        console.log(`${field} 必填驗證: ${isEmpty ? '未填寫' : '已填寫'}`);
-      });
-    }
-
-    // 4. 驗證是否有選擇人數但未填寫
-    if (managerCountStr && parseInt(managerCountStr.charAt(0)) > 0) {
-      const hasAnyManager = MANUAL_MODE_CONFIG.managerFields.some(({ field }) => record[field].value && record[field].value.length > 0);
-      if (!hasAnyManager) {
-        errors.push(`❌ 已選擇部門主管簽核人數，但未填寫任何主管人員`);
-      }
-    }
-
-    if (deputyCountStr && parseInt(deputyCountStr.charAt(0)) > 0) {
-      const hasAnyDeputy = MANUAL_MODE_CONFIG.deputyFields.some(({ field }) => record[field].value && record[field].value.length > 0);
-      if (!hasAnyDeputy) {
-        errors.push(`❌ 已選擇部門次長簽核人數，但未填寫任何次長人員`);
-      }
-    }
-
-    const isValid = errors.length === 0;
-    console.log(`驗證結果: ${isValid ? '通過' : '失敗'}`);
-    if (!isValid) {
-      console.log('錯誤列表:', errors);
-    }
-
-    return { isValid, errors };
   }
 
   /**
@@ -952,7 +781,33 @@
     record[F.ACCOUNTING_UNIT].value = [];
     KT.record().setFieldShown(F.ACCOUNTING_UNIT, false);
     if (typeof KT.record().setGroupFieldOpen === 'function') KT.record().setGroupFieldOpen(F.SIGN_FLOW_GROUP, true);
-    initManualSigningMode(record);
+    // 還沒指定簽核人才跳視窗（複製的單已經有人就不吵他，要改按「更改簽核人」）
+    const hasSigners = window.PR_MANUAL_SIGNERS?.signersOf(record).some(Boolean);
+    initManualSigningMode(record, { openNow: !hasSigners });
+  }
+
+  /** 不在「費用歸屬不限部門」群組的人勾了手動設定簽核流程 */
+  function warnManualNotAllowed() {
+    const title = '這張單不能手動設定簽核人';
+    const text = `手動設定簽核流程只開放給「${C.COST_SCOPE.EXEMPT_GROUP}」的同仁，簽核人員會由系統依費用所屬人自動安排。`;
+    notify('info', title, text);
+  }
+
+  /** 取消勾選手動設定時確認（SweetAlert；載不到才用瀏覽器 confirm） */
+  function askExitManual() {
+    const title = '改回系統自動排簽核人員？';
+    const text = '剛才指定的簽核人與會計承辦人會清掉，改由系統依費用所屬人重新安排。';
+    if (typeof Swal === 'undefined') return Promise.resolve(confirm(`${title}\n\n${text}\n按「取消」維持手動設定。`));
+    return Swal.fire({
+      icon: 'question',
+      title,
+      text,
+      showCancelButton: true,
+      confirmButtonText: '改回自動',
+      cancelButtonText: '維持手動',
+      reverseButtons: true,
+      focusCancel: true,
+    }).then((result) => result.isConfirmed);
   }
 
   /**
@@ -1077,12 +932,35 @@
   const warnNoOrg = (subject) => {
     const title = `此${subject}沒有所屬單位`;
     const text = `請改選其他${subject}，或請管理員到 kintone 設定他的所屬組織。`;
-    if (typeof Swal !== 'undefined') Swal.fire({ icon: 'warning', title, text });
-    else alert(`${title}\n${text}`);
+    notify('warning', title, text);
   };
 
   // 申請人部門（申請人部門帶入_20261022.js）共用同一套查單位與選單位視窗
   window.PR_ORG_PICKER = Object.freeze({ fetchUserOrgs, pickOrg, warnNoOrg });
+
+  /**
+   * 「指定簽核人」視窗按取消、一位簽核人都沒指定（PR_MANUAL_SIGNERS 呼叫）：
+   * 取消勾選手動設定簽核流程，改回系統自動排人。使用者已經在視窗按了取消，這裡不再跳確認。
+   */
+  // 程式自己取消勾選時，KT.record().set() 會再觸發一次勾選的 change 事件；用旗標讓那一次直接放行，
+  // 否則 change 事件會把勾選勾回去、又跳確認，按取消就無限循環。沒等到事件也會自己解除。
+  let exitingManual = false;
+
+  function exitManualMode() {
+    const current = KT.record().get();
+    const record = current.record;
+    if (!isManualSigningMode(record)) return;
+    record[MANUAL_MODE_CONFIG.checkbox].value = [];
+    window.PR_MANUAL_SIGNERS?.leave(record);
+    handleExpenseOwnerOrgChange({ record });
+    exitingManual = true;
+    setTimeout(() => {
+      exitingManual = false;
+    }, 1500);
+    KT.record().set(current);
+  }
+
+  window.PR_MANUAL_MODE = Object.freeze({ exitManualMode });
 
   // 連續改費用所屬人時，只讓最後一次的查詢結果寫回畫面
   let expenseOwnerChangeSeq = 0;
@@ -1160,126 +1038,55 @@
   });
 
   // 手動設定簽核流程勾選變更
+  //   勾選：只限「費用歸屬不限部門」群組的申請人（PR_COST_SCOPE 開畫面時已查好）；不在群組就取消勾選並說明。
+  //     開畫面時的查詢若還沒回來，先取消勾選，查完確定在群組再幫他勾回去。
+  //   取消勾選：確認後清掉手動簽核人，改回系統自動排人。
   KT.on([`app.record.create.change.${F.MANUAL_FLOW}`, `app.record.edit.change.${F.MANUAL_FLOW}`], function (event) {
     const record = event.record;
     const isManual = isManualSigningMode(record);
 
     if (isManual) {
+      const scope = window.PR_COST_SCOPE;
+      if (scope && !scope.isExempt()) {
+        record[MANUAL_MODE_CONFIG.checkbox].value = [];
+        scope.ensureExempt(scope.applicantCodeOf(record)).then((exempt) => {
+          if (!exempt) {
+            warnManualNotAllowed();
+            return;
+          }
+          const current = KT.record().get();
+          enterManualModeForExempt(current.record);
+          KT.record().set(current);
+        });
+        return event;
+      }
+
       // 啟用手動模式
       record[F.ACCOUNTING_UNIT].value = [];
       KT.record().setFieldShown(F.ACCOUNTING_UNIT, false);
 
       KT.record().setGroupFieldOpen(F.SIGN_FLOW_GROUP, true);
-      event.record = initManualSigningMode(record);
+      event.record = initManualSigningMode(record, { openNow: true });
+    } else if (exitingManual) {
+      // exitManualMode 自己取消勾選引起的事件：已經改回自動了，不再確認
+      exitingManual = false;
     } else {
-      // 取消手動模式 - 需要確認
-      const userConfirmed = confirm(
-        '⚠️ 切換回自動模式會清除已填寫的內容，確定要繼續嗎？\n\n' + '按「確定」將重新載入自動簽核流程\n' + '按「取消」將維持手動模式',
-      );
-
-      if (userConfirmed) {
-        handleExpenseOwnerOrgChange(event);
-      } else {
-        // 使用者取消，重新勾選 checkbox
-        record[MANUAL_MODE_CONFIG.checkbox].value = [OPT.MANUAL_FLOW.ON];
-        event.record = record;
-      }
+      // 取消手動模式：change 事件不能等視窗，先維持勾選；問過按「改回自動」才真的取消勾選
+      record[MANUAL_MODE_CONFIG.checkbox].value = [OPT.MANUAL_FLOW.ON];
+      askExitManual().then((ok) => {
+        if (ok) exitManualMode();
+      });
     }
 
     return event;
   });
 
-  // 部門主管簽核人數變更
-  KT.on(
-    [`app.record.create.change.${COUNT_FIELDS.manager}`, `app.record.edit.change.${COUNT_FIELDS.manager}`],
-    function (event) {
-      const record = event.record;
-
-      // 只在手動模式下處理
-      if (!isManualSigningMode(record)) {
-        return event;
-      }
-
-      const count = record[MANUAL_MODE_CONFIG.countFields.manager].value;
-
-      handleManagerCountChangeForManual(count, record);
-      event.record = record;
-
-      return event;
-    },
-  );
-
-  // 部門次長簽核人數變更
-  KT.on(
-    [`app.record.create.change.${COUNT_FIELDS.deputy}`, `app.record.edit.change.${COUNT_FIELDS.deputy}`],
-    function (event) {
-      const record = event.record;
-
-      // 只在手動模式下處理
-      if (!isManualSigningMode(record)) {
-        return event;
-      }
-
-      const count = record[MANUAL_MODE_CONFIG.countFields.deputy].value;
-
-      handleDeputyCountChangeForManual(count, record);
-      event.record = record;
-
-      return event;
-    },
-  );
-
-  // 編輯/詳細頁面顯示（手動模式支援）
+  // 編輯/詳細頁面顯示（手動模式）：6 格的兩個人數欄位不顯示（會計單位承辦人照一般規則，只有管理員看得到）
   KT.on(['app.record.edit.show', 'app.record.detail.show'], function (event) {
     const record = event.record;
 
     if (isManualSigningMode(record)) {
-      // A類欄位：啟用編輯（僅編輯模式）
-      if (event.type === 'app.record.edit.show') {
-        record[MANUAL_MODE_CONFIG.countFields.manager].disabled = false;
-        record[MANUAL_MODE_CONFIG.countFields.deputy].disabled = false;
-      }
-
-      // B類欄位：根據目前人數顯示對應欄位並啟用
-      const managerCount = record[MANUAL_MODE_CONFIG.countFields.manager].value;
-      const deputyCount = record[MANUAL_MODE_CONFIG.countFields.deputy].value;
-
-      if (managerCount) {
-        handleManagerCountChangeForManual(managerCount, record);
-      }
-
-      if (deputyCount) {
-        handleDeputyCountChangeForManual(deputyCount, record);
-      }
-
-      // C類欄位：顯示並啟用（僅編輯模式）
-      if (event.type === 'app.record.edit.show') {
-        MANUAL_MODE_CONFIG.fixedFields.forEach((field) => {
-          record[field].disabled = false;
-          KT.record().setFieldShown(field, true);
-        });
-      }
-    }
-
-    return event;
-  });
-
-  // 儲存時檢查手動簽核流程的欄位值是否符合規定
-  KT.on(['app.record.create.submit', 'app.record.edit.submit'], (event) => {
-    const record = event.record;
-    // VOID_FIELD 是 checkbox 欄位代碼，與 STATUS.VOID 流程狀態字串語意不同
-    if (record[C.VOID_FIELD]?.value?.length > 0) {
-      return event;
-    }
-    if (isManualSigningMode(record)) {
-      const validation = validateManualSigningFlow(record);
-
-      if (!validation.isValid) {
-        const errorMessage = '⚠️ 簽核流程驗證失敗：\n\n' + validation.errors.join('\n\n') + '\n\n請修正後再送出。';
-
-        event.error = errorMessage;
-        return event;
-      }
+      Object.values(MANUAL_MODE_CONFIG.countFields).forEach((field) => KT.record().setFieldShown(field, false));
     }
 
     return event;

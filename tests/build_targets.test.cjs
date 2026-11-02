@@ -198,7 +198,7 @@ check('JS 用到的 pr-* class 都在 payment_request.css 有定義', () => {
   ALL_JS.forEach((f) => {
     classesUsedIn(readSrc(f)).forEach((cls) => assert.ok(definedIn(css, cls), `${f} 用到的 .${cls} 沒有定義在 payment_request.css`));
   });
-  ['pr-validation-popup', 'pr-same-applicant-btn', 'pr-required-mark', 'pr-expected-pay-note', 'pr-noti', 'pr-auto-width', 'department-hint'].forEach((cls) =>
+  ['pr-validation-popup', 'pr-same-applicant-btn', 'pr-required-mark', 'pr-expected-pay-note', 'pr-noti', 'pr-auto-width', 'department-hint', 'pr-signer', 'pr-signer-popup', 'pr-signer-btn', 'pr-signer-entry'].forEach((cls) =>
     assert.ok(definedIn(css, cls), cls),
   );
   assert.ok(/@keyframes pr-fade-out/.test(css));
@@ -209,7 +209,7 @@ check('手機版模組整組載入（kintone.mobile 替身），觸發 mobile.* 
   const registered = [];
   const live = { record: null };
   const shown = {};
-  const space = () => ({ appendChild: () => {}, addEventListener: () => {}, classList: { add: () => {} }, textContent: '', innerHTML: '' });
+  const space = () => ({ appendChild: () => {}, replaceChildren: () => {}, addEventListener: () => {}, classList: { add: () => {} }, textContent: '', innerHTML: '' });
   const mobileRecordApi = {
     get: () => ({ record: live.record }),
     set: (r) => {

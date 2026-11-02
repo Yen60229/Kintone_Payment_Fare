@@ -23,9 +23,19 @@ const makeElement = () => {
     children: [],
     listeners: {},
     removed: false,
+    attributes: {},
     appendChild(child) {
       el.children.push(child);
       return child;
+    },
+    replaceChildren(...nodes) {
+      el.children = nodes;
+    },
+    setAttribute(name, value) {
+      el.attributes[name] = String(value);
+    },
+    focus() {
+      el.focused = true;
     },
     addEventListener(type, fn) {
       el.listeners[type] = fn;
