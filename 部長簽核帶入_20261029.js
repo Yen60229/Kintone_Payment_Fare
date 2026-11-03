@@ -12,6 +12,7 @@
   //     (1) 代碼的所屬部門（往上爬）是 DIRECTOR_BY_COST_CENTER.HQ_CODE（總公司）的所屬部門之一
   //         → 用該代碼那筆的「部門部長」群組（沒設就用總公司同部門那筆的）
   //     (2) 其他 → 用 DEFAULT_CODE（事業本部）的「部門部長」群組
+  //   部長所在的部已是最上層（往上沒有別的部）→ 只用 HQ_CODE「主要管理部門」那筆的部長群組（例如營業戰略部長、事業本部長 → 總務部長），不看代碼自己那筆的群組。
   //   群組成員去掉費用所屬人本人後寫入單位部長_支店長（只剩本人＝清空，部長本人不簽自己）。
   //   同一代碼有好幾筆（例如總公司由三個部共用）→ 取費用所屬人的部那一筆。
   //
@@ -40,6 +41,24 @@
 
   /** 這個狀態還能重算（新增畫面沒有狀態欄位值，一律可以） */
   const isEditableStatus = (status) => !status || CFG.EDITABLE_STATUSES.includes(status) || String(status).endsWith(CFG.REJECT_SUFFIX);
+
+  /**
+   * 這個部往上是否已經沒有別的部（組織樹往上爬，祖先都不在部的清單裡）。
+   * @param {string} dept 部（組織代碼）
+   * @param {Object<string,string|null>} parentOf 組織代碼 → 上一層
+   * @param {Set<string>} deptSet 部的清單（費用歸屬主檔出現過的所屬部門）
+   */
+  const isTopDept = (dept, parentOf, deptSet) => {
+    let current = parentOf[dept] || null;
+    for (let depth = 0; depth < C.COST_SCOPE.ORG_TREE.MAX_DEPTH && current; depth++) {
+      if (deptSet.has(current)) return false;
+      current = parentOf[current] || null;
+    }
+    return true;
+  };
+
+  /** HQ_CODE 主要管理部門那筆的部長群組；沒有勾主要管理部門回空陣列 */
+  const mainHqGroups = (records) => records.find((r) => r.code === CFG.HQ_CODE && r.main)?.groups || [];
 
   /**
    * 決定要用哪個部長群組。
@@ -88,13 +107,14 @@
     const list = [...new Set(codes)].map((c) => `"${c}"`).join(',');
     const resp = await kintone.api(kintone.api.url('/k/v1/records', true), 'GET', {
       app: C.APPS.COST_CENTER,
-      fields: [CC.CODE, CC.DEPT, CC.DIRECTOR_GROUP],
+      fields: [CC.CODE, CC.DEPT, CC.DIRECTOR_GROUP, CC.MAIN_DEPT],
       query: `${CC.CODE} in (${list}) and ${CC.IN_USE} in ("使用中") limit 500`,
     });
     return (resp.records || []).map((r) => ({
       code: String(r[CC.CODE]?.value || '').trim().toUpperCase(),
       dept: r[CC.DEPT]?.value?.[0]?.code || '',
       groups: (r[CC.DIRECTOR_GROUP]?.value || []).map((g) => g.code).filter(Boolean),
+      main: (r[CC.MAIN_DEPT]?.value || []).includes(CC.MAIN_DEPT_ON),
     }));
   };
 
@@ -110,17 +130,19 @@
     return users;
   };
 
-  /** 費用所屬人部門往上爬到的部；組織樹或主檔拿不到就用部門自己（只影響共用代碼選哪一筆） */
+  /** 費用所屬人部門往上爬到的部，以及這個部是不是最上層；組織樹或主檔拿不到就無法判斷要不要改用總公司部長，直接報錯 */
   const ownerDeptOf = async (ownerOrgCode) => {
     try {
       const scope = window.PR_COST_SCOPE;
       const cc = window.PR_COST_CENTER;
       await cc.ensureLoaded();
       const parentOf = await scope.loadOrgParents();
-      return { dept: scope.resolveDeptOfOrg(ownerOrgCode, parentOf, new Set(Object.values(cc.getDeptsOfCode()).flat())), parentOf };
+      const deptSet = new Set(Object.values(cc.getDeptsOfCode()).flat());
+      const dept = scope.resolveDeptOfOrg(ownerOrgCode, parentOf, deptSet);
+      return { dept, parentOf, isTop: isTopDept(dept, parentOf, deptSet) };
     } catch (err) {
-      console.warn('[部長簽核帶入] 取得組織樹失敗，改用費用所屬人部門本身判斷:', err);
-      return { dept: ownerOrgCode, parentOf: {} };
+      console.warn('[部長簽核帶入] 取得組織樹失敗:', err);
+      throw new Error('無法取得組織資料');
     }
   };
 
@@ -140,18 +162,21 @@
     const title = await fetchOwnerTitle(owner.code, ownerOrg.code);
     if (title !== CFG.OWNER_TITLE) return { skip: 'not-director' };
 
-    const [records, { dept: ownerDept, parentOf }] = await Promise.all([
+    const [records, { dept: ownerDept, parentOf, isTop }] = await Promise.all([
       fetchCostCenterRecords([code, CFG.HQ_CODE, CFG.DEFAULT_CODE]),
       ownerDeptOf(ownerOrg.code),
     ]);
     const plan = pickDirectorGroups({ code, ownerDept, records, parentOf, resolveDeptOfOrg: window.PR_COST_SCOPE.resolveDeptOfOrg });
     if (!plan) return { skip: 'unknown-cost-center' }; // 代碼不在主檔：存檔驗證另有錯誤訊息
-    if (plan.groups.length === 0) throw new Error(`費用歸屬主檔沒有設定「${CC.DIRECTOR_GROUP}」（${plan.source === 'HQ' ? code : CFG.DEFAULT_CODE}）`);
+    // 部長所在的部已是最上層 → 只用總公司主要管理部門的部長
+    const groups = isTop ? mainHqGroups(records) : plan.groups;
+    if (isTop && groups.length === 0) throw new Error(`費用歸屬主檔 ${CFG.HQ_CODE} 沒有勾「${CC.MAIN_DEPT}」或沒有設定「${CC.DIRECTOR_GROUP}」`);
+    if (groups.length === 0) throw new Error(`費用歸屬主檔沒有設定「${CC.DIRECTOR_GROUP}」（${plan.source === 'HQ' ? code : CFG.DEFAULT_CODE}）`);
 
-    const members = (await Promise.all(plan.groups.map(fetchGroupUsers))).flat();
+    const members = (await Promise.all(groups.map(fetchGroupUsers))).flat();
     const seen = new Set([owner.code]); // 部長本人不簽自己
     const users = members.filter((u) => u?.code && !seen.has(u.code) && seen.add(u.code));
-    console.log(`[部長簽核帶入] ${code} → ${plan.source === 'HQ' ? '總公司' : '預設'}部長群組 ${plan.groups.join('、')}：`, users.map((u) => u.code));
+    console.log(`[部長簽核帶入] ${code} → ${isTop ? '主要管理部門' : plan.source === 'HQ' ? '總公司' : '預設'}部長群組 ${groups.join('、')}${isTop ? '（最上層的部，改用總公司主要管理部門）' : ''}：`, users.map((u) => u.code));
     return { users };
   };
 
@@ -206,5 +231,5 @@
     return event;
   });
 
-  window.PR_DIRECTOR_BY_CC = Object.freeze({ firstCostCenter, isEditableStatus, pickDirectorGroups, resolveDirector, apply, refresh });
+  window.PR_DIRECTOR_BY_CC = Object.freeze({ firstCostCenter, isEditableStatus, isTopDept, mainHqGroups, pickDirectorGroups, resolveDirector, apply, refresh });
 })();

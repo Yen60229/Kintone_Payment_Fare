@@ -23,7 +23,7 @@ kintone **交通費請款單（測試區 App 749）** 的自訂 JavaScript 原�
 | 費用歸屬代碼 | `APPS.COST_CENTER` |
 | 帳號權限設定（欄位顯隱／可編輯／必填） | `APPS.PERMISSION` |
 | 行事曆（預計付款日） | `APPS.HOLIDAY_CALENDAR` |
-| SAP 轉檔欄位對應 | `APPS.SAP_MAPPING` |
+| 交通費轉出欄位對應 | `APPS.SAP_MAPPING` |
 | PDF 字型 | `APPS.PDF_FONT` |
 
 ---
@@ -34,7 +34,7 @@ kintone **交通費請款單（測試區 App 749）** 的自訂 JavaScript 原�
 ```bash
 npm test && bash tests/syntax.test.sh && npm run scan
 ```
-- `npm test`：29 支測試（共 531 項斷言）。
+- `npm test`：29 支測試（共 537 項斷言）。
 - `bash tests/syntax.test.sh`：對根目錄所有 `*.js` 跑 `node --check`（目前 26 檔）。
 - `npm run scan`：統計剩餘的 App ID／狀態／選項／欄位代碼硬編碼（目前 11 處）。
 

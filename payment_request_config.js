@@ -89,7 +89,7 @@
     COST_CENTER: 661, // 費用歸屬代碼（CostCenter）
     ACCOUNTING_MAP: 433, // 申請單位 → 會計單位／承辦人 對應
     APPROVAL_FLOW: 139, // 簽核流程主檔
-    SAP_MAPPING: 623, // SAP 轉檔欄位對應
+    SAP_MAPPING: 751, // 交通費轉出欄位對應（另建，不和請款單共用 SAP 對應 App；欄位為交通費套表 A～Q）
     PDF_FONT: 488, // PDF 產生用字型
     PERMISSION: 673, // 帳號權限設定（欄位顯隱／可編輯／必填規則）
     HOLIDAY_CALENDAR: 620, // 行事曆（國定假日、週末、補行上班日），預計付款日用
@@ -125,6 +125,9 @@
       DEPT: '所屬部門',
       // GROUP_SELECT：這個代碼／部門的部長群組。費用所屬人是部長時用來帶單位部長（DIRECTOR_BY_COST_CENTER）
       DIRECTOR_GROUP: '部門部長',
+      // CHECK_BOX：同一代碼有好幾筆時，哪一筆是主要管理部門（值 MAIN_DEPT_ON）。部長所在的部已是最上層時用它找 HQ_CODE 的部長
+      MAIN_DEPT: '主要管理部門',
+      MAIN_DEPT_ON: '是',
     }),
     // 簽核流程主檔（APPS.APPROVAL_FLOW）：一般單位用「簽核所屬單位」（組織欄位，存組織代碼）查，
     //   改組織名稱不用改程式；依職稱改查的合併流程（特殊簽核流程，例如「物流部次長級」）才用「簽核流程名稱」查。
@@ -186,6 +189,8 @@
     PAPER_RECEIPT: '是否有紙本憑證',
     REASON: '理由', // 主表 MULTI_LINE_TEXT；標籤「理由（計程車）」
     RECORD_NO: '交通費請款單號', // RECORD_NUMBER；批次下載／PDF 產生時用來標示記錄
+    TOTAL_AMOUNT: '總金額', // CALC；＝交通費請款單.金額 合計（交通費轉出 Excel 的 {總金額}）
+    TOTAL_TAX: '總稅額', // CALC；＝交通費請款單.稅額 合計（交通費轉出 Excel 的 {總稅額}；為 0 就不轉出稅額列）
     DEV_ONLY_DATA: '帶入的資料_開發人員用', // 僅 ADMIN_USERS 可見的除錯用群組欄位
     SIGN_FLOW_GROUP: '簽核流程', // 簽核流程群組欄位
     MANUAL_FLOW: '手動設定簽核流程',
@@ -358,6 +363,7 @@
   //   費用所屬人在費用所屬人部門的職稱是 OWNER_TITLE → 依明細第一個費用歸屬代碼查費用歸屬主檔（APPS.COST_CENTER）：
   //     代碼的所屬部門（往上爬）是 HQ_CODE 的所屬部門之一 → 用該代碼那筆的「部門部長」群組（沒設就用 HQ_CODE 同部門那筆的）
   //     其他 → 用 DEFAULT_CODE 的「部門部長」群組
+  //   部長所在的部已是最上層（上面沒有別的部）→ 只用 HQ_CODE 主要管理部門（REF_FIELDS.COST_CENTER.MAIN_DEPT）那筆的部長群組（不看代碼自己那筆）。
   //   群組成員（去掉費用所屬人本人）寫入 TARGET_FIELD。
   //   只在新增、EDITABLE_STATUSES 與駁回狀態（名稱以 REJECT_SUFFIX 結尾）重算，且值沒變不寫
   //   （送出後沒有該欄位編輯權限的人存檔會被 kintone 退回）。
