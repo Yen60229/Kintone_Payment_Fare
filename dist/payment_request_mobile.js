@@ -2472,6 +2472,7 @@
      * @returns {Object} 更新後的 record
      */
     function initManualSigningMode(record, { openNow = false } = {}) {
+      manualShown = true;
       Object.values(MANUAL_MODE_CONFIG.countFields).forEach((field) => {
         if (!record[field]) return;
         record[field].value = '0人';
@@ -2498,6 +2499,12 @@
     function isManualSigningMode(record) {
       return record[MANUAL_MODE_CONFIG.checkbox] && record[MANUAL_MODE_CONFIG.checkbox].value && record[MANUAL_MODE_CONFIG.checkbox].value.length > 0;
     }
+
+    // 畫面上「手動設定簽核流程」目前的勾選狀態（開畫面時讀、程式自己改勾選時跟著改；null＝還不知道）。
+    // kintone 在程式 KT.record().set() 之後也會觸發勾選欄位的 change 事件（值沒變也會），
+    // 事件的值和這裡一樣就是 set() 的回音、不是使用者點的：不開視窗、不確認、不勾回去。
+    // 否則開新增畫面帶會計單位的 set() 會跳「指定簽核人」視窗，視窗按取消改回自動後又被勾回去，無限循環。
+    let manualShown = null;
 
     // =========================
     // 事件註冊
@@ -2549,6 +2556,7 @@
      * 新增畫面：先確認申請人是否在排除群組（PR_COST_SCOPE），在的話切手動模式，再帶入費用所屬人部門與簽核人員／會計單位。
      */
     function handleCreateShow(event) {
+      manualShown = Boolean(isManualSigningMode(event.record));
       const scope = window.PR_COST_SCOPE;
       if (!scope) return syncOwnerOrgOnCreate(event);
       return scope.ensureExempt(scope.applicantCodeOf(event.record)).then((exempt) => {
@@ -2676,26 +2684,26 @@
     /**
      * 「指定簽核人」視窗按取消、一位簽核人都沒指定（PR_MANUAL_SIGNERS 呼叫）：
      * 取消勾選手動設定簽核流程，改回系統自動排人。使用者已經在視窗按了取消，這裡不再跳確認。
+     * set() 引起的 change 事件靠 manualShown 認出是回音，不會再勾回去。
      */
-    // 程式自己取消勾選時，KT.record().set() 會再觸發一次勾選的 change 事件；用旗標讓那一次直接放行，
-    // 否則 change 事件會把勾選勾回去、又跳確認，按取消就無限循環。沒等到事件也會自己解除。
-    let exitingManual = false;
-
     function exitManualMode() {
       const current = KT.record().get();
       const record = current.record;
       if (!isManualSigningMode(record)) return;
       record[MANUAL_MODE_CONFIG.checkbox].value = [];
+      manualShown = false;
       window.PR_MANUAL_SIGNERS?.leave(record);
       handleExpenseOwnerOrgChange({ record });
-      exitingManual = true;
-      setTimeout(() => {
-        exitingManual = false;
-      }, 1500);
       KT.record().set(current);
     }
 
-    window.PR_MANUAL_MODE = Object.freeze({ exitManualMode });
+    window.PR_MANUAL_MODE = Object.freeze({
+      exitManualMode,
+      /** 測試用：忘掉畫面上的勾選狀態（模擬重新開頁） */
+      _reset: () => {
+        manualShown = null;
+      },
+    });
 
     // 連續改費用所屬人時，只讓最後一次的查詢結果寫回畫面
     let expenseOwnerChangeSeq = 0;
@@ -2776,14 +2784,17 @@
     //   勾選：只限「費用歸屬不限部門」群組的申請人（PR_COST_SCOPE 開畫面時已查好）；不在群組就取消勾選並說明。
     //     開畫面時的查詢若還沒回來，先取消勾選，查完確定在群組再幫他勾回去。
     //   取消勾選：確認後清掉手動簽核人，改回系統自動排人。
+    //   勾選狀態和 manualShown 一樣 → 是程式 set() 引起的回音，直接放行。
     KT.on([`app.record.create.change.${F.MANUAL_FLOW}`, `app.record.edit.change.${F.MANUAL_FLOW}`], function (event) {
       const record = event.record;
-      const isManual = isManualSigningMode(record);
+      const isManual = Boolean(isManualSigningMode(record));
+      if (isManual === manualShown) return event;
 
       if (isManual) {
         const scope = window.PR_COST_SCOPE;
         if (scope && !scope.isExempt()) {
           record[MANUAL_MODE_CONFIG.checkbox].value = [];
+          manualShown = false;
           scope.ensureExempt(scope.applicantCodeOf(record)).then((exempt) => {
             if (!exempt) {
               warnManualNotAllowed();
@@ -2802,12 +2813,10 @@
 
         KT.record().setGroupFieldOpen(F.SIGN_FLOW_GROUP, true);
         event.record = initManualSigningMode(record, { openNow: true });
-      } else if (exitingManual) {
-        // exitManualMode 自己取消勾選引起的事件：已經改回自動了，不再確認
-        exitingManual = false;
       } else {
         // 取消手動模式：change 事件不能等視窗，先維持勾選；問過按「改回自動」才真的取消勾選
         record[MANUAL_MODE_CONFIG.checkbox].value = [OPT.MANUAL_FLOW.ON];
+        manualShown = true;
         askExitManual().then((ok) => {
           if (ok) exitManualMode();
         });
@@ -2819,6 +2828,7 @@
     // 編輯/詳細頁面顯示（手動模式）：6 格的兩個人數欄位不顯示（會計單位承辦人照一般規則，只有管理員看得到）
     KT.on(['app.record.edit.show', 'app.record.detail.show'], function (event) {
       const record = event.record;
+      manualShown = Boolean(isManualSigningMode(record));
 
       if (isManualSigningMode(record)) {
         Object.values(MANUAL_MODE_CONFIG.countFields).forEach((field) => KT.record().setFieldShown(field, false));

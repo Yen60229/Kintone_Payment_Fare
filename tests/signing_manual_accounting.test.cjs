@@ -81,7 +81,9 @@ const ORG_CHANGE = `app.record.create.change.${F.EXPENSE_OWNER_ORG}`;
 const MANUAL_CHANGE = `app.record.create.change.${F.MANUAL_FLOW}`;
 const SUBMIT = 'app.record.create.submit';
 
+/** 新的畫面資料（同時讓簽核人員程式忘掉上一個畫面的勾選狀態，模擬重新開頁） */
 const makeLive = ({ manual }) => {
+  global.window.PR_MANUAL_MODE._reset();
   const r = {
     [F.EXPENSE_OWNER_ORG]: { type: 'ORGANIZATION_SELECT', value: [{ code: '航空貨物部-台北營業課', name: '航空貨物部-台北營業課' }] },
     [F.EXPENSE_OWNER]: { type: 'USER_SELECT', value: [U('ME')] },
@@ -350,6 +352,45 @@ const check = async (label, fn) => {
     await fire(MANUAL_CHANGE);
     for (let i = 0; i < 5; i++) await Promise.resolve();
     assert.strictEqual(asked, 1, '使用者自己取消勾選：照樣確認一次');
+    delete global.Swal;
+  });
+
+  await check('kintone 的 set() 也會觸發勾選的 change（值沒變也會）：回音不再開視窗、不確認；視窗按取消改回自動後不會又被勾回去', async () => {
+    let asked = 0;
+    global.Swal = { fire: () => { asked += 1; return Promise.resolve({ isConfirmed: false }); } };
+    global.window.PR_COST_SCOPE = { isExempt: () => true, ensureExempt: () => Promise.resolve(true), applicantCodeOf: () => 'ME' };
+    const origSet = global.kintone.app.record.set;
+    let sets = 0;
+    global.kintone.app.record.set = (r) => {
+      origSet(r);
+      sets += 1;
+      if (sets > 20) assert.fail('set() 停不下來（無限循環）');
+      Promise.resolve().then(() => {
+        const event = { type: MANUAL_CHANGE, record: clone(T.env.live) };
+        T.env.live = clone((T.handlers[MANUAL_CHANGE][0](event) || event).record);
+      });
+    };
+    const settleAll = async () => {
+      for (let round = 0; round < 5; round++) {
+        for (let i = 0; i < 5; i++) await Promise.resolve();
+        T.env.accountingCallbacks.splice(0).forEach((cb) => cb());
+      }
+    };
+
+    T.env.live = makeLive({ manual: true });
+    signerCalls.length = 0;
+    await fire(MANUAL_CHANGE); // 使用者自己勾：開一次視窗；帶會計單位的 set() 回音不再開
+    await settleAll();
+    assert.deepStrictEqual(signerCalls.map((c) => [c.type, c.opts?.openNow]), [['enter', true]]);
+
+    global.window.PR_MANUAL_MODE.exitManualMode(); // 視窗按取消、沒選人
+    await settleAll();
+    assert.deepStrictEqual(T.env.live[F.MANUAL_FLOW].value, [], '取消後維持未勾選');
+    assert.deepStrictEqual(signerCalls.map((c) => c.type), ['enter', 'leave'], '沒有再進手動、再開視窗');
+    assert.strictEqual(asked, 0, '沒有跳「改回自動？」確認');
+
+    global.kintone.app.record.set = origSet;
+    delete global.window.PR_COST_SCOPE;
     delete global.Swal;
   });
 

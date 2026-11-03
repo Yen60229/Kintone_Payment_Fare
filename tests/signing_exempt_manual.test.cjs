@@ -199,6 +199,31 @@ const manualOn = () => env.live[F.MANUAL_FLOW].value.length > 0;
     assert.ok(env.apiCalls.some((c) => c.params?.app === C.APPS.ACCOUNTING_MAP), '仍帶入會計單位承辦人／權限開放人員');
   });
 
+  await check('排除群組的申請人新增：之後帶會計單位的 set() 觸發勾選 change（kintone 值沒變也會觸發），也不跳「指定簽核人」視窗', async () => {
+    env.groups = { APPLICANT: ['費用歸屬不限部門'] };
+    global.window.PR_COST_SCOPE._reset();
+    const enterCalls = [];
+    global.window.PR_MANUAL_SIGNERS = { signersOf: () => [null, null, null], enter: (r, opts) => enterCalls.push(opts), leave: () => {} };
+    const MANUAL_EVENT = `app.record.create.change.${F.MANUAL_FLOW}`;
+    const origSet = global.kintone.app.record.set;
+    global.kintone.app.record.set = (r) => {
+      origSet(r);
+      setTimeout(() => {
+        T.handlers[MANUAL_EVENT].forEach((fn) => {
+          const event = { type: MANUAL_EVENT, record: clone(env.live) };
+          env.live = clone((fn(event) || event).record);
+        });
+      }, 0);
+    };
+    await run({ orgName: NAME, title: '一般', eventType: CREATE });
+    await settle();
+    global.kintone.app.record.set = origSet;
+    delete global.window.PR_MANUAL_SIGNERS;
+    assert.ok(env.apiCalls.some((c) => c.params?.app === C.APPS.ACCOUNTING_MAP), '確實有帶會計單位（會 set()）');
+    assert.deepStrictEqual(enterCalls, [{ openNow: false }], 'set() 的回音不當成使用者勾選');
+    assert.strictEqual(manualOn(), true);
+  });
+
   await check('手動模式下改費用所屬人部門：不重排、不清掉自選的簽核人員', async () => {
     env.groups = {};
     env.apiCalls.length = 0;
