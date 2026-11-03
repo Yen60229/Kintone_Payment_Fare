@@ -85,6 +85,55 @@ const loadSavingHint = () => {
     assert.strictEqual(swalState.visible, false);
   });
 
+  await check('kintone 欄位設定的必填沒填（例如發票/憑證附件）→ 最後一個存檔程式就關提示，不會卡到保險計時', () => {
+    const { api, swalState } = loadSavingHint();
+    const props = {
+      附件: { type: 'FILE', code: '附件', required: true },
+      理由: { type: 'MULTI_LINE_TEXT', code: '理由', required: false },
+      交通費請款單: { type: 'SUBTABLE', code: '交通費請款單', fields: { 金額: { code: '金額', required: true }, 稅額: { code: '稅額', required: false } } },
+    };
+    const req = api.parseRequiredFields(props);
+    assert.deepStrictEqual(req, { main: ['附件'], tables: { 交通費請款單: ['金額'] } });
+    api.setRequiredFields(req);
+    const rec = (files, amount) => ({ 附件: { value: files }, 理由: { value: '' }, 交通費請款單: { value: [{ value: { 金額: { value: amount }, 稅額: { value: '' } } }] } });
+    assert.strictEqual(api.hasMissingRequired(rec([{ fileKey: 'k' }], '100')), false, '必填都有填；非必填空白不算');
+    assert.strictEqual(api.hasMissingRequired(rec([], '100')), true, '附件沒上傳');
+    assert.strictEqual(api.hasMissingRequired(rec([{ fileKey: 'k' }], '')), true, '子表格必填沒填');
+    api.onSubmitStart({});
+    api.onSubmitEnd({ record: rec([{ fileKey: 'k' }], '100') });
+    assert.strictEqual(swalState.visible, true, '都填了 → 繼續顯示到換頁');
+    api.onSubmitEnd({ record: rec([], '100') });
+    assert.strictEqual(swalState.visible, false, '附件沒上傳 → 關掉，讓使用者看到 kintone 的必填提示');
+    api.setRequiredFields(null);
+    assert.strictEqual(api.hasMissingRequired(rec([], '')), false, '還沒讀到欄位設定 → 不判斷（靠保險計時）');
+  });
+
+  await check('開新增／編輯畫面時讀一次欄位設定（必填清單）；讀不到不報錯', async () => {
+    const registered = [];
+    const calls = [];
+    const on = (types, handler) => registered.push({ types, handler });
+    const kintoneStub = {
+      events: { on },
+      api: (url, method, params) => {
+        calls.push(params);
+        return Promise.resolve({ properties: { 附件: { type: 'FILE', code: '附件', required: true } } });
+      },
+    };
+    kintoneStub.api.url = (p) => p;
+    const win = { PR_KT: { on, app: () => ({ getId: () => 749 }) } };
+    // eslint-disable-next-line no-new-func
+    new Function('window', 'kintone', 'setTimeout', 'clearTimeout', readSrc('存檔等待提示_20260923.js'))(win, kintoneStub, () => 0, () => {});
+    const leave = registered.find((r) => r.types.includes('app.record.create.show')).handler;
+    leave({ type: 'app.record.detail.show' });
+    assert.strictEqual(calls.length, 0, '詳細頁不用讀');
+    leave({ type: 'app.record.create.show' });
+    await new Promise((r) => setImmediate(r));
+    assert.deepStrictEqual(calls, [{ app: 749 }]);
+    assert.strictEqual(win.PR_SAVING_HINT.hasMissingRequired({ 附件: { value: [] } }), true);
+    leave({ type: 'app.record.edit.show' });
+    assert.strictEqual(calls.length, 1, '讀過就不再讀');
+  });
+
   await check('換到詳細頁（存檔成功）時關掉提示', () => {
     const { api, registered, swalState } = loadSavingHint();
     const leave = registered.find((r) => r.types.includes('app.record.detail.show'));

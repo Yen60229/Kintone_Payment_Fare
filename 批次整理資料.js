@@ -1,5 +1,6 @@
 // 批次整理資料 - 功能模組（index.show 專用）
-// 列表頁「轉出 Excel」：選定的請款單，每一筆轉成 應付帳款／費用成本（／稅額）最多三列，全部放在同一張工作表。
+// 列表頁「轉出 Excel」：選定的請款單先依受款人排序、讓使用者確認每筆的轉出日期，
+// 每一筆轉成 應付帳款 1 列＋費用成本（每個明細列各 1 列）＋稅額（稅額不為 0 的明細列各 1 列），全部放在同一張工作表。
 // 欄位怎麼對應由「交通費轉出欄位對應」App（APPS.SAP_MAPPING）設定，一筆記錄＝Excel 的一欄。
 (function () {
   'use strict';
@@ -9,24 +10,23 @@
   // 內部之對應設定欄位，非請款單主表 FIELDS，刻意保留字面值。
   const CONFIG = {
     mappingAppId: window.PR_CONFIG.APPS.SAP_MAPPING, // 交通費轉出欄位對應設定 App ID
+    costCenterAppId: window.PR_CONFIG.APPS.COST_CENTER, // 費用歸屬主檔（查 Business Area）
   };
 
   const FIELDS = window.PR_CONFIG.FIELDS;
+  const CC = window.PR_CONFIG.REF_FIELDS.COST_CENTER;
   const TABLE = FIELDS.TRAFFIC_TABLE; // 交通費明細子表格（樣板的 {交通費請款單.欄位} 取這張表的列）
   const TAX_COL = TABLE.COLS.TAX;
-  const TOTAL_TAX = FIELDS.TOTAL_TAX; // 主表總稅額（CALC）：為 0 或空白就不轉出稅額列
 
   const SHEET_NAME = '交通費';
   const DEFAULT_DATE_FORMAT = 'YYYY/MM/DD';
   const DEFAULT_CELL_FORMAT = '一般';
   const MIN_COL_WIDTH = 12;
+  const PAYEE_KEY_LENGTH = 5; // 受款人排序／分組只看前 5 碼數字（同樣板的「數字|左5」）
+  const COST_CENTER_PAGE = 500;
 
-  // 每筆記錄依序轉出的列種類；稅額列只有總稅額不為 0 才轉出
-  const ROW_KINDS = [
-    { key: 'ap', valueField: '應付帳款_值', onlyWhenTax: false },
-    { key: 'expense', valueField: '費用成本_值', onlyWhenTax: false },
-    { key: 'tax', valueField: '稅額_值', onlyWhenTax: true },
-  ];
+  // 三種列各自取設定 App 的哪個樣板欄位
+  const VALUE_FIELD = { ap: '應付帳款_值', expense: '費用成本_值', tax: '稅額_值' };
 
   // ======================== 取得 UI 輸入的記錄範圍 ========================
   function getRecordIdsFromUI() {
@@ -93,6 +93,14 @@
     const dt = new Date(Date.UTC(y, mo - 1, d));
     if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
     return { y, m: mo, d };
+  }
+
+  /** 上個月最後一天（'YYYY-MM-DD'），給日期視窗的「月帳」按鈕；不是日期回空字串 */
+  function lastDayOfPrevMonth(date) {
+    const ymd = toYMD(date);
+    if (!ymd) return '';
+    const d = new Date(Date.UTC(ymd.y, ymd.m - 1, 0)); // 這個月 0 號＝上個月最後一天
+    return d.toISOString().slice(0, 10);
   }
 
   /** Excel 日期序號（1900 日期系統） */
@@ -192,6 +200,73 @@
     return recordIds.map((id) => recordMap[id]).filter((r) => r !== undefined);
   }
 
+  // ======================== 從費用歸屬主檔取得 Business Area ========================
+  /**
+   * 費用歸屬主檔記錄 → Map（大寫去空白的 CostCenter 代碼 → Business Area）。
+   * 同一代碼可能有好幾筆（不同所屬部門），取第一個有填 Business Area 的；代碼空白的略過。
+   */
+  function buildBusinessAreaMap(records) {
+    const map = new Map();
+    for (const r of records || []) {
+      const code = String(r?.[CC.CODE]?.value ?? '')
+        .trim()
+        .toUpperCase();
+      const area = String(r?.[CC.BUSINESS_AREA]?.value ?? '').trim();
+      if (code === '' || area === '') continue;
+      if (!map.has(code)) map.set(code, area);
+    }
+    return map;
+  }
+
+  /** 讀費用歸屬主檔全部記錄（每次 500 筆，用 offset 翻頁），回傳 buildBusinessAreaMap 的結果；失敗就拋出 */
+  async function fetchBusinessAreaMap() {
+    const all = [];
+    for (let offset = 0; ; offset += COST_CENTER_PAGE) {
+      const resp = await new Promise((resolve, reject) => {
+        kintone.api(
+          kintone.api.url('/k/v1/records', true),
+          'GET',
+          {
+            app: CONFIG.costCenterAppId,
+            fields: [CC.CODE, CC.BUSINESS_AREA],
+            query: `order by $id asc limit ${COST_CENTER_PAGE} offset ${offset}`,
+          },
+          resolve,
+          (error) => {
+            console.error('取得費用歸屬 Business Area 失敗:', error);
+            reject(error);
+          },
+        );
+      });
+      all.push(...resp.records);
+      if (resp.records.length < COST_CENTER_PAGE) break;
+    }
+    return buildBusinessAreaMap(all);
+  }
+
+  // ======================== 依受款人排序 ========================
+  /** 受款人的排序／分組鍵：受款人文字取數字、前 5 碼（沒有數字回空字串） */
+  function payeeKey(record) {
+    return String(record?.[FIELDS.PAYEE]?.value ?? '')
+      .replace(/\D/g, '')
+      .slice(0, PAYEE_KEY_LENGTH);
+  }
+
+  /** 依受款人鍵由小到大排（空白鍵排最後），鍵相同依記錄編號由小到大；回傳新陣列 */
+  function sortRecordsByPayee(records) {
+    const idOf = (r) => Number(r?.$id?.value);
+    return [...records].sort((a, b) => {
+      const ka = payeeKey(a);
+      const kb = payeeKey(b);
+      if (ka !== kb) {
+        if (ka === '') return 1;
+        if (kb === '') return -1;
+        return ka < kb ? -1 : 1;
+      }
+      return idOf(a) - idOf(b);
+    });
+  }
+
   // ======================== 欄位值轉文字 ========================
   /** kintone 欄位值 → 文字：人員／組織／群組取名稱、陣列用逗號串、日期照 dateFormat、空值回空字串 */
   function valueToText(value, dateFormat) {
@@ -213,7 +288,19 @@
     return matches[matches.length - 1][1].trim();
   }
 
-  function applyFilters(text, filters) {
+  /** Cost Center 代碼 → Business Area（ctx.businessArea 是 Map 或物件，鍵為大寫代碼）；查不到回空字串並警告 */
+  function lookupBusinessArea(text, ctx) {
+    const key = String(text).trim().toUpperCase();
+    const src = ctx?.businessArea;
+    let hit;
+    if (src instanceof Map) hit = src.get(key);
+    else if (src && Object.prototype.hasOwnProperty.call(src, key)) hit = src[key];
+    if (hit) return String(hit);
+    if (key !== '') console.warn('批次整理資料：查不到 Business Area', key);
+    return '';
+  }
+
+  function applyFilters(text, filters, ctx) {
     let out = String(text);
     for (const raw of filters || []) {
       const f = String(raw).trim();
@@ -224,6 +311,8 @@
         out = Array.from(out).slice(0, Number(left[1])).join('');
       } else if (f === '括號內') {
         out = bracketInner(out);
+      } else if (f === 'BusinessArea') {
+        out = lookupBusinessArea(out, ctx);
       } else {
         console.warn('批次整理資料：不認得的篩選器', f);
       }
@@ -234,24 +323,18 @@
   // ======================== 解析語法並取值 ========================
   // 語法（單層大括號，括號外的文字照用）：
   //   {欄位代碼}                 主表欄位
-  //   {交通費請款單.欄位代碼}      明細列的欄位：應付帳款、費用成本列取第一列；稅額列取第一個稅額不為 0 的列（沒有就第一列）
-  //   {序號}  {TODAY}  {$id}     資料列序號（標題下第一列＝1）、今天、記錄編號
-  //   {欄位|數字|左5}            篩選器由左到右套用：數字（只留數字）、左N（前 N 個字）、括號內（最後一組括號裡的字）
+  //   {交通費請款單.欄位代碼}      明細列的欄位：取 ctx.detailRow（應付帳款列＝第一列，費用成本、稅額列＝各自對應的那一列）；其他子表格取第一列
+  //   {序號}  {TODAY}  {$id}     記錄序號（匯出順序第幾筆，同一筆記錄的每一列都一樣）、今天、記錄編號
+  //   {轉出日期}                 該筆記錄在日期視窗選的日期（沒選就是今天），照欄位的日期格式輸出
+  //   {欄位|數字|左5}            篩選器由左到右套用：數字（只留數字）、左N（前 N 個字）、括號內（最後一組括號裡的字）、
+  //                              BusinessArea（把 Cost Center 代碼換成 Business Area，查不到留空）
   //   =A+B-C                    開頭是 = 時做加減（A、B、C 是 {…} 或數字），空白當 0，不能算回空字串
-  // ctx = { record, kind, seq, today, dateFormat }；kind 是 ROW_KINDS 的 key（決定 {交通費請款單.欄位} 取哪一列）
+  // ctx = { record, detailRow, seq, today, exportDate, businessArea, dateFormat }
 
   /** 明細列的稅額是否不為 0（空、0 都算 0） */
   function isNonZero(text) {
     const n = Number(String(text ?? '').replace(/,/g, '').trim());
     return Number.isFinite(n) && n !== 0;
-  }
-
-  /** 樣板的 {交通費請款單.欄位} 用哪一列：稅額列＝第一個稅額不為 0 的列（沒有就第一列），其他＝第一列；沒有明細回 null */
-  function pickDetailRow(record, kind) {
-    const rows = record?.[TABLE.CODE]?.value;
-    if (!Array.isArray(rows) || rows.length === 0) return null;
-    if (kind === 'tax') return rows.find((r) => isNonZero(r?.value?.[TAX_COL]?.value)) || rows[0];
-    return rows[0];
   }
 
   /** 單一 {…} 內的內容（不含大括號）→ 文字 */
@@ -264,6 +347,8 @@
 
     if (name === 'TODAY') {
       text = formatDate(ctx.today || new Date(), dateFormat);
+    } else if (name === '轉出日期') {
+      text = formatDate(ctx.exportDate || ctx.today || new Date(), dateFormat);
     } else if (name === '序號') {
       text = ctx.seq === undefined || ctx.seq === null ? '' : String(ctx.seq);
     } else if (name === '$id') {
@@ -273,13 +358,13 @@
       const tableCode = name.slice(0, dot);
       const fieldCode = name.slice(dot + 1);
       const rows = record[tableCode]?.value;
-      const row = tableCode === TABLE.CODE ? pickDetailRow(record, ctx.kind) : Array.isArray(rows) ? rows[0] : null;
+      const row = tableCode === TABLE.CODE && ctx.detailRow ? ctx.detailRow : Array.isArray(rows) ? rows[0] : null;
       text = valueToText(row?.value?.[fieldCode]?.value, dateFormat);
     } else {
       text = valueToText(record[name]?.value, dateFormat);
     }
 
-    return applyFilters(text, parts.slice(1));
+    return applyFilters(text, parts.slice(1), ctx);
   }
 
   /** 做加減：運算式只能有 {…}、數字、+、-。空白＝0；有無法當數字的值回 null */
@@ -350,25 +435,31 @@
 
   // ======================== 列產生 ========================
   /**
-   * 產生所有資料列。每筆記錄依序轉出 應付帳款、費用成本、（總稅額不為 0 才有的）稅額，沒有明細列的記錄也一樣轉出。
-   * 回傳 rows：每列是和 mappings 同順序的 { value, format }（value 為文字）。today 可注入（測試用）。
+   * 產生所有資料列（records 已是最後順序）。每筆記錄依序轉出：
+   *   應付帳款 1 列（{交通費請款單.欄位} 取第一個明細列）、費用成本（每個明細列各 1 列）、稅額（稅額不為 0 的明細列各 1 列）；
+   *   沒有明細列就只有應付帳款。{序號} 是記錄在匯出裡的順序，同一筆記錄每列都一樣。
+   * opts = { today, dates, businessArea }：today 今天（測試可注入）、dates 是 { 記錄編號: 'YYYY-MM-DD' } 的轉出日期、
+   *   businessArea 是 buildBusinessAreaMap 的結果。回傳 rows：每列是和 mappings 同順序的 { value, format }（value 為文字）。
    */
-  function buildRows(mappings, records, today) {
+  function buildRows(mappings, records, opts) {
+    const { today, dates, businessArea } = opts || {};
     const now = today || new Date();
     const rows = [];
 
-    for (const record of records) {
-      for (const kind of ROW_KINDS) {
-        if (kind.onlyWhenTax && !isNonZero(record[TOTAL_TAX]?.value)) continue;
-        const seq = rows.length + 1;
-        rows.push(
-          mappings.map((m) => ({
-            value: parseTemplate(m[kind.valueField] || '', { record, kind: kind.key, seq, today: now, dateFormat: m.dateFormat }),
-            format: m.cellFormat || DEFAULT_CELL_FORMAT,
-          })),
-        );
-      }
-    }
+    records.forEach((record, i) => {
+      const id = record.$id?.value;
+      const exportDate = (id !== undefined && dates?.[id]) || now;
+      const details = Array.isArray(record[TABLE.CODE]?.value) ? record[TABLE.CODE].value : [];
+      const make = (kind, detailRow) =>
+        mappings.map((m) => ({
+          value: parseTemplate(m[VALUE_FIELD[kind]] || '', { record, detailRow, seq: i + 1, today: now, exportDate, businessArea, dateFormat: m.dateFormat }),
+          format: m.cellFormat || DEFAULT_CELL_FORMAT,
+        }));
+
+      rows.push(make('ap', details[0]));
+      details.forEach((d) => rows.push(make('expense', d)));
+      details.filter((d) => isNonZero(d?.value?.[TAX_COL]?.value)).forEach((d) => rows.push(make('tax', d)));
+    });
 
     return rows;
   }
@@ -437,13 +528,14 @@
   }
 
   // ======================== 產生 Excel 並下載 ========================
-  async function generateExcel(mappings, records) {
+  /** opts 同 buildRows（today 不給就用現在） */
+  async function generateExcel(mappings, records, opts) {
     if (typeof XLSX === 'undefined') {
       alert('錯誤：SheetJS 函式庫未載入，請確認已上傳 xlsx.full.min.js');
       return null;
     }
 
-    const rows = buildRows(mappings, records, new Date());
+    const rows = buildRows(mappings, records, { today: new Date(), ...opts });
     if (rows.length === 0) {
       alert('沒有可轉出的資料');
       return null;
@@ -459,6 +551,130 @@
     return { fileName, rowCount: rows.length };
   }
 
+  // ======================== 轉出日期視窗 ========================
+  const escapeHtml = (text) =>
+    String(text ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  /** 金額加千分位（#,##0）；不是數字就原樣 */
+  function formatAmount(value) {
+    const n = Number(String(value ?? '').replace(/,/g, '').trim());
+    if (String(value ?? '').trim() === '' || !Number.isFinite(n)) return String(value ?? '');
+    return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  /**
+   * 日期視窗的內容 HTML（records 已排好序）：上方「全部套用」，下方每筆記錄一列（受款人、單號、費用所屬人、總金額、日期）。
+   * 受款人只在同一組（受款人鍵相同）的第一列顯示，該列加 pr-export-row--group-start 讓 CSS 畫分隔線。所有值都做 HTML 跳脫。
+   */
+  function buildDateDialogHtml(records, todayText) {
+    const today = escapeHtml(todayText);
+    const monthEnd = escapeHtml(lastDayOfPrevMonth(todayText)); // 「月帳」按鈕帶入的日期
+    let prevKey = null;
+    const body = records
+      .map((r, i) => {
+        const key = payeeKey(r);
+        const first = i === 0 || key !== prevKey;
+        prevKey = key;
+        const rowClass = first ? 'pr-export-row pr-export-row--group-start' : 'pr-export-row';
+        const payee = first ? escapeHtml(key || '—') : '';
+        const no = escapeHtml(valueToText(r[FIELDS.RECORD_NO]?.value));
+        const owner = escapeHtml(bracketInner(valueToText(r[FIELDS.EXPENSE_OWNER]?.value)));
+        const total = escapeHtml(formatAmount(r[FIELDS.TOTAL_AMOUNT]?.value));
+        const id = escapeHtml(r.$id?.value);
+        return (
+          `<tr class="${rowClass}">` +
+          `<td class="pr-export__payee" data-label="受款人">${payee}</td>` +
+          `<td data-label="單號">${no}</td>` +
+          `<td data-label="費用所屬人">${owner}</td>` +
+          `<td class="pr-export__num" data-label="總金額">${total}</td>` +
+          `<td class="pr-export__date-cell" data-label="轉出日期"><input type="date" class="pr-export__date" data-record-id="${id}" value="${today}">` +
+          `<button type="button" class="pr-export__month-btn" data-date="${monthEnd}" title="帶入上個月最後一天">月帳</button></td>` +
+          '</tr>'
+        );
+      })
+      .join('');
+
+    return (
+      '<div class="pr-export">' +
+      '<div class="pr-export__bulk">' +
+      '<span class="pr-export__bulk-label">轉出日期</span>' +
+      `<input type="date" class="pr-export__date pr-export__bulk-date" value="${today}">` +
+      '<button type="button" class="pr-export__bulk-btn">全部套用</button>' +
+      '</div>' +
+      '<div class="pr-export__scroll"><table class="pr-export__table">' +
+      '<thead><tr><th>受款人</th><th>單號</th><th>費用所屬人</th><th class="pr-export__num">總金額</th><th>轉出日期</th></tr></thead>' +
+      `<tbody>${body}</tbody>` +
+      '</table></div>' +
+      '</div>'
+    );
+  }
+
+  /**
+   * 跳「轉出交通費 Excel」視窗讓使用者確認每筆的轉出日期（預設今天）。
+   * 回傳 { 記錄編號: 'YYYY-MM-DD' }；按取消回傳 null；Swal 沒載入就全部用今天、不跳視窗。
+   */
+  async function askExportDates(records, todayText) {
+    if (typeof Swal === 'undefined') {
+      return Object.fromEntries(records.map((r) => [r.$id.value, todayText]));
+    }
+
+    const result = await Swal.fire({
+      title: '轉出交通費 Excel',
+      html: buildDateDialogHtml(records, todayText),
+      showCancelButton: true,
+      confirmButtonText: '轉出 Excel',
+      cancelButtonText: '取消',
+      reverseButtons: true,
+      focusConfirm: false,
+      allowOutsideClick: false,
+      buttonsStyling: false,
+      customClass: {
+        popup: 'pr-signer-popup pr-export-popup',
+        title: 'pr-signer-popup__title',
+        htmlContainer: 'pr-signer-popup__body',
+        actions: 'pr-signer-popup__actions',
+        confirmButton: 'pr-signer-btn pr-signer-btn--primary',
+        cancelButton: 'pr-signer-btn pr-signer-btn--ghost',
+        validationMessage: 'pr-signer-popup__message',
+      },
+      didOpen: (popup) => {
+        const bulkDate = popup.querySelector('.pr-export__bulk-date');
+        popup.querySelector('.pr-export__bulk-btn')?.addEventListener('click', () => {
+          if (!bulkDate?.value) return;
+          popup.querySelectorAll('.pr-export__date[data-record-id]').forEach((input) => {
+            input.value = bulkDate.value;
+          });
+        });
+        // 「月帳」：同一列的日期改成上個月最後一天
+        popup.querySelectorAll('.pr-export__month-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const input = btn.parentElement?.querySelector('.pr-export__date');
+            if (input && btn.dataset.date) input.value = btn.dataset.date;
+          });
+        });
+      },
+      preConfirm: () => {
+        const dates = {};
+        for (const input of Swal.getPopup().querySelectorAll('.pr-export__date[data-record-id]')) {
+          const v = input.value;
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || !parseDateText(v)) {
+            Swal.showValidationMessage('請填寫每一筆的日期');
+            return false;
+          }
+          dates[input.dataset.recordId] = v;
+        }
+        return dates;
+      },
+    });
+
+    return result.isConfirmed ? result.value : null;
+  }
+
   // ======================== 主要處理函數 ========================
   async function handleBatchOrganizeData() {
     try {
@@ -468,42 +684,60 @@
         return;
       }
 
-      if (!confirm(`即將處理 ${recordIds.length} 筆記錄，是否繼續？`)) {
-        return;
-      }
-
       console.log('處理記錄:', recordIds);
 
-      // 1. 取得欄位對應設定
-      console.log('正在取得欄位對應設定...');
-      const mappings = await fetchFieldMappings();
+      // 1. 一按就跳「請稍後」，同時讀欄位對應設定、請款單記錄、Business Area 對照（費用歸屬 → Business Area）
+      showLoading();
+      const [mappings, records, businessArea] = await Promise.all([fetchFieldMappings(), fetchSourceRecords(recordIds), fetchBusinessAreaMap()]);
       console.log('欄位對應設定:', mappings);
+      console.log('請款單記錄:', records);
 
       if (mappings.length === 0) {
+        closeLoading();
         alert('錯誤：未取得任何欄位對應設定');
         return;
       }
-
-      // 2. 取得請款單記錄
-      console.log('正在取得請款單記錄...');
-      const records = await fetchSourceRecords(recordIds);
-      console.log('請款單記錄:', records);
-
       if (records.length === 0) {
+        closeLoading();
         alert('錯誤：未取得任何請款單記錄');
         return;
       }
 
+      // 2. 依受款人排序，讓使用者確認每筆的轉出日期（日期視窗直接取代「請稍後」）
+      const sorted = sortRecordsByPayee(records);
+      const dates = await askExportDates(sorted, formatDate(new Date(), 'YYYY-MM-DD'));
+      if (!dates) return;
+
       // 3. 產生 Excel
       console.log('正在產生 Excel...');
-      const result = await generateExcel(mappings, records);
+      const result = await generateExcel(mappings, sorted, { dates, businessArea });
       if (!result) return;
 
       alert(`Excel 檔案已產生並下載\n檔名：${result.fileName}\n共 ${records.length} 筆記錄、${result.rowCount} 列資料`);
     } catch (error) {
+      closeLoading();
       console.error('批次整理資料錯誤:', error);
       alert('處理過程發生錯誤: ' + error.message);
     }
+  }
+
+  // ======================== 「請稍後」小視窗 ========================
+  /** 讀資料時的轉圈小視窗；之後的 Swal.fire（日期視窗）會直接取代它。沒有 Swal 就不顯示 */
+  function showLoading() {
+    if (typeof Swal === 'undefined') return;
+    Swal.fire({
+      title: '請稍後',
+      text: '正在讀取資料…',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      showConfirmButton: false,
+      customClass: { popup: 'pr-export-loading' },
+      didOpen: () => Swal.showLoading(),
+    });
+  }
+
+  function closeLoading() {
+    if (typeof Swal !== 'undefined') Swal.close();
   }
 
   // ======================== 等待按鈕出現並綁定 ========================
@@ -535,6 +769,13 @@
     evalArithmetic,
     valueToText,
     buildRows,
+    payeeKey,
+    sortRecordsByPayee,
+    buildBusinessAreaMap,
+    buildDateDialogHtml,
+    lastDayOfPrevMonth,
+    showLoading,
+    closeLoading,
     buildSheet,
     generateExcel,
     toCell,

@@ -128,6 +128,7 @@
       // CHECK_BOX：同一代碼有好幾筆時，哪一筆是主要管理部門（值 MAIN_DEPT_ON）。部長所在的部已是最上層時用它找 HQ_CODE 的部長
       MAIN_DEPT: '主要管理部門',
       MAIN_DEPT_ON: '是',
+      BUSINESS_AREA: 'BusinessArea', // SINGLE_LINE_TEXT：Cost Center 對應的 Business Area（交通費轉出 J 欄）
     }),
     // 簽核流程主檔（APPS.APPROVAL_FLOW）：一般單位用「簽核所屬單位」（組織欄位，存組織代碼）查，
     //   改組織名稱不用改程式；依職稱改查的合併流程（特殊簽核流程，例如「物流部次長級」）才用「簽核流程名稱」查。

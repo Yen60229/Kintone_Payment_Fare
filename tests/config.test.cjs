@@ -336,7 +336,7 @@ check('SIGNING（「所／中心 → 部」補前綴對應）已刪：簽核流�
 check('REF_FIELDS 有簽核流程、費用歸屬、會計對應、行事曆四份；費用歸屬主檔有代碼／中文名稱／使用狀況／所屬部門四個欄位（據點不再讀）', () => {
   assert.deepStrictEqual(Object.keys(c.REF_FIELDS).sort(), ['ACCOUNTING_MAP', 'APPROVAL_FLOW', 'COST_CENTER', 'HOLIDAY_CALENDAR']);
   assert.deepStrictEqual({ ...c.REF_FIELDS.APPROVAL_FLOW }, { FLOW_NAME: '簽核流程名稱', ORG: '簽核所屬單位', IN_USE: '使用狀況', IN_USE_VALUE: '使用中' });
-  assert.deepStrictEqual({ ...c.REF_FIELDS.COST_CENTER }, { CODE: 'CostCenter', NAME: '中文名稱', IN_USE: '使用狀況', DEPT: '所屬部門', DIRECTOR_GROUP: '部門部長', MAIN_DEPT: '主要管理部門', MAIN_DEPT_ON: '是' });
+  assert.deepStrictEqual({ ...c.REF_FIELDS.COST_CENTER }, { CODE: 'CostCenter', NAME: '中文名稱', IN_USE: '使用狀況', DEPT: '所屬部門', DIRECTOR_GROUP: '部門部長', MAIN_DEPT: '主要管理部門', MAIN_DEPT_ON: '是', BUSINESS_AREA: 'BusinessArea' });
   assert.deepStrictEqual(
     { ...c.REF_FIELDS.ACCOUNTING_MAP },
     { APPLY_UNIT: '申請單位', ACCOUNTING_UNIT: '請款會計單位', ACCOUNTING_STAFF: '請款會計人員', PERMISSION_USER: '權限開放人員' },

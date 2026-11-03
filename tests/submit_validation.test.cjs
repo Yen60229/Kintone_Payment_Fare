@@ -226,10 +226,10 @@ check('發票號碼記錄空白 → 不發查詢', async () => {
 });
 
 check('查到重複 → 擋下並提示；沒查到 → 通過', async () => {
-  const dup = await loadSubmit({ invoiceHits: 1 });
+  const dup = await loadSubmit({ invoiceRecords: (FF) => [{ $id: { value: '1' }, [FF.RECORD_NO]: { value: '1' }, [FF.INVOICE_AGG]: { value: ' / A1 / ' } }] });
   const evDup = await submit(dup.env, goodRecord(dup.F, { [dup.F.INVOICE_AGG]: { value: ' / A1 / ' } }));
   assert.strictEqual(evDup.error, '儲存失敗');
-  assert.ok(plainText(dup.env.swalCalls[0].html).includes('發票號碼重複：已存在相同發票號碼'));
+  assert.ok(plainText(dup.env.swalCalls[0].html).includes('發票號碼重複：以下發票號碼已在其他單據出現'));
 
   const clean = await loadSubmit({ invoiceHits: 0 });
   const evClean = await submit(clean.env, goodRecord(clean.F, { [clean.F.INVOICE_AGG]: { value: ' / A1 / ' } }));
@@ -266,20 +266,31 @@ check('發票重複訊息：同一號碼撞到多張單、多個號碼各撞不�
   assert.strictEqual((env.swalCalls[0].html.match(/pr-v-chip"/g) || []).length, 2, '兩個號碼兩個標籤');
 });
 
-check('發票重複訊息：號碼要完整比對，不會把 A1 當成 A12 的重複（退回原訊息）', async () => {
+check('發票重複：號碼要完整比對，A1 不算 A12 的重複 → 不擋存檔', async () => {
   const { env, F } = await loadSubmit({
     invoiceRecords: (FF) => [{ $id: { value: '9' }, [FF.RECORD_NO]: { value: '109' }, [FF.INVOICE_AGG]: { value: ' / A12 / ' } }],
   });
-  await submit(env, goodRecord(F, { [F.INVOICE_AGG]: { value: ' / A1 / ' } }));
-  assert.ok(plainText(env.swalCalls[0].html).includes('發票號碼重複：已存在相同發票號碼，請更換後再儲存。'));
+  const ev = await submit(env, goodRecord(F, { [F.INVOICE_AGG]: { value: ' / A1 / ' } }));
+  assert.strictEqual(ev.error, undefined);
+  assert.strictEqual(env.swalCalls.length, 0);
 });
 
-check('發票重複訊息：比對不出明細（對方沒有單號）→ 退回原本那句話、沒有標籤', async () => {
-  const { env, F } = await loadSubmit({ invoiceRecords: (FF) => [{ $id: { value: '9' }, [FF.INVOICE_AGG]: { value: ' / A1 / ' } }] });
-  await submit(env, goodRecord(F, { [F.INVOICE_AGG]: { value: ' / A1 / ' } }));
-  const html = env.swalCalls[0].html;
-  assert.ok(plainText(html).includes('發票號碼重複：已存在相同發票號碼，請更換後再儲存。'));
-  assert.ok(!html.includes('pr-v-chip"'));
+check('發票重複：kintone like 忽略符號撈到的候選（@SW!W vs @SW!WW!W!W!）不算重複 → 不擋存檔', async () => {
+  const { env, F } = await loadSubmit({
+    invoiceRecords: (FF) => [{ $id: { value: '1' }, [FF.RECORD_NO]: { value: '1' }, [FF.INVOICE_AGG]: { value: ' / @SW!WW!W!W! / 2121121212 / ' } }],
+  });
+  const ev = await submit(env, goodRecord(F, { [F.INVOICE_AGG]: { value: ' / @SW!W / 242424 / ' } }));
+  assert.strictEqual(ev.error, undefined);
+  assert.strictEqual(env.swalCalls.length, 0);
+});
+
+check('發票重複：大小寫不同也算重複；對方沒有單號時改列記錄編號', async () => {
+  const { env, F } = await loadSubmit({ invoiceRecords: (FF) => [{ $id: { value: '9' }, [FF.INVOICE_AGG]: { value: ' / ab123 / ' } }] });
+  const ev = await submit(env, goodRecord(F, { [F.INVOICE_AGG]: { value: ' / AB123 / ' } }));
+  assert.strictEqual(ev.error, '儲存失敗');
+  const text = plainText(env.swalCalls[0].html);
+  assert.ok(/AB123\s*交通費請款單號 9/.test(text), text);
+  assert.ok(!text.includes('已存在相同發票號碼'), '不再出現沒說號碼的舊訊息');
 });
 
 check('發票查詢失敗 → 擋下並提示稍後再試（不放行）', async () => {

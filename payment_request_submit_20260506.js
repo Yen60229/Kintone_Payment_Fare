@@ -119,20 +119,22 @@
     const hits = resp.records || [];
     if (hits.length === 0) return [];
 
-    // 比對本單每個號碼出現在對方哪幾張單（同一號碼撞到多張單，單號用「、」併在同一個標籤）
+    // 比對本單每個號碼出現在對方哪幾張單（同一號碼撞到多張單，單號用「、」併在同一個標籤）。
+    // kintone 的 like 會忽略符號、只比字詞（例如「@SW!W」會撞到「@SW!WW!W!W!」），查到的只是候選，
+    // 一定要逐一比對完整號碼（不分大小寫）才算重複；比對不到就不是重複，不擋存檔。
+    const norm = (s) => String(s).trim().toUpperCase();
     const lines = [];
     invoices.forEach((no) => {
       const nos = [];
       hits.forEach((r) => {
-        const theirs = (r[F.INVOICE_AGG]?.value || '').split(SEP).map((x) => x.trim());
-        const recNo = r[F.RECORD_NO]?.value;
-        if (theirs.includes(no) && recNo && !nos.includes(recNo)) nos.push(recNo);
+        const theirs = (r[F.INVOICE_AGG]?.value || '').split(SEP).map(norm);
+        const recNo = r[F.RECORD_NO]?.value || r.$id?.value;
+        if (theirs.includes(norm(no)) && recNo && !nos.includes(recNo)) nos.push(recNo);
       });
       if (nos.length > 0) lines.push(`▸${no}（${F.RECORD_NO} ${nos.join('、')}）`);
     });
 
-    // 比對不出明細（例如對方欄位讀不到）就退回原本那句話
-    if (lines.length === 0) return ['發票號碼重複：已存在相同發票號碼，請更換後再儲存。'];
+    if (lines.length === 0) return [];
     return [`發票號碼重複：以下發票號碼已在其他單據出現，請更換後再儲存。\n${lines.join('\n')}`];
   };
 

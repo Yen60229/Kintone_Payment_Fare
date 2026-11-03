@@ -439,6 +439,93 @@
   .pr-signer-entry__btn { width: 100%; }
 }
 
+/* 轉出交通費 Excel：按下按鈕後讀資料時的「請稍後」小視窗 */
+.pr-export-loading { width: 280px !important; padding: 20px 16px !important; }
+
+/* 轉出交通費 Excel 視窗（沿用 .pr-signer-popup 外框與按鈕）：每筆記錄一列，日期欄要夠寬 */
+.pr-export-popup { min-width: 720px; max-width: min(960px, calc(100vw - 24px)); }
+.pr-export { color: #2c3742; font-size: 14px; }
+.pr-export__bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; background: #f5f8fb; }
+.pr-export__bulk-label { font-size: 14px; font-weight: bold; color: #66727e; }
+.pr-export__bulk-btn {
+  min-height: 36px;
+  padding: 6px 16px;
+  border: 1px solid #2b7bc0;
+  border-radius: 8px;
+  background: #fff;
+  color: #2b7bc0;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+}
+.pr-export__bulk-btn:hover { background: #eaf3fb; }
+.pr-export__bulk-btn:focus-visible { outline: 3px solid #a9d0f2; outline-offset: 2px; }
+.pr-export__scroll { max-height: 50vh; overflow: auto; border: 1px solid #e3e8ed; border-radius: 10px; }
+.pr-export__table { width: 100%; border-collapse: collapse; }
+.pr-export__table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 10px;
+  background: #f5f8fb;
+  border-bottom: 1px solid #e3e8ed;
+  font-size: 12px;
+  color: #66727e;
+  text-align: left;
+  white-space: nowrap;
+}
+.pr-export__table td { padding: 8px 10px; border-top: 1px solid #f0f3f6; text-align: left; vertical-align: middle; }
+.pr-export__table .pr-export-row--group-start td { border-top: 2px solid #cfe0ef; }
+.pr-export__table tbody tr:first-child td { border-top: 0; }
+.pr-export__payee { font-weight: bold; color: #1f3b57; white-space: nowrap; }
+.pr-export__table .pr-export__num { text-align: right; white-space: nowrap; }
+.pr-export__table .pr-export__date-cell { min-width: 230px; white-space: nowrap; }
+.pr-export__month-btn {
+  height: 36px;
+  margin-left: 6px;
+  padding: 0 10px;
+  border: 1px solid #cdd5dd;
+  border-radius: 6px;
+  background: #fff;
+  color: #2b7bc0;
+  font-size: 13px;
+  font-weight: bold;
+  vertical-align: middle;
+  cursor: pointer;
+}
+.pr-export__month-btn:hover { background: #eaf3fb; border-color: #2b7bc0; }
+.pr-export__month-btn:focus-visible { outline: 3px solid #a9d0f2; outline-offset: 2px; }
+.pr-export__date {
+  box-sizing: border-box;
+  min-width: 150px;
+  height: 36px;
+  padding: 4px 8px;
+  border: 1px solid #cdd5dd;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #2c3742;
+  background: #fff;
+}
+.pr-export__date:focus { outline: none; border-color: #2b7bc0; }
+
+@media (max-width: 600px) {
+  .pr-export-popup { min-width: 0; }
+  .pr-export__date { min-width: 0; width: 100%; font-size: 16px; }
+  .pr-export__bulk-date { width: auto; flex: 1 1 140px; }
+  .pr-export__table thead { display: none; }
+  .pr-export__table, .pr-export__table tbody, .pr-export__table tr, .pr-export__table td { display: block; width: 100%; box-sizing: border-box; }
+  .pr-export__table td { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 10px; border-top: 0; text-align: right; }
+  .pr-export__table td::before { content: attr(data-label); flex: none; font-size: 12px; color: #8a96a1; text-align: left; }
+  .pr-export__table td:empty { display: none; }
+  .pr-export__table .pr-export-row--group-start td { border-top: 0; }
+  .pr-export__table tr { padding: 6px 0; border-top: 1px solid #f0f3f6; }
+  .pr-export__table tr.pr-export-row--group-start { border-top: 2px solid #cfe0ef; }
+  .pr-export__table tbody tr:first-child { border-top: 0; }
+  .pr-export__table .pr-export__date-cell { min-width: 0; }
+  .pr-export__date-cell .pr-export__date { flex: 1 1 auto; width: auto; }
+  .pr-export__month-btn { flex: none; }
+}
+
 /* =============================================================================
  * 以下只有桌面版畫面才有（列表頁工具列、附件預覽、列印／PDF、費用歸屬提示、欄寬調整）
  * ============================================================================= */
