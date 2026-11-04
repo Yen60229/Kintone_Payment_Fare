@@ -7,6 +7,15 @@
   const F = window.PR_CONFIG.FIELDS;
   const BUTTON_ID = 'same-applicant-btn';
 
+  /** 提示視窗：全域 SweetAlert（寬度自動）；載不到 SweetAlert 才退回瀏覽器的 alert */
+  function notify(text, icon) {
+    if (typeof Swal === 'undefined') {
+      alert(text);
+      return;
+    }
+    Swal.fire({ icon, text, width: 'auto', confirmButtonText: '好', customClass: { htmlContainer: 'pr-notice-text' } });
+  }
+
   // 取得申請人資訊：fullName 為「員工代碼 中文姓名」（受款人＝申請人，723 是「員工姓名」欄位）
   function getApplicantInfo(record) {
     const applicant = record[F.APPLICANT]?.value?.[0];
@@ -46,7 +55,7 @@
 
       if (applicantInfo.error) {
         // 顯示錯誤訊息
-        alert(applicantInfo.error);
+        notify(applicantInfo.error, 'warning');
         return;
       }
 

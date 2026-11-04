@@ -4,7 +4,7 @@
 //   1. PR_KT（payment_request_config.js）：桌面版原封不動；手機版改註冊 mobile.* 事件、
 //      處理程式看到的 event.type 是桌面版名稱、結束後換回；略過手機版沒有的事件；record()/app() 改走 kintone.mobile
 //   2. 入口檔：手機版（src/mobile.js）是桌面版（src/index.js）的子集且順序一致；mobile_target 排第一；
-//      根目錄每支模組都接在桌面版（coding_tools、SetFieldWidth 不打包，PC 單獨上傳）；桌面版專用的模組不進手機版
+//      根目錄每支模組都接在桌面版（coding_tools、SetFieldWidth、規則主檔檢查不打包，PC 單獨上傳）；桌面版專用的模組不進手機版
 //   3. 手機版用到的模組不直接呼叫 kintone.events.on／kintone.app.*（都走 PR_KT）
 //   4. CSS 全在 payment_request.css 一個檔、不經過打包：JS 裡沒有 <style> 注入、cssText、HTML style 屬性；
 //      JS 用到的 pr-* class 在 payment_request.css 都有定義
@@ -42,7 +42,8 @@ const DESKTOP_ONLY = [
   '轉至其他會計單位按鈕處理_20250723.js',
 ];
 // 放在專案最外層、不打包，PC 單獨上傳（排在 bundle 後面）
-const STANDALONE = ['coding_tools.js', 'SetFieldWidth_4_20251206.js'];
+// （交通費明細規則主檔檢查是上傳到規則主檔 App 的，前面只放 payment_request_config.js 原始檔）
+const STANDALONE = ['coding_tools.js', 'SetFieldWidth_4_20251206.js', '交通費明細規則主檔檢查_20261104.js', '欄位標籤說明圖示_20261104.js'];
 const MOBILE_MODULES = MOBILE.js.filter((f) => f !== 'src/mobile_target.js');
 
 /**
@@ -120,18 +121,18 @@ check('手機版：處理程式執行時 event.type 是桌面版名稱，回傳�
 });
 
 // ── 2. 入口檔 ───────────────────────────────────────────────────────────────
-check('桌面版入口：根目錄每支模組都有接（不打包的 coding_tools、SetFieldWidth 除外），config 排第一', () => {
+check('桌面版入口：根目錄每支模組都有接（不打包的 coding_tools、SetFieldWidth、規則主檔檢查除外），config 排第一', () => {
   const rootJs = fs.readdirSync(rootDir).filter((f) => f.endsWith('.js') && f !== 'vite.config.js');
   assert.strictEqual(DESKTOP.js[0], 'payment_request_config.js');
   rootJs.filter((f) => !STANDALONE.includes(f)).forEach((f) => assert.ok(DESKTOP.js.includes(f), `src/index.js 沒有接 ${f}`));
   assert.strictEqual(DESKTOP.js.length, rootJs.length - STANDALONE.length);
 });
 
-check('coding_tools、SetFieldWidth 放在專案最外層、不進任何打包（PC 單獨上傳）', () => {
+check('coding_tools、SetFieldWidth、規則主檔檢查放在專案最外層、不進任何打包（PC 單獨上傳）', () => {
   STANDALONE.forEach((f) => {
     assert.ok(fs.existsSync(path.join(rootDir, f)), `${f} 要在專案最外層`);
     assert.ok(!DESKTOP.js.includes(f) && !MOBILE.js.includes(f), `${f} 不應打包`);
-    assert.ok(readSrc(f).includes('window.PR_CONFIG'), `${f} 靠 bundle 提供的 PR_CONFIG，上傳時要排在 bundle 後面`);
+    assert.ok(/window\.PR_(CONFIG|KT)/.test(readSrc(f)), `${f} 靠 config 提供的 PR_CONFIG／PR_KT，上傳時要排在 config／bundle 後面`);
   });
 });
 

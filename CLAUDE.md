@@ -6,7 +6,7 @@
 ```bash
 npm test && bash tests/syntax.test.sh && npm run scan
 ```
-目前基準：**29 支測試／590 項斷言**、語法檢查 **26 檔**、硬編碼掃描 **11 處**。
+目前基準：**32 支測試／664 項斷言**、語法檢查 **28 檔**、硬編碼掃描 **11 處**。
 掃描數字若無故上升，多半是**註解裡寫了 App ID 數字**（規則 1 刻意連註解一起掃）——
 註解請改引用常數名（如 `APPS.APPROVAL_FLOW`），不要寫 App 的數字。
 新增測試檔要同時加進 `package.json` 的 `test` 腳本。
@@ -31,7 +31,9 @@ npm test && bash tests/syntax.test.sh && npm run scan
 `src/index.js` 是**載入順序的單一事實來源**（桌面版）；`src/mobile.js` 是手機版，模組是它的子集、順序一致。
 `npm run build` 只打包 JS：產出 `dist/payment_request_desktop.js` 與 `dist/payment_request_mobile.js`，上傳清單見 README。
 **不打包、放專案最外層直接上傳**：`payment_request.css`（全部樣式只有這一個檔，PC／手機同一份）、
-`coding_tools.js`、`SetFieldWidth_4_20251206.js`（只有 PC，排在 bundle 後面）——不要把它們加回 `src/index.js`。
+`coding_tools.js`、`SetFieldWidth_4_20251206.js`（只有 PC，排在 bundle 後面）、
+`交通費明細規則主檔檢查_20261104.js`（**上傳到 App 752 規則主檔**，前面只放 `payment_request_config.js` 原始檔；
+讀請款單設定用 `APPS.TRAFFIC_PAYMENT`，不能用 `APPS.PAYMENT`）——不要把它們加回 `src/index.js`。
 新模組要上線才加進 `src/index.js`，並決定要不要進手機版：進就加進 `src/mobile.js`，不進就加進
 `tests/build_targets.test.cjs` 的 `DESKTOP_ONLY`。
 - 事件與畫面 API 一律走 `window.PR_KT`（`KT.on`、`KT.record()`、`KT.app()`），寫桌面版事件名稱即可，手機版自動轉換；

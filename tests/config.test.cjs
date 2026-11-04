@@ -73,15 +73,15 @@ check('INLINE_EDIT.EDITABLE：列表上只留傳票編號、傳票日期、表�
   assert.deepStrictEqual([...c.INLINE_EDIT.EDITABLE], [c.FIELDS.VOUCHER_NO, c.FIELDS.VOUCHER_DATE, c.VOID_FIELD]);
   const programOwned = [c.FIELDS.APPLICANT, c.FIELDS.APPLICANT_ORG, c.FIELDS.EXPENSE_OWNER, c.FIELDS.EXPENSE_OWNER_ORG, c.FIELDS.PAYEE,
     c.FIELDS.COMPANY_NAME, c.FIELDS.ACCOUNTING_UNIT, c.FIELDS.ACCOUNTING_STAFF, c.FIELDS.PERMISSION_STAFF, c.FIELDS.MANUAL_FLOW,
-    c.FIELDS.EXPECTED_PAY_DATE, c.FIELDS.INVOICE_AGG, c.FIELDS.PAY_METHOD, c.FIELDS.PAPER_RECEIPT, c.FIELDS.REASON, c.FIELDS.PAYMENT_DATE];
+    c.FIELDS.EXPECTED_PAY_DATE, c.FIELDS.INVOICE_AGG, c.FIELDS.PAY_METHOD, c.FIELDS.PAPER_RECEIPT, c.FIELDS.PAPER_RECEIVED, c.FIELDS.REASON, c.FIELDS.PAYMENT_DATE];
   programOwned.forEach((code) => assert.ok(!c.INLINE_EDIT.EDITABLE.includes(code), `${code} 有程式邏輯，不能在列表直接改`));
 });
 
 // ── APPS ────────────────────────────────────────────────────────────────────
-check('APPS 共 8 個鍵，已刪的請購／庶務／出差／交際費／供應商／分攤 App 全不在', () => {
+check('APPS 共 10 個鍵，已刪的請購／庶務／出差／交際費／供應商／分攤 App 全不在', () => {
   assert.deepStrictEqual(
     Object.keys(c.APPS).sort(),
-    ['ACCOUNTING_MAP', 'APPROVAL_FLOW', 'COST_CENTER', 'HOLIDAY_CALENDAR', 'PAYMENT', 'PDF_FONT', 'PERMISSION', 'SAP_MAPPING'],
+    ['ACCOUNTING_MAP', 'APPROVAL_FLOW', 'COST_CENTER', 'HOLIDAY_CALENDAR', 'PAYMENT', 'PDF_FONT', 'PERMISSION', 'SAP_MAPPING', 'TRAFFIC_PAYMENT', 'TRAFFIC_RULE_MASTER'],
   );
   ['PURCHASE', 'PURCHASE_LH', 'MAINTENANCE', 'BUSINESS_TRIP', 'ENTERTAINMENT', 'SUPPLIER_DB', 'ALLOC_TEMPLATE', 'ALLOC_CONFIG', 'ALLOC_FAVORITE', 'ALLOC_STORE'].forEach((key) => {
     assert.ok(!(key in c.APPS), `APPS 不應有 ${key}`);
@@ -98,6 +98,8 @@ check('APPS 各值正確；PAYMENT 用 kintone.app.getId() 動態取得（換 Ap
   assert.strictEqual(c.APPS.PDF_FONT, 488);
   assert.strictEqual(c.APPS.PERMISSION, 673);
   assert.strictEqual(c.APPS.HOLIDAY_CALENDAR, 620);
+  assert.strictEqual(c.APPS.TRAFFIC_PAYMENT, 749);
+  assert.strictEqual(loadConfig(752).APPS.TRAFFIC_PAYMENT, 749, '在規則主檔執行時 TRAFFIC_PAYMENT 仍是請款單、PAYMENT 才跟著換');
   loadConfig(749);
 });
 
@@ -158,6 +160,7 @@ check('FIELDS 主表欄位代碼正確', () => {
       VOUCHER_DATE: '傳票日期',
       ATTACHMENT: '附件',
       PAPER_RECEIPT: '是否有紙本憑證',
+      PAPER_RECEIVED: '會計課承辦註記是否收到單據紙本',
       REASON: '理由',
       RECORD_NO: '交通費請款單號',
       TOTAL_AMOUNT: '總金額',
@@ -272,7 +275,8 @@ check('OPTIONS：手動簽核流程、交通工具（7 種）、憑證種類（5
     MANUAL_FLOW: { ON: '手動設定簽核流程' },
     VEHICLE: { HSR: '高鐵', MRT_BUS: '捷運／公車', PARKING: '停車費', TRAIN: '火車', TAXI: '計程車', UBER: 'Uber', RENTAL: '汽機車短租' },
     RECEIPT_TYPE: { HSR_TICKET: '高鐵票', TICKET: '車票（高鐵外）', INVOICE: '發票', RECEIPT: '收據', NONE: '無' },
-    PAPER_RECEIPT: { YES: '是' },
+    PAPER_RECEIPT: { YES: '是', NO: '否' },
+    PAPER_RECEIVED: { RECEIVED: '已收到', NOT_RECEIVED: '未收到', NOT_APPLICABLE: '不適用' },
   });
   assert.strictEqual(c.OPTIONS.MANUAL_FLOW.ON, F.MANUAL_FLOW, '勾選值與欄位代碼同字串但是兩回事，各自一個常數');
 });
@@ -285,6 +289,8 @@ check('TRAFFIC_RULES：高鐵賣方統編 00000000、格式 22、稅率 5%、高
   assert.strictEqual(t.TAX_RATE_PERCENT, 5);
   assert.deepStrictEqual([...t.INVOICE_RECEIPT_TYPES], [c.OPTIONS.RECEIPT_TYPE.HSR_TICKET, c.OPTIONS.RECEIPT_TYPE.INVOICE]);
   assert.deepStrictEqual([...t.TAX_RECEIPT_TYPES], [c.OPTIONS.RECEIPT_TYPE.HSR_TICKET, c.OPTIONS.RECEIPT_TYPE.INVOICE], '高鐵票與發票才算稅額');
+  assert.deepStrictEqual([...t.NO_RECEIPT_TYPES], [c.OPTIONS.RECEIPT_TYPE.NONE]);
+  assert.deepStrictEqual([...t.PLAIN_RECEIPT_TYPES], [c.OPTIONS.RECEIPT_TYPE.RECEIPT], '收據 → 賣方統編、格式清空鎖住，稅額 0 鎖住');
 });
 
 check('DIRECTOR_BY_COST_CENTER：部長的單位部長依費用歸屬帶入，只在填單／草稿／駁回時重算', () => {
@@ -333,8 +339,8 @@ check('SIGNING（「所／中心 → 部」補前綴對應）已刪：簽核流�
 });
 
 // ── REF_FIELDS／EXPECTED_PAY_DATE ───────────────────────────────────────────
-check('REF_FIELDS 有簽核流程、費用歸屬、會計對應、行事曆四份；費用歸屬主檔有代碼／中文名稱／使用狀況／所屬部門四個欄位（據點不再讀）', () => {
-  assert.deepStrictEqual(Object.keys(c.REF_FIELDS).sort(), ['ACCOUNTING_MAP', 'APPROVAL_FLOW', 'COST_CENTER', 'HOLIDAY_CALENDAR']);
+check('REF_FIELDS 有簽核流程、費用歸屬、會計對應、行事曆、交通費明細規則主檔五份；費用歸屬主檔有代碼／中文名稱／使用狀況／所屬部門四個欄位（據點不再讀）', () => {
+  assert.deepStrictEqual(Object.keys(c.REF_FIELDS).sort(), ['ACCOUNTING_MAP', 'APPROVAL_FLOW', 'COST_CENTER', 'HOLIDAY_CALENDAR', 'TRAFFIC_RULE_MASTER']);
   assert.deepStrictEqual({ ...c.REF_FIELDS.APPROVAL_FLOW }, { FLOW_NAME: '簽核流程名稱', ORG: '簽核所屬單位', IN_USE: '使用狀況', IN_USE_VALUE: '使用中' });
   assert.deepStrictEqual({ ...c.REF_FIELDS.COST_CENTER }, { CODE: 'CostCenter', NAME: '中文名稱', IN_USE: '使用狀況', DEPT: '所屬部門', DIRECTOR_GROUP: '部門部長', MAIN_DEPT: '主要管理部門', MAIN_DEPT_ON: '是', BUSINESS_AREA: 'BusinessArea' });
   assert.deepStrictEqual(

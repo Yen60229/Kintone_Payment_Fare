@@ -8,6 +8,9 @@
   // ======================== 配置 ========================
   // 註：本模組存取之欄位（如 Excel欄位代碼、應付帳款_值等）為交通費轉出欄位對應 App（APPS.SAP_MAPPING）
   // 內部之對應設定欄位，非請款單主表 FIELDS，刻意保留字面值。
+  // 該 App 同時存交通費與交際費的對應，用「適用單據」下拉欄位區分，這裡只讀交通費的記錄（欄位代碼同樣保留字面值）。
+  const MAPPING_DOC_TYPE_FIELD = '適用單據';
+  const MAPPING_DOC_TYPE = '交通費'; // 轉出欄位對應 App「適用單據」的選項值
   const CONFIG = {
     mappingAppId: window.PR_CONFIG.APPS.SAP_MAPPING, // 交通費轉出欄位對應設定 App ID
     costCenterAppId: window.PR_CONFIG.APPS.COST_CENTER, // 費用歸屬主檔（查 Business Area）
@@ -154,7 +157,7 @@
         'GET',
         {
           app: CONFIG.mappingAppId,
-          query: '啟用 in ("啟用") order by 排序 asc limit 500',
+          query: `${MAPPING_DOC_TYPE_FIELD} in ("${MAPPING_DOC_TYPE}") and 啟用 in ("啟用") order by 排序 asc limit 500`,
         },
         (resp) => resolve(resp.records.map(mapMappingRecord)),
         (error) => {
@@ -527,17 +530,27 @@
     return ws;
   }
 
+  // ======================== 提示視窗（全域 SweetAlert，寬度自動）========================
+  /** 取代瀏覽器的 alert；icon: 'info'|'warning'|'error'|'success'。載不到 SweetAlert 才退回 alert */
+  function notify(text, icon = 'info') {
+    if (typeof Swal === 'undefined') {
+      alert(text);
+      return Promise.resolve();
+    }
+    return Swal.fire({ icon, text, width: 'auto', confirmButtonText: '好', customClass: { htmlContainer: 'pr-notice-text' } });
+  }
+
   // ======================== 產生 Excel 並下載 ========================
   /** opts 同 buildRows（today 不給就用現在） */
   async function generateExcel(mappings, records, opts) {
     if (typeof XLSX === 'undefined') {
-      alert('錯誤：SheetJS 函式庫未載入，請確認已上傳 xlsx.full.min.js');
+      await notify('錯誤：SheetJS 函式庫未載入，請確認已上傳 xlsx.full.min.js', 'error');
       return null;
     }
 
     const rows = buildRows(mappings, records, { today: new Date(), ...opts });
     if (rows.length === 0) {
-      alert('沒有可轉出的資料');
+      await notify('沒有可轉出的資料', 'warning');
       return null;
     }
 
@@ -680,7 +693,7 @@
     try {
       const recordIds = getRecordIdsFromUI();
       if (recordIds.length === 0) {
-        alert('請輸入有效的記錄號碼範圍');
+        await notify('請輸入有效的記錄號碼範圍', 'warning');
         return;
       }
 
@@ -694,12 +707,12 @@
 
       if (mappings.length === 0) {
         closeLoading();
-        alert('錯誤：未取得任何欄位對應設定');
+        await notify('錯誤：未取得任何欄位對應設定', 'error');
         return;
       }
       if (records.length === 0) {
         closeLoading();
-        alert('錯誤：未取得任何請款單記錄');
+        await notify('錯誤：未取得任何請款單記錄', 'error');
         return;
       }
 
@@ -713,11 +726,11 @@
       const result = await generateExcel(mappings, sorted, { dates, businessArea });
       if (!result) return;
 
-      alert(`Excel 檔案已產生並下載\n檔名：${result.fileName}\n共 ${records.length} 筆記錄、${result.rowCount} 列資料`);
+      await notify(`Excel 檔案已產生並下載\n檔名：${result.fileName}\n共 ${records.length} 筆記錄、${result.rowCount} 列資料`, 'success');
     } catch (error) {
       closeLoading();
       console.error('批次整理資料錯誤:', error);
-      alert('處理過程發生錯誤: ' + error.message);
+      await notify('處理過程發生錯誤: ' + error.message, 'error');
     }
   }
 
@@ -780,6 +793,7 @@
     generateExcel,
     toCell,
     mapMappingRecord,
+    fetchFieldMappings,
     columnIndex,
     columnLetters,
     formatDate,

@@ -95,6 +95,11 @@
       PDF_FONT: 488, // PDF 產生用字型
       PERMISSION: 673, // 帳號權限設定（欄位顯隱／可編輯／必填規則）
       HOLIDAY_CALENDAR: 620, // 行事曆（國定假日、週末、補行上班日），預計付款日用
+      TRAFFIC_RULE_MASTER: 752, // 交通費明細規則主檔（交通工具／憑證種類的規則；讀不到就退回 TRAFFIC_RULES）
+      // 交通費請款單的固定 App ID，【只給在規則主檔執行的檢查程式用】（交通費明細規則主檔檢查_20261104.js；
+      //   在規則主檔裡 getId() 拿到的是規則主檔自己的 ID）。請款單自己的程式一律用 APPS.PAYMENT。
+      //   正式區上線時要和其他 App ID 一起換。
+      TRAFFIC_PAYMENT: 749,
     });
 
     // ── 會計單位（kintone 群組）───────────────────────────────────────────────
@@ -131,6 +136,25 @@
         MAIN_DEPT: '主要管理部門',
         MAIN_DEPT_ON: '是',
         BUSINESS_AREA: 'BusinessArea', // SINGLE_LINE_TEXT：Cost Center 對應的 Business Area（交通費轉出 J 欄）
+      }),
+      // 交通費明細規則主檔（APPS.TRAFFIC_RULE_MASTER）：一筆記錄＝一個交通工具或一個憑證種類。
+      //   名稱要和 749 子表格下拉選項一字不差；只讀「使用中」。讀不到或資料不合法時退回 TRAFFIC_RULES。
+      TRAFFIC_RULE_MASTER: Object.freeze({
+        TYPE: '類型', // RADIO_BUTTON
+        TYPE_VEHICLE: '交通工具',
+        TYPE_RECEIPT: '憑證種類',
+        NAME: '名稱', // SINGLE_LINE_TEXT（唯一）
+        IN_USE: '使用狀況', // DROP_DOWN；query 篩選用
+        IN_USE_VALUE: '使用中',
+        ALLOWED_RECEIPTS: '可選憑證種類', // CHECK_BOX（交通工具用）；全不勾＝不限制
+        FIXED_SELLER_TAX_ID: '固定賣方統編', // 交通工具用；有填＝自動帶入並鎖住
+        FIXED_FORMAT: '固定格式', // 交通工具用；有填固定賣方統編才可填
+        VEHICLE_FLAGS: '交通工具規則', // CHECK_BOX
+        FLAG_PAPER_RECEIPT: '需紙本憑證', // 有搭乘 → 是否有紙本憑證選「是」
+        FLAG_REASON_REQUIRED: '理由必填', // 有搭乘 → 理由必填
+        RECEIPT_FLAGS: '憑證種類規則', // CHECK_BOX
+        FLAG_TAX: '要算稅',
+        FLAG_INVOICE_NO: '開放發票號碼',
       }),
       // 簽核流程主檔（APPS.APPROVAL_FLOW）：一般單位用「簽核所屬單位」（組織欄位，存組織代碼）查，
       //   改組織名稱不用改程式；依職稱改查的合併流程（特殊簽核流程，例如「物流部次長級」）才用「簽核流程名稱」查。
@@ -190,6 +214,8 @@
       VOUCHER_DATE: '傳票日期', // 標籤「過帳日期（Posting Date）」
       ATTACHMENT: '附件',
       PAPER_RECEIPT: '是否有紙本憑證',
+      // RADIO_BUTTON；是否有紙本憑證＝否 → 程式寫「不適用」（舊代碼「…單據正本」，rev 1869 已改）
+      PAPER_RECEIVED: '會計課承辦註記是否收到單據紙本',
       REASON: '理由', // 主表 MULTI_LINE_TEXT；標籤「理由（計程車）」
       RECORD_NO: '交通費請款單號', // RECORD_NUMBER；批次下載／PDF 產生時用來標示記錄
       TOTAL_AMOUNT: '總金額', // CALC；＝交通費請款單.金額 合計（交通費轉出 Excel 的 {總金額}）
@@ -314,7 +340,9 @@
       // 子表格「憑證種類」
       RECEIPT_TYPE: Object.freeze({ HSR_TICKET: '高鐵票', TICKET: '車票（高鐵外）', INVOICE: '發票', RECEIPT: '收據', NONE: '無' }),
       // 主表「是否有紙本憑證」
-      PAPER_RECEIPT: Object.freeze({ YES: '是' }),
+      PAPER_RECEIPT: Object.freeze({ YES: '是', NO: '否' }),
+      // 主表「會計課承辦註記是否收到單據紙本」（kintone 預設值＝未收到）
+      PAPER_RECEIVED: Object.freeze({ RECEIVED: '已收到', NOT_RECEIVED: '未收到', NOT_APPLICABLE: '不適用' }),
     });
 
     // ── 共用工具 ───────────────────────────────────────────────────────────────
@@ -322,7 +350,12 @@
     const isAdmin = (code) => ADMIN_USERS.includes(code || kintone.getLoginUser().code);
 
     // ── 交通費明細規則（交通費明細規則_20261022.js 用）────────────────────────
+    //   規則的主要來源是 APPS.TRAFFIC_RULE_MASTER（REF_FIELDS.TRAFFIC_RULE_MASTER）；
+    //   這份只在主檔讀不到（沒權限、逾時、API 失敗）或資料不合法時才用，內容要和主檔初始記錄等價（有測試比對）。
+    //   TAX_RATE_PERCENT、REASON_LABEL_PREFIX 不放主檔，一律用這裡。
     const TRAFFIC_RULES = Object.freeze({
+      // 讀主檔的等待上限（毫秒），超過就退回這份規則
+      MASTER_TIMEOUT_MS: 5000,
       // 交通工具選高鐵 → 賣方統編、格式固定寫入
       HSR_SELLER_TAX_ID: '00000000',
       HSR_FORMAT: '22',
@@ -332,6 +365,11 @@
       TAX_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.HSR_TICKET, OPTIONS.RECEIPT_TYPE.INVOICE]),
       // 這些憑證種類才開放填發票號碼（存檔時必填、不可重複）
       INVOICE_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.HSR_TICKET, OPTIONS.RECEIPT_TYPE.INVOICE]),
+      // 這些憑證種類（沒有憑證）→ 賣方統編、格式、稅額清空並鎖住（create/edit 的 show、變更事件、存檔前都套用）
+      NO_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.NONE]),
+      // 這些憑證種類（收據，沒有統編／稅額）→ 賣方統編、格式清空並鎖住，稅額寫 0 並鎖住（套用時機同 NO_RECEIPT_TYPES；
+      //   優先於主檔的「要算稅」旗標）
+      PLAIN_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.RECEIPT]),
       // 交通工具 → 可選的憑證種類（沒列在這裡的交通工具不限制）。
       //   變更事件：選了不能用的組合就清空憑證種類；只有一種可選時自動帶入。存檔時再驗一次。
       //   桌面版：憑證種類的下拉選單只列出可選的項目（手機版選單是系統原生的，只靠變更事件清空）。
@@ -3162,7 +3200,7 @@
 
     /** 提示視窗：一律用 SweetAlert；載不到 SweetAlert 才退回瀏覽器的 alert */
     function notify(icon, title, text) {
-      if (typeof Swal !== 'undefined') Swal.fire({ icon, title, text, confirmButtonText: '好' });
+      if (typeof Swal !== 'undefined') Swal.fire({ icon, title, text, width: 'auto', confirmButtonText: '好' });
       else alert(text ? `${title}\n${text}` : title);
     }
 
@@ -3487,6 +3525,7 @@
         icon: 'question',
         title,
         text,
+        width: 'auto',
         showCancelButton: true,
         confirmButtonText: '改回自動',
         cancelButtonText: '維持手動',
@@ -4729,15 +4768,27 @@
     // =============================================================================
     // 交通費明細規則（子表格「交通費請款單」與「是否有紙本憑證」「理由」）
     //
-    //   1. 交通工具＝高鐵 → 賣方統編寫 TRAFFIC_RULES.HSR_SELLER_TAX_ID、格式寫 HSR_FORMAT，並鎖住；
-    //      改選高鐵以外（變更事件）→ 若賣方統編還是高鐵固定值，賣方統編、格式一起清空並解鎖
-    //   2. 某一列的金額、憑證種類、交通工具變更或新增列 → 只重算「那一列」的稅額：憑證種類是 TRAFFIC_RULES.TAX_RECEIPT_TYPES（高鐵票／發票）
+    //   規則來源：APPS.TRAFFIC_RULE_MASTER（交通費明細規則主檔），開畫面時讀一次；
+    //   讀不到、逾時或資料不合法 → 退回 config 的 TRAFFIC_RULES（行為和主檔初始記錄一樣）。
+    //   下面說的「高鐵」「計程車」等都是主檔現在的設定，程式只看主檔的欄位與旗標，不看名稱。
+    //
+    //   1. 交通工具有「固定賣方統編」（現在是高鐵）→ 賣方統編、格式寫主檔的固定值，並鎖住；
+    //      改選別的交通工具（變更事件）→ 若賣方統編還是某個交通工具的固定值，賣方統編、格式一起清空並解鎖
+    //   2. 某一列的金額、憑證種類、交通工具變更或新增列 → 只重算「那一列」的稅額：憑證種類有「要算稅」旗標（現在是高鐵票／發票）
     //      → 金額 ÷ 1.05 × 0.05 四捨五入到個位數（金額含稅），其他種類寫 0；開畫面、存檔、改別列都不動稅額（會計手改的保留）。稅額不鎖
-    //   3. 憑證種類＝高鐵票／發票 → 開放發票號碼；其他種類鎖住並清空。存檔時必填、表單內不可重複，
+    //   3. 憑證種類有「開放發票號碼」旗標（現在是高鐵票／發票）→ 開放發票號碼；其他種類鎖住並清空。存檔時必填、表單內不可重複，
     //      並重算「發票號碼記錄」（跨單重複由 payment_request_submit 查記錄欄位，不用迴圈讀表格）
-    //   4. 有任何一列是計程車 → 是否有紙本憑證自動選「是」，理由動態必填（標籤加紅色 *）
-    //   5. 交通工具限制憑證種類（TRAFFIC_RULES.RECEIPT_BY_VEHICLE）：變更事件清掉不能用的組合、只有一種就自動帶入；
+    //   4. 有任何一列的交通工具有「需紙本憑證」旗標（現在是計程車）→ 是否有紙本憑證自動選「是」；
+    //      有「理由必填」旗標 → 理由動態必填（標籤加紅色 *）
+    //   5. 交通工具限制憑證種類（主檔的「可選憑證種類」）：變更事件清掉不能用的組合、只有一種就自動帶入；
     //      存檔時擋下不能用的組合；桌面版下拉選單只列出可選的項目
+    //   6. 憑證種類＝無（config 的 NO_RECEIPT_TYPES）→ 賣方統編、格式、稅額清空並鎖住；
+    //      create/edit 的 show、上面的變更事件、存檔前 normalize 都套用（detail.show 唯讀不處理）。
+    //      改回別的種類 → 解鎖，但只回到開畫面時帳號權限設定給的狀態（不會打開權限鎖住的欄位）。
+    //      憑證種類＝收據（config 的 PLAIN_RECEIPT_TYPES）→ 同上，但稅額寫 0（不是空白）；優先於主檔的「要算稅」旗標。
+    //      發票號碼照 3 處理（收據沒有「開放發票號碼」旗標 → 清空並鎖住）
+    //   7. 是否有紙本憑證＝否 → 「會計課承辦註記是否收到單據紙本」寫「不適用」（show、變更事件含是否有紙本憑證、存檔前）；
+    //      變更事件改回「是」且還是「不適用」→ 回到「未收到」
     //
     //   存檔驗證的錯誤由 payment_request_submit 統一顯示（呼叫 normalize／validate），這裡不另跳視窗。
     // =============================================================================
@@ -4746,10 +4797,163 @@
     const F = C.FIELDS;
     const OPT = C.OPTIONS;
     const RULES = C.TRAFFIC_RULES;
+    const M = C.REF_FIELDS.TRAFFIC_RULE_MASTER;
     const TRAFFIC = F.TRAFFIC_TABLE;
     const COLS = TRAFFIC.COLS;
 
     const REQUIRED_MARK_ID = 'pr-reason-required-mark';
+
+    // ── 生效規則（來源：主檔或 config）────────────────────────────────────────
+    //   統一形狀：
+    //   {
+    //     source: 'master' | 'config',
+    //     receiptTypes: string[],                       // 全部憑證種類（排序）
+    //     taxReceiptTypes: string[],                    // 要算稅（排序）
+    //     invoiceReceiptTypes: string[],                // 開放發票號碼（排序）
+    //     receiptByVehicle: { [交通工具]: string[] },   // 只放有限制的交通工具；陣列保留可選順序
+    //     fixedByVehicle: { [交通工具]: { sellerTaxId, format } },
+    //     paperReceiptVehicles: string[],               // 需紙本憑證（排序）
+    //     reasonRequiredVehicles: string[],             // 理由必填（排序）
+    //   }
+
+    const sortedUnique = (list) => Array.from(new Set(list)).sort();
+    const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+    const getRowsOf = (record) => (Array.isArray(record?.[TRAFFIC.CODE]?.value) ? record[TRAFFIC.CODE].value.filter((r) => r?.value) : []);
+
+    /**
+     * config 的 TRAFFIC_RULES → 生效規則（主檔讀不到時用）。
+     * 固定賣方統編的交通工具是 HSR；需紙本憑證與理由必填的交通工具是 TAXI。
+     * @param {Object} rules C.TRAFFIC_RULES
+     * @param {Object} options C.OPTIONS
+     * @returns {Object}
+     */
+    const rulesFromConfig = (rules, options) => {
+      const receiptByVehicle = {};
+      Object.keys(rules.RECEIPT_BY_VEHICLE).forEach((vehicle) => {
+        receiptByVehicle[vehicle] = rules.RECEIPT_BY_VEHICLE[vehicle].slice();
+      });
+      return {
+        source: 'config',
+        receiptTypes: sortedUnique(Object.values(options.RECEIPT_TYPE)),
+        taxReceiptTypes: sortedUnique(rules.TAX_RECEIPT_TYPES),
+        invoiceReceiptTypes: sortedUnique(rules.INVOICE_RECEIPT_TYPES),
+        receiptByVehicle,
+        fixedByVehicle: { [options.VEHICLE.HSR]: { sellerTaxId: rules.HSR_SELLER_TAX_ID, format: rules.HSR_FORMAT } },
+        paperReceiptVehicles: [options.VEHICLE.TAXI],
+        reasonRequiredVehicles: [options.VEHICLE.TAXI],
+      };
+    };
+
+    /**
+     * 主檔（APPS.TRAFFIC_RULE_MASTER）的 REST records → 生效規則。停用的記錄忽略（等同沒列＝不限制、沒有旗標）。
+     * 資料不合法 → 回傳 { errors: string[] }（呼叫端退回 config 規則）。
+     * @param {Object[]} records
+     * @returns {Object} 生效規則，或 { errors }
+     */
+    const rulesFromMaster = (records) => {
+      const errors = [];
+      const val = (rec, code) => rec?.[code]?.value;
+      const text = (rec, code) => String(val(rec, code) ?? '').trim();
+      const list = (rec, code) => (Array.isArray(val(rec, code)) ? val(rec, code) : []);
+
+      const used = (Array.isArray(records) ? records : []).filter((rec) => {
+        const inUse = val(rec, M.IN_USE);
+        return inUse === undefined || inUse === M.IN_USE_VALUE;
+      });
+
+      const vehicles = [];
+      const receipts = [];
+      const names = new Set();
+      used.forEach((rec, i) => {
+        const where = `第 ${i + 1} 筆`;
+        const type = val(rec, M.TYPE);
+        const name = text(rec, M.NAME);
+        if (type !== M.TYPE_VEHICLE && type !== M.TYPE_RECEIPT) errors.push(`${where}「${M.TYPE}」不是「${M.TYPE_VEHICLE}」或「${M.TYPE_RECEIPT}」`);
+        if (!name) errors.push(`${where}「${M.NAME}」空白`);
+        else if (names.has(name)) errors.push(`${where}「${M.NAME}」${name} 重複`);
+        names.add(name);
+        if (text(rec, M.FIXED_FORMAT) && !text(rec, M.FIXED_SELLER_TAX_ID)) errors.push(`${where}${name}：有「${M.FIXED_FORMAT}」但「${M.FIXED_SELLER_TAX_ID}」空白`);
+        if (type === M.TYPE_VEHICLE) vehicles.push({ rec, name });
+        else if (type === M.TYPE_RECEIPT) receipts.push({ rec, name });
+      });
+      if (!vehicles.length) errors.push(`沒有任何使用中的「${M.TYPE_VEHICLE}」記錄`);
+      if (!receipts.length) errors.push(`沒有任何使用中的「${M.TYPE_RECEIPT}」記錄`);
+      if (errors.length) return { errors };
+
+      const receiptByVehicle = {};
+      const fixedByVehicle = {};
+      vehicles.forEach(({ rec, name }) => {
+        const allowed = list(rec, M.ALLOWED_RECEIPTS);
+        if (allowed.length) receiptByVehicle[name] = allowed.slice();
+        const sellerTaxId = text(rec, M.FIXED_SELLER_TAX_ID);
+        if (sellerTaxId) fixedByVehicle[name] = { sellerTaxId, format: text(rec, M.FIXED_FORMAT) };
+      });
+      const vehiclesWith = (flag) => sortedUnique(vehicles.filter(({ rec }) => list(rec, M.VEHICLE_FLAGS).includes(flag)).map((v) => v.name));
+      const receiptsWith = (flag) => sortedUnique(receipts.filter(({ rec }) => list(rec, M.RECEIPT_FLAGS).includes(flag)).map((v) => v.name));
+      return {
+        source: 'master',
+        receiptTypes: sortedUnique(receipts.map((r) => r.name)),
+        taxReceiptTypes: receiptsWith(M.FLAG_TAX),
+        invoiceReceiptTypes: receiptsWith(M.FLAG_INVOICE_NO),
+        receiptByVehicle,
+        fixedByVehicle,
+        paperReceiptVehicles: vehiclesWith(M.FLAG_PAPER_RECEIPT),
+        reasonRequiredVehicles: vehiclesWith(M.FLAG_REASON_REQUIRED),
+      };
+    };
+
+    // 目前生效的規則：一載入就是 config 規則（任何時候都有規則可用），主檔讀成功才換掉
+    let active = rulesFromConfig(RULES, OPT);
+    let loadPromise = null;
+
+    const getActiveRules = () => active;
+
+    const withTimeout = (promise, ms) =>
+      new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`讀取逾時（${ms} ms）`)), ms);
+        promise.then(
+          (v) => {
+            clearTimeout(timer);
+            resolve(v);
+          },
+          (e) => {
+            clearTimeout(timer);
+            reject(e);
+          },
+        );
+      });
+
+    /**
+     * 讀主檔並換掉生效規則。整個頁面只讀一次（快取 Promise）；永不 reject：
+     * 失敗、逾時、資料不合法都 console.warn 並維持 config 規則。
+     * @param {Function} [api=kintone.api] 測試時可替換
+     * @returns {Promise<Object>} 生效規則
+     */
+    const loadRules = (api) => {
+      if (loadPromise) return loadPromise;
+      loadPromise = (async () => {
+        try {
+          const call = api || kintone.api;
+          const fields = [M.TYPE, M.NAME, M.IN_USE, M.ALLOWED_RECEIPTS, M.FIXED_SELLER_TAX_ID, M.FIXED_FORMAT, M.VEHICLE_FLAGS, M.RECEIPT_FLAGS];
+          const params = { app: C.APPS.TRAFFIC_RULE_MASTER, query: `${M.IN_USE} in ("${M.IN_USE_VALUE}") limit 500`, fields };
+          const resp = await withTimeout(Promise.resolve().then(() => call(kintone.api.url('/k/v1/records', true), 'GET', params)), RULES.MASTER_TIMEOUT_MS);
+          const result = rulesFromMaster(resp?.records);
+          if (result.errors) console.warn('[交通費明細規則] 規則主檔資料不合法，改用 config 規則', result.errors);
+          else active = result;
+        } catch (e) {
+          console.warn('[交通費明細規則] 讀不到規則主檔，改用 config 規則', e);
+        }
+        return active;
+      })();
+      return loadPromise;
+    };
+
+    /** 測試用：回到 config 規則並清掉快取 */
+    const _resetForTest = () => {
+      active = rulesFromConfig(RULES, OPT);
+      loadPromise = null;
+      baseLocked = {};
+    };
 
     // ── 純函式（只動 record，不碰畫面）────────────────────────────────────────
 
@@ -4768,24 +4972,53 @@
       return String(n < 0 && tax !== 0 ? -tax : tax);
     };
 
-    const isInvoiceReceipt = (row) => RULES.INVOICE_RECEIPT_TYPES.includes(row.value[COLS.RECEIPT_TYPE]?.value);
-    const isTaxReceipt = (row) => RULES.TAX_RECEIPT_TYPES.includes(row.value[COLS.RECEIPT_TYPE]?.value);
+    const isInvoiceReceipt = (row) => active.invoiceReceiptTypes.includes(row.value[COLS.RECEIPT_TYPE]?.value);
+    const isTaxReceipt = (row) => active.taxReceiptTypes.includes(row.value[COLS.RECEIPT_TYPE]?.value);
+    /** 6. 憑證種類＝無（沒有憑證）→ 賣方統編、格式、稅額清空並鎖住 */
+    const isNoReceipt = (row) => RULES.NO_RECEIPT_TYPES.includes(row.value[COLS.RECEIPT_TYPE]?.value);
+    /** 6. 憑證種類＝收據 → 賣方統編、格式清空並鎖住，稅額寫 0 並鎖住 */
+    const isPlainReceipt = (row) => RULES.PLAIN_RECEIPT_TYPES.includes(row.value[COLS.RECEIPT_TYPE]?.value);
+    const NO_RECEIPT_CLEAR_COLS = [COLS.SELLER_TAX_ID, COLS.FORMAT, COLS.TAX];
+
+    // 開畫面時（帳號權限設定已套用、本模組還沒鎖）各欄的鎖定狀態。
+    //   變更事件「解鎖」只回到這個狀態，不會把帳號權限設定鎖住的欄位打開。
+    const LOCK_COLS = [COLS.SELLER_TAX_ID, COLS.FORMAT, COLS.TAX, COLS.INVOICE_NO];
+    let baseLocked = {};
+    const captureBaseLocks = (record) => {
+      const rows = getRowsOf(record);
+      baseLocked = {};
+      LOCK_COLS.forEach((code) => {
+        const cell = rows.map((row) => row.value[code]).find(Boolean);
+        baseLocked[code] = cell?.disabled === true;
+      });
+    };
     /**
      * 這個交通工具可選的憑證種類；交通工具空白或沒設定 → null（不限制）
      * @param {string} vehicle
      * @returns {string[]|null}
      */
-    const allowedReceiptTypes = (vehicle) => (vehicle && RULES.RECEIPT_BY_VEHICLE[vehicle]) || null;
+    const allowedReceiptTypes = (vehicle) => (vehicle && own(active.receiptByVehicle, vehicle) && active.receiptByVehicle[vehicle]) || null;
     const isReceiptAllowed = (row) => {
       const receipt = row.value[COLS.RECEIPT_TYPE]?.value;
       const allowed = allowedReceiptTypes(row.value[COLS.VEHICLE]?.value);
       return !receipt || !allowed || allowed.includes(receipt);
     };
-    const isHsr = (row) => row.value[COLS.VEHICLE]?.value === OPT.VEHICLE.HSR;
-    const getRows = (record) => (Array.isArray(record[TRAFFIC.CODE]?.value) ? record[TRAFFIC.CODE].value.filter((r) => r?.value) : []);
+    /** 這一列交通工具的固定賣方統編／格式；沒有 → null */
+    const fixedOf = (row) => {
+      const vehicle = row.value[COLS.VEHICLE]?.value;
+      return vehicle && own(active.fixedByVehicle, vehicle) ? active.fixedByVehicle[vehicle] : null;
+    };
+    const isFixedSellerTaxId = (taxId) => !!taxId && Object.values(active.fixedByVehicle).some((fixed) => fixed.sellerTaxId === taxId);
+    const getRows = (record) => getRowsOf(record);
 
-    /** 是否有任何一列交通工具是計程車 */
-    const hasTaxi = (record) => getRows(record).some((row) => row.value[COLS.VEHICLE]?.value === OPT.VEHICLE.TAXI);
+    /** 這張單裡命中名單的交通工具名稱（不重複，依列順序） */
+    const vehiclesHit = (record, names) => Array.from(new Set(getRows(record).map((row) => row.value[COLS.VEHICLE]?.value).filter((v) => v && names.includes(v))));
+    /** 有「需紙本憑證」旗標的交通工具（現在是計程車） */
+    const paperVehicles = (record) => vehiclesHit(record, active.paperReceiptVehicles);
+    /** 有「理由必填」旗標的交通工具（現在是計程車） */
+    const reasonVehicles = (record) => vehiclesHit(record, active.reasonRequiredVehicles);
+    /** 舊名稱相容：是否有任何一列需要紙本憑證（原本只看計程車） */
+    const hasTaxi = (record) => paperVehicles(record).length > 0;
 
     /**
      * 套用一列的規則（寫值與鎖定）。
@@ -4797,20 +5030,20 @@
       const setLock = (code, locked) => {
         if (!v[code]) return;
         if (locked) v[code].disabled = true;
-        else if (unlock) v[code].disabled = false;
+        else if (unlock) v[code].disabled = baseLocked[code] === true;
       };
 
-      // 1. 高鐵
-      if (isHsr(row)) {
-        if (v[COLS.SELLER_TAX_ID]) v[COLS.SELLER_TAX_ID].value = RULES.HSR_SELLER_TAX_ID;
-        if (v[COLS.FORMAT]) v[COLS.FORMAT].value = RULES.HSR_FORMAT;
+      // 1. 固定賣方統編（現在是高鐵）
+      const fixed = fixedOf(row);
+      if (fixed) {
+        if (v[COLS.SELLER_TAX_ID]) v[COLS.SELLER_TAX_ID].value = fixed.sellerTaxId;
+        if (v[COLS.FORMAT]) v[COLS.FORMAT].value = fixed.format;
       }
-      else if (unlock && v[COLS.SELLER_TAX_ID]?.value === RULES.HSR_SELLER_TAX_ID) {
+      else if (unlock && isFixedSellerTaxId(v[COLS.SELLER_TAX_ID]?.value)) {
         v[COLS.SELLER_TAX_ID].value = '';
         if (v[COLS.FORMAT]) v[COLS.FORMAT].value = '';
       }
-      setLock(COLS.SELLER_TAX_ID, isHsr(row));
-      setLock(COLS.FORMAT, isHsr(row));
+      // 賣方統編、格式的鎖定在 6 一起決定（固定值或憑證種類＝無）
 
       // 5. 交通工具限制憑證種類（只在變更事件改值；開畫面／存檔不動，交給 validate 擋）
       if (unlock && v[COLS.RECEIPT_TYPE]) {
@@ -4824,6 +5057,20 @@
         if (!isInvoiceReceipt(row)) v[COLS.INVOICE_NO].value = '';
         setLock(COLS.INVOICE_NO, !isInvoiceReceipt(row));
       }
+
+      // 6. 憑證種類＝無 → 賣方統編、格式、稅額清空並鎖住（排在 1、5 後面：憑證種類可能剛被清空或帶入，固定值也要被蓋掉）
+      //    憑證種類＝收據 → 同上，但稅額寫 0
+      //    改成別的憑證種類（變更事件）→ 稅額解鎖；賣方統編、格式照 1 的固定值決定
+      const none = isNoReceipt(row);
+      const plain = isPlainReceipt(row);
+      const cleared = none || plain;
+      NO_RECEIPT_CLEAR_COLS.forEach((code) => {
+        if (cleared && v[code]) v[code].value = '';
+      });
+      if (plain && v[COLS.TAX]) v[COLS.TAX].value = '0';
+      setLock(COLS.SELLER_TAX_ID, cleared || !!fixed);
+      setLock(COLS.FORMAT, cleared || !!fixed);
+      setLock(COLS.TAX, cleared);
     };
 
     /**
@@ -4834,7 +5081,10 @@
      */
     const recalcRowTax = (row) => {
       const v = row?.value;
-      if (v?.[COLS.TAX]) v[COLS.TAX].value = isTaxReceipt(row) ? calcTax(v[COLS.AMOUNT]?.value) : '0';
+      if (!v?.[COLS.TAX]) return;
+      if (isNoReceipt(row)) v[COLS.TAX].value = ''; // 6. 憑證種類＝無 → 稅額清空
+      else if (isPlainReceipt(row)) v[COLS.TAX].value = '0'; // 6. 憑證種類＝收據 → 稅額 0
+      else v[COLS.TAX].value = isTaxReceipt(row) ? calcTax(v[COLS.AMOUNT]?.value) : '0';
     };
 
     /**
@@ -4857,8 +5107,24 @@
      */
     const applyRecordRules = (record, unlock) => {
       getRows(record).forEach((row) => applyRowRules(row, unlock));
-      if (hasTaxi(record) && record[F.PAPER_RECEIPT]) record[F.PAPER_RECEIPT].value = OPT.PAPER_RECEIPT.YES;
+      if (paperVehicles(record).length && record[F.PAPER_RECEIPT]) record[F.PAPER_RECEIPT].value = OPT.PAPER_RECEIPT.YES;
+      applyPaperReceived(record, unlock);
       return record;
+    };
+
+    /**
+     * 7. 是否有紙本憑證＝否 → 會計課承辦註記是否收到單據紙本 寫「不適用」。
+     *    改回「是」（變更事件）且還是「不適用」→ 回到 kintone 預設的「未收到」；
+     *    開畫面／存檔時是「是」就不動（會計課自己選的值保留）。排在計程車強制選「是」後面。
+     * @param {Object} record
+     * @param {boolean} unlock true＝變更事件
+     */
+    const applyPaperReceived = (record, unlock) => {
+      const received = record[F.PAPER_RECEIVED];
+      const paper = record[F.PAPER_RECEIPT]?.value;
+      if (!received || !paper) return;
+      if (paper === OPT.PAPER_RECEIPT.NO) received.value = OPT.PAPER_RECEIVED.NOT_APPLICABLE;
+      else if (unlock && received.value === OPT.PAPER_RECEIVED.NOT_APPLICABLE) received.value = OPT.PAPER_RECEIVED.NOT_RECEIVED;
     };
 
     /**
@@ -4912,14 +5178,14 @@
           errors.push(`「${COLS.INVOICE_NO}」**${no}** 在本單重複填寫（第 ${seen[no].join('、')} 行）\n※ 同一張發票只能填一次`);
         });
 
-      // 計程車：是否有紙本憑證要選「是」、理由必填
-      if (hasTaxi(record)) {
-        if (record[F.PAPER_RECEIPT] && record[F.PAPER_RECEIPT].value !== OPT.PAPER_RECEIPT.YES) {
-          errors.push(`有搭乘${OPT.VEHICLE.TAXI}，「${F.PAPER_RECEIPT}」**必須選「${OPT.PAPER_RECEIPT.YES}」**`);
-        }
-        if (!(record[F.REASON]?.value || '').trim()) {
-          errors.push(`有搭乘${OPT.VEHICLE.TAXI}，**請填寫「${F.REASON}」**`);
-        }
+      // 需紙本憑證的交通工具（現在是計程車）：是否有紙本憑證要選「是」；理由必填的交通工具：理由必填
+      const paper = paperVehicles(record);
+      if (paper.length && record[F.PAPER_RECEIPT] && record[F.PAPER_RECEIPT].value !== OPT.PAPER_RECEIPT.YES) {
+        errors.push(`有搭乘${paper.join('、')}，「${F.PAPER_RECEIPT}」**必須選「${OPT.PAPER_RECEIPT.YES}」**`);
+      }
+      const reason = reasonVehicles(record);
+      if (reason.length && !(record[F.REASON]?.value || '').trim()) {
+        errors.push(`有搭乘${reason.join('、')}，**請填寫「${F.REASON}」**`);
       }
       return errors;
     };
@@ -4927,7 +5193,7 @@
     // ── 畫面：理由動態必填的紅色 * ────────────────────────────────────────────
 
     /**
-     * 有計程車就在「理由」標籤後面加紅色 *，沒有就拿掉。
+     * 有「理由必填」的交通工具（現在是計程車）就在「理由」標籤後面加紅色 *，沒有就拿掉。
      * kintone 沒有切換必填的 API，只能找標籤文字以 REASON_LABEL_PREFIX 開頭的欄位；找不到就略過（存檔驗證仍會擋）。
      */
     const updateReasonRequiredMark = (required) => {
@@ -4959,7 +5225,9 @@
     //   這是畫面層的輔助，DOM 改版找不到就不做；真正的把關是變更事件與存檔驗證。
 
     const OPTION_HIDDEN_CLASS = 'pr-option-hidden';
-    const ALL_RECEIPT_TYPES = Object.values(OPT.RECEIPT_TYPE);
+    /** 選單過濾認得的憑證種類：config 選項值 ∪ 生效規則裡出現過的 */
+    const allReceiptTypes = () =>
+      Array.from(new Set([...Object.values(OPT.RECEIPT_TYPE), ...active.receiptTypes, ...active.taxReceiptTypes, ...active.invoiceReceiptTypes, ...Object.values(active.receiptByVehicle).flat()]));
 
     const cellLabel = (th) => (th?.textContent || '').replace(/\*/g, '').trim();
 
@@ -4972,9 +5240,10 @@
      */
     const filterMenuItems = (menu, allowed) => {
       let hidden = 0;
+      const known = allReceiptTypes();
       Array.from(menu.querySelectorAll('.goog-menuitem')).forEach((item) => {
         const text = (item.textContent || '').trim();
-        const hide = !!allowed && ALL_RECEIPT_TYPES.includes(text) && !allowed.includes(text);
+        const hide = !!allowed && known.includes(text) && !allowed.includes(text);
         item.classList.toggle(OPTION_HIDDEN_CLASS, hide);
         if (hide) hidden += 1;
       });
@@ -5028,13 +5297,16 @@
 
     // ── 事件 ───────────────────────────────────────────────────────────────
 
-    KT.on(['app.record.create.show', 'app.record.edit.show'], (event) => {
+    // 先讀完規則主檔再套規則（kintone 會等 show 的 Promise；loadRules 永不 reject）
+    KT.on(['app.record.create.show', 'app.record.edit.show'], async (event) => {
+      await loadRules();
+      captureBaseLocks(event.record);
       applyRecordRules(event.record, false);
-      updateReasonRequiredMark(hasTaxi(event.record));
+      updateReasonRequiredMark(reasonVehicles(event.record).length > 0);
       return event;
     });
 
-    const changeEvents = [TRAFFIC.CODE, COLS.VEHICLE, COLS.AMOUNT, COLS.RECEIPT_TYPE].flatMap((code) => [
+    const changeEvents = [TRAFFIC.CODE, COLS.VEHICLE, COLS.AMOUNT, COLS.RECEIPT_TYPE, F.PAPER_RECEIPT].flatMap((code) => [
       `app.record.create.change.${code}`,
       `app.record.edit.change.${code}`,
     ]);
@@ -5049,11 +5321,11 @@
       if (event.record[F.INVOICE_AGG] && typeof agg?.buildInvoiceAgg === 'function') {
         event.record[F.INVOICE_AGG].value = agg.buildInvoiceAgg(event.record);
       }
-      updateReasonRequiredMark(hasTaxi(event.record));
+      updateReasonRequiredMark(reasonVehicles(event.record).length > 0);
       return event;
     });
 
-    window.PR_TRAFFIC_RULES = Object.freeze({ calcTax, recalcRowTax, changedRow, hasTaxi, allowedReceiptTypes, filterMenuItems, menuContext, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
+    window.PR_TRAFFIC_RULES = Object.freeze({ calcTax, recalcRowTax, changedRow, hasTaxi, rulesFromConfig, rulesFromMaster, loadRules, getActiveRules, _resetForTest, allowedReceiptTypes, isNoReceipt, isPlainReceipt, filterMenuItems, menuContext, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
   })();
 
   (() => {
@@ -6126,6 +6398,23 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       }
     }
 
+    // ======================== 提示視窗（全域 SweetAlert，寬度自動）========================
+    /** 取代瀏覽器的 alert；icon: 'info'|'warning'|'error'|'success'。載不到 SweetAlert 才退回 alert */
+    function notify(text, icon = 'info') {
+      if (typeof Swal === 'undefined') {
+        alert(text);
+        return Promise.resolve();
+      }
+      return Swal.fire({ icon, text, width: 'auto', confirmButtonText: '好', customClass: { htmlContainer: 'pr-notice-text' } });
+    }
+
+    /** 取代瀏覽器的 confirm；回傳 true／false。載不到 SweetAlert 才退回 confirm */
+    async function askConfirm(text) {
+      if (typeof Swal === 'undefined') return confirm(text);
+      const result = await Swal.fire({ icon: 'question', text, width: 'auto', showCancelButton: true, confirmButtonText: '確定', cancelButtonText: '取消', customClass: { htmlContainer: 'pr-notice-text' } });
+      return result.isConfirmed;
+    }
+
     // ======================== 批次列印 PDF（PDFLib 版）========================
     async function handleBatchPrintPDF() {
       try {
@@ -6135,26 +6424,26 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
         if (mode === 'range') {
           const start = parseInt(document.getElementById('range-start').value, 10);
           const end = parseInt(document.getElementById('range-end').value, 10);
-          if (isNaN(start) || isNaN(end)) return alert('請輸入有效的號碼範圍');
-          if (start > end) return alert('開始號碼不能大於結束號碼');
-          if (end - start + 1 > SECURITY_CONFIG.maxRecords) return alert(`單次最多列印 ${SECURITY_CONFIG.maxRecords} 筆記錄`);
+          if (isNaN(start) || isNaN(end)) return notify('請輸入有效的號碼範圍', 'warning');
+          if (start > end) return notify('開始號碼不能大於結束號碼', 'warning');
+          if (end - start + 1 > SECURITY_CONFIG.maxRecords) return notify(`單次最多列印 ${SECURITY_CONFIG.maxRecords} 筆記錄`, 'warning');
           recordIds = Array.from({ length: end - start + 1 }, (_, i) => start + i);
         } else {
           const input = document.getElementById('specific-records').value.trim();
-          if (!input) return alert('請輸入要列印的記錄號碼');
+          if (!input) return notify('請輸入要列印的記錄號碼', 'warning');
           recordIds = input
             .split(',')
             .map((id) => parseInt(id.trim(), 10))
             .filter((id) => !isNaN(id));
-          if (!recordIds.length) return alert('請輸入有效的記錄號碼');
-          if (recordIds.length > SECURITY_CONFIG.maxRecords) return alert(`單次最多列印 ${SECURITY_CONFIG.maxRecords} 筆記錄`);
+          if (!recordIds.length) return notify('請輸入有效的記錄號碼', 'warning');
+          if (recordIds.length > SECURITY_CONFIG.maxRecords) return notify(`單次最多列印 ${SECURITY_CONFIG.maxRecords} 筆記錄`, 'warning');
         }
 
-        if (!confirm(`確定要批次列印 ${recordIds.length} 筆記錄嗎？`)) return;
+        if (!(await askConfirm(`確定要批次列印 ${recordIds.length} 筆記錄嗎？`))) return;
         await performBatchPrintPDF(recordIds);
       } catch (error) {
         console.error('批次列印失敗:', error);
-        alert('批次列印失敗：' + error.message);
+        await notify('批次列印失敗：' + error.message, 'error');
       }
     }
 
@@ -6367,7 +6656,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
         const organizeButton = document.createElement('button');
         organizeButton.id = 'batch-organize-button';
         organizeButton.className = 'batch-print-button';
-        organizeButton.textContent = '📊 批次整理資料(應付帳款、費用成本、稅額)';
+        organizeButton.textContent = '📋 交通費Excel資料轉出(AP、費用、稅額)';
         buttonsContainer.appendChild(organizeButton);
 
         buttonsContainer.appendChild(printButton);
@@ -6383,7 +6672,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
         headerMenuSpace.appendChild(container);
       } catch (error) {
         console.error('初始化失敗:', error);
-        alert('無法在當前環境中啟用批次功能');
+        notify('無法在當前環境中啟用批次功能', 'error');
       }
     }
 
@@ -6461,6 +6750,9 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
     // ======================== 配置 ========================
     // 註：本模組存取之欄位（如 Excel欄位代碼、應付帳款_值等）為交通費轉出欄位對應 App（APPS.SAP_MAPPING）
     // 內部之對應設定欄位，非請款單主表 FIELDS，刻意保留字面值。
+    // 該 App 同時存交通費與交際費的對應，用「適用單據」下拉欄位區分，這裡只讀交通費的記錄（欄位代碼同樣保留字面值）。
+    const MAPPING_DOC_TYPE_FIELD = '適用單據';
+    const MAPPING_DOC_TYPE = '交通費'; // 轉出欄位對應 App「適用單據」的選項值
     const CONFIG = {
       mappingAppId: window.PR_CONFIG.APPS.SAP_MAPPING, // 交通費轉出欄位對應設定 App ID
       costCenterAppId: window.PR_CONFIG.APPS.COST_CENTER, // 費用歸屬主檔（查 Business Area）
@@ -6607,7 +6899,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
           'GET',
           {
             app: CONFIG.mappingAppId,
-            query: '啟用 in ("啟用") order by 排序 asc limit 500',
+            query: `${MAPPING_DOC_TYPE_FIELD} in ("${MAPPING_DOC_TYPE}") and 啟用 in ("啟用") order by 排序 asc limit 500`,
           },
           (resp) => resolve(resp.records.map(mapMappingRecord)),
           (error) => {
@@ -6980,17 +7272,27 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       return ws;
     }
 
+    // ======================== 提示視窗（全域 SweetAlert，寬度自動）========================
+    /** 取代瀏覽器的 alert；icon: 'info'|'warning'|'error'|'success'。載不到 SweetAlert 才退回 alert */
+    function notify(text, icon = 'info') {
+      if (typeof Swal === 'undefined') {
+        alert(text);
+        return Promise.resolve();
+      }
+      return Swal.fire({ icon, text, width: 'auto', confirmButtonText: '好', customClass: { htmlContainer: 'pr-notice-text' } });
+    }
+
     // ======================== 產生 Excel 並下載 ========================
     /** opts 同 buildRows（today 不給就用現在） */
     async function generateExcel(mappings, records, opts) {
       if (typeof XLSX === 'undefined') {
-        alert('錯誤：SheetJS 函式庫未載入，請確認已上傳 xlsx.full.min.js');
+        await notify('錯誤：SheetJS 函式庫未載入，請確認已上傳 xlsx.full.min.js', 'error');
         return null;
       }
 
       const rows = buildRows(mappings, records, { today: new Date(), ...opts });
       if (rows.length === 0) {
-        alert('沒有可轉出的資料');
+        await notify('沒有可轉出的資料', 'warning');
         return null;
       }
 
@@ -7133,7 +7435,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       try {
         const recordIds = getRecordIdsFromUI();
         if (recordIds.length === 0) {
-          alert('請輸入有效的記錄號碼範圍');
+          await notify('請輸入有效的記錄號碼範圍', 'warning');
           return;
         }
 
@@ -7147,12 +7449,12 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
 
         if (mappings.length === 0) {
           closeLoading();
-          alert('錯誤：未取得任何欄位對應設定');
+          await notify('錯誤：未取得任何欄位對應設定', 'error');
           return;
         }
         if (records.length === 0) {
           closeLoading();
-          alert('錯誤：未取得任何請款單記錄');
+          await notify('錯誤：未取得任何請款單記錄', 'error');
           return;
         }
 
@@ -7166,11 +7468,11 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
         const result = await generateExcel(mappings, sorted, { dates, businessArea });
         if (!result) return;
 
-        alert(`Excel 檔案已產生並下載\n檔名：${result.fileName}\n共 ${records.length} 筆記錄、${result.rowCount} 列資料`);
+        await notify(`Excel 檔案已產生並下載\n檔名：${result.fileName}\n共 ${records.length} 筆記錄、${result.rowCount} 列資料`, 'success');
       } catch (error) {
         closeLoading();
         console.error('批次整理資料錯誤:', error);
-        alert('處理過程發生錯誤: ' + error.message);
+        await notify('處理過程發生錯誤: ' + error.message, 'error');
       }
     }
 
@@ -7233,6 +7535,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       generateExcel,
       toCell,
       mapMappingRecord,
+      fetchFieldMappings,
       columnIndex,
       columnLetters,
       formatDate,
@@ -7251,6 +7554,15 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
 
     const F = window.PR_CONFIG.FIELDS;
     const BUTTON_ID = 'same-applicant-btn';
+
+    /** 提示視窗：全域 SweetAlert（寬度自動）；載不到 SweetAlert 才退回瀏覽器的 alert */
+    function notify(text, icon) {
+      if (typeof Swal === 'undefined') {
+        alert(text);
+        return;
+      }
+      Swal.fire({ icon, text, width: 'auto', confirmButtonText: '好', customClass: { htmlContainer: 'pr-notice-text' } });
+    }
 
     // 取得申請人資訊：fullName 為「員工代碼 中文姓名」（受款人＝申請人，723 是「員工姓名」欄位）
     function getApplicantInfo(record) {
@@ -7291,7 +7603,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
 
         if (applicantInfo.error) {
           // 顯示錯誤訊息
-          alert(applicantInfo.error);
+          notify(applicantInfo.error, 'warning');
           return;
         }
 
@@ -7615,6 +7927,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
           CONFIG.CONFIRM_TEXT +
           '</b></div>' +
           '</div>',
+        width: 'auto',
         input: 'text',
         inputPlaceholder: '請輸入「作廢」',
         showCancelButton: true,
@@ -7919,10 +8232,19 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       }
     }
 
+    /** 提示視窗：全域 SweetAlert（寬度自動）；載不到 SweetAlert 才退回瀏覽器的 alert */
+    function notify(text, icon) {
+      if (typeof Swal === 'undefined') {
+        alert(text);
+        return;
+      }
+      Swal.fire({ icon, text, width: 'auto', confirmButtonText: '好', customClass: { htmlContainer: 'pr-notice-text' } });
+    }
+
     // **彈出視窗顯示預覽**
     function openInNewTab(fileUrl) {
       if (!fileUrl) {
-        alert('無法預覽檔案，請稍後再試！');
+        notify('無法預覽檔案，請稍後再試！', 'error');
         return;
       }
 

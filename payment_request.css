@@ -439,6 +439,9 @@
   .pr-signer-entry__btn { width: 100%; }
 }
 
+/* 批次轉出／列印的提示視窗（SweetAlert，寬度自動）：訊息裡的換行要保留 */
+.pr-notice-text { white-space: pre-line; }
+
 /* 轉出交通費 Excel：按下按鈕後讀資料時的「請稍後」小視窗 */
 .pr-export-loading { width: 280px !important; padding: 20px 16px !important; }
 
@@ -869,4 +872,94 @@
 /* 交通費明細規則：憑證種類下拉選單隱藏這列交通工具不能用的選項（桌面版） */
 .goog-menuitem.pr-option-hidden {
   display: none !important;
+}
+
+/* ── 欄位標籤說明圖示（欄位標籤說明圖示_20261104.js，只上傳到 App 752） ──
+   問號小圖標；說明文字放在 data-pr-hint，hover／鍵盤 focus 時用 ::after 顯示（往下展開）。
+   表頭或欄位容器若 overflow:hidden 會切到 tooltip，JS 替祖先加 .pr-label-hint-host 改成 visible。 */
+.pr-label-hint-host {
+  overflow: visible !important;
+}
+.pr-label-hint {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-left: 5px;
+  border: 1px solid #b0bec5;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #90a4ae;
+  font-size: 11px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1;
+  vertical-align: middle;
+  cursor: help;
+  user-select: none;
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+.pr-label-hint:hover,
+.pr-label-hint:focus-visible {
+  z-index: 1000;
+  border-color: #3498db;
+  background: #eaf4fc;
+  color: #2980b9;
+  outline: none;
+}
+.pr-label-hint:focus-visible {
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.35);
+}
+.pr-label-hint::after,
+.pr-label-hint::before {
+  position: absolute;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.18s ease, visibility 0.18s ease;
+}
+.pr-label-hint::after {
+  content: attr(data-pr-hint);
+  top: calc(100% + 9px);
+  left: -8px;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 280px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #263238;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.6;
+  text-align: left;
+  white-space: normal;
+  word-break: break-word;
+}
+.pr-label-hint::before {
+  content: '';
+  top: calc(100% + 3px);
+  left: 50%;
+  margin-left: -6px;
+  border: 6px solid transparent;
+  border-top: 0;
+  border-bottom-color: #263238;
+}
+.pr-label-hint:hover::after,
+.pr-label-hint:hover::before,
+.pr-label-hint:focus-visible::after,
+.pr-label-hint:focus-visible::before {
+  opacity: 1;
+  visibility: visible;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pr-label-hint,
+  .pr-label-hint::after,
+  .pr-label-hint::before {
+    transition: none;
+  }
 }

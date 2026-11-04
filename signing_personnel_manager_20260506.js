@@ -485,7 +485,7 @@
 
   /** 提示視窗：一律用 SweetAlert；載不到 SweetAlert 才退回瀏覽器的 alert */
   function notify(icon, title, text) {
-    if (typeof Swal !== 'undefined') Swal.fire({ icon, title, text, confirmButtonText: '好' });
+    if (typeof Swal !== 'undefined') Swal.fire({ icon, title, text, width: 'auto', confirmButtonText: '好' });
     else alert(text ? `${title}\n${text}` : title);
   }
 
@@ -810,6 +810,7 @@
       icon: 'question',
       title,
       text,
+      width: 'auto',
       showCancelButton: true,
       confirmButtonText: '改回自動',
       cancelButtonText: '維持手動',

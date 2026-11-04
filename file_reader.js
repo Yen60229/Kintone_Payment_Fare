@@ -180,10 +180,19 @@
     }
   }
 
+  /** 提示視窗：全域 SweetAlert（寬度自動）；載不到 SweetAlert 才退回瀏覽器的 alert */
+  function notify(text, icon) {
+    if (typeof Swal === 'undefined') {
+      alert(text);
+      return;
+    }
+    Swal.fire({ icon, text, width: 'auto', confirmButtonText: '好', customClass: { htmlContainer: 'pr-notice-text' } });
+  }
+
   // **彈出視窗顯示預覽**
   function openInNewTab(fileUrl) {
     if (!fileUrl) {
-      alert('無法預覽檔案，請稍後再試！');
+      notify('無法預覽檔案，請稍後再試！', 'error');
       return;
     }
 

@@ -24,6 +24,7 @@ kintone **交通費請款單（測試區 App 749）** 的自訂 JavaScript 原�
 | 帳號權限設定（欄位顯隱／可編輯／必填） | `APPS.PERMISSION` |
 | 行事曆（預計付款日） | `APPS.HOLIDAY_CALENDAR` |
 | 交通費轉出欄位對應 | `APPS.SAP_MAPPING` |
+| 交通費明細規則主檔（交通工具／憑證種類規則；讀不到退回 config）。另外在這個 App 上傳存檔檢查，見下方「App 752」 | `APPS.TRAFFIC_RULE_MASTER` |
 | PDF 字型 | `APPS.PDF_FONT` |
 
 ---
@@ -34,8 +35,8 @@ kintone **交通費請款單（測試區 App 749）** 的自訂 JavaScript 原�
 ```bash
 npm test && bash tests/syntax.test.sh && npm run scan
 ```
-- `npm test`：29 支測試（共 537 項斷言）。
-- `bash tests/syntax.test.sh`：對根目錄所有 `*.js` 跑 `node --check`（目前 26 檔）。
+- `npm test`：31 支測試（共 626 項斷言）。
+- `bash tests/syntax.test.sh`：對根目錄所有 `*.js` 跑 `node --check`（目前 27 檔）。
 - `npm run scan`：統計剩餘的 App ID／狀態／選項／欄位代碼硬編碼（目前 11 處）。
 
 ### 檢查流程管理設定
@@ -65,6 +66,7 @@ npm run build
 | [`payment_request.css`](payment_request.css) | **全部樣式只有這一個檔**，PC 和手機都上傳同一份 |
 | [`coding_tools.js`](coding_tools.js) | 列表頁「JS 自定義設定」「流程管理」按鈕（只有 PC） |
 | [`SetFieldWidth_4_20251206.js`](SetFieldWidth_4_20251206.js) | 欄位依內容自動調寬（只有 PC） |
+| [`交通費明細規則主檔檢查_20261104.js`](交通費明細規則主檔檢查_20261104.js) | **上傳到 App 752（規則主檔），不是請款單**：存檔時檢查名稱與請款單下拉選項一字不差等（只有 PC） |
 
 - 只打一套：`npm run build:desktop`、`npm run build:mobile`（`build:mobile` 不會清空 `dist/`）。
 - `.map` 是除錯用，不用上傳。
@@ -85,6 +87,16 @@ npm run build
 | CSS（手機） | ① SweetAlert2 的 CSS（同上）② `payment_request.css`（和 PC 同一個檔） |
 
 - ⑦⑧ 要排在 ⑥ 後面：這兩支用到 bundle 裡的 `window.PR_CONFIG`。
+
+#### App 752（交通費明細規則主檔）
+
+| 區塊 | 依序上傳 |
+|---|---|
+| JavaScript（PC） | ① `payment_request_config.js`（原始檔，自包含、不用打包）② `交通費明細規則主檔檢查_20261104.js` |
+
+- 手機版、CSS 不用上傳。
+- 這支在 752 的新增、編輯、列表直接編輯存檔時，檢查「名稱」和請款單子表格的「交通工具」「憑證種類」下拉選項一字不差（含前後空白、類型選錯）、可選憑證種類、固定格式與統編、類型不用的欄位要留空。
+- 讀請款單欄位設定用 `APPS.TRAFFIC_PAYMENT`（不能用 `APPS.PAYMENT`，在 752 裡那是 752 自己）；維護 752 的人要讀得到請款單的欄位設定，讀不到會擋下 752 的存檔。
 - PDFLib／fontkit／JSZip／SheetJS 只有列表頁批次下載、PDF、SAP 轉檔用，手機版沒有這些功能，不用上傳。
 - 換版時把舊的 `payment_request_bundle.min.js`、`payment_request_desktop.css`／`payment_request_mobile.css` 從後台刪掉（舊 bundle 和新的同時存在會重複註冊事件）。
 

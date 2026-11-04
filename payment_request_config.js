@@ -93,6 +93,11 @@
     PDF_FONT: 488, // PDF 產生用字型
     PERMISSION: 673, // 帳號權限設定（欄位顯隱／可編輯／必填規則）
     HOLIDAY_CALENDAR: 620, // 行事曆（國定假日、週末、補行上班日），預計付款日用
+    TRAFFIC_RULE_MASTER: 752, // 交通費明細規則主檔（交通工具／憑證種類的規則；讀不到就退回 TRAFFIC_RULES）
+    // 交通費請款單的固定 App ID，【只給在規則主檔執行的檢查程式用】（交通費明細規則主檔檢查_20261104.js；
+    //   在規則主檔裡 getId() 拿到的是規則主檔自己的 ID）。請款單自己的程式一律用 APPS.PAYMENT。
+    //   正式區上線時要和其他 App ID 一起換。
+    TRAFFIC_PAYMENT: 749,
   });
 
   // ── 會計單位（kintone 群組）───────────────────────────────────────────────
@@ -129,6 +134,25 @@
       MAIN_DEPT: '主要管理部門',
       MAIN_DEPT_ON: '是',
       BUSINESS_AREA: 'BusinessArea', // SINGLE_LINE_TEXT：Cost Center 對應的 Business Area（交通費轉出 J 欄）
+    }),
+    // 交通費明細規則主檔（APPS.TRAFFIC_RULE_MASTER）：一筆記錄＝一個交通工具或一個憑證種類。
+    //   名稱要和 749 子表格下拉選項一字不差；只讀「使用中」。讀不到或資料不合法時退回 TRAFFIC_RULES。
+    TRAFFIC_RULE_MASTER: Object.freeze({
+      TYPE: '類型', // RADIO_BUTTON
+      TYPE_VEHICLE: '交通工具',
+      TYPE_RECEIPT: '憑證種類',
+      NAME: '名稱', // SINGLE_LINE_TEXT（唯一）
+      IN_USE: '使用狀況', // DROP_DOWN；query 篩選用
+      IN_USE_VALUE: '使用中',
+      ALLOWED_RECEIPTS: '可選憑證種類', // CHECK_BOX（交通工具用）；全不勾＝不限制
+      FIXED_SELLER_TAX_ID: '固定賣方統編', // 交通工具用；有填＝自動帶入並鎖住
+      FIXED_FORMAT: '固定格式', // 交通工具用；有填固定賣方統編才可填
+      VEHICLE_FLAGS: '交通工具規則', // CHECK_BOX
+      FLAG_PAPER_RECEIPT: '需紙本憑證', // 有搭乘 → 是否有紙本憑證選「是」
+      FLAG_REASON_REQUIRED: '理由必填', // 有搭乘 → 理由必填
+      RECEIPT_FLAGS: '憑證種類規則', // CHECK_BOX
+      FLAG_TAX: '要算稅',
+      FLAG_INVOICE_NO: '開放發票號碼',
     }),
     // 簽核流程主檔（APPS.APPROVAL_FLOW）：一般單位用「簽核所屬單位」（組織欄位，存組織代碼）查，
     //   改組織名稱不用改程式；依職稱改查的合併流程（特殊簽核流程，例如「物流部次長級」）才用「簽核流程名稱」查。
@@ -188,6 +212,8 @@
     VOUCHER_DATE: '傳票日期', // 標籤「過帳日期（Posting Date）」
     ATTACHMENT: '附件',
     PAPER_RECEIPT: '是否有紙本憑證',
+    // RADIO_BUTTON；是否有紙本憑證＝否 → 程式寫「不適用」（舊代碼「…單據正本」，rev 1869 已改）
+    PAPER_RECEIVED: '會計課承辦註記是否收到單據紙本',
     REASON: '理由', // 主表 MULTI_LINE_TEXT；標籤「理由（計程車）」
     RECORD_NO: '交通費請款單號', // RECORD_NUMBER；批次下載／PDF 產生時用來標示記錄
     TOTAL_AMOUNT: '總金額', // CALC；＝交通費請款單.金額 合計（交通費轉出 Excel 的 {總金額}）
@@ -312,7 +338,9 @@
     // 子表格「憑證種類」
     RECEIPT_TYPE: Object.freeze({ HSR_TICKET: '高鐵票', TICKET: '車票（高鐵外）', INVOICE: '發票', RECEIPT: '收據', NONE: '無' }),
     // 主表「是否有紙本憑證」
-    PAPER_RECEIPT: Object.freeze({ YES: '是' }),
+    PAPER_RECEIPT: Object.freeze({ YES: '是', NO: '否' }),
+    // 主表「會計課承辦註記是否收到單據紙本」（kintone 預設值＝未收到）
+    PAPER_RECEIVED: Object.freeze({ RECEIVED: '已收到', NOT_RECEIVED: '未收到', NOT_APPLICABLE: '不適用' }),
   });
 
   // ── 共用工具 ───────────────────────────────────────────────────────────────
@@ -320,7 +348,12 @@
   const isAdmin = (code) => ADMIN_USERS.includes(code || kintone.getLoginUser().code);
 
   // ── 交通費明細規則（交通費明細規則_20261022.js 用）────────────────────────
+  //   規則的主要來源是 APPS.TRAFFIC_RULE_MASTER（REF_FIELDS.TRAFFIC_RULE_MASTER）；
+  //   這份只在主檔讀不到（沒權限、逾時、API 失敗）或資料不合法時才用，內容要和主檔初始記錄等價（有測試比對）。
+  //   TAX_RATE_PERCENT、REASON_LABEL_PREFIX 不放主檔，一律用這裡。
   const TRAFFIC_RULES = Object.freeze({
+    // 讀主檔的等待上限（毫秒），超過就退回這份規則
+    MASTER_TIMEOUT_MS: 5000,
     // 交通工具選高鐵 → 賣方統編、格式固定寫入
     HSR_SELLER_TAX_ID: '00000000',
     HSR_FORMAT: '22',
@@ -330,6 +363,11 @@
     TAX_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.HSR_TICKET, OPTIONS.RECEIPT_TYPE.INVOICE]),
     // 這些憑證種類才開放填發票號碼（存檔時必填、不可重複）
     INVOICE_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.HSR_TICKET, OPTIONS.RECEIPT_TYPE.INVOICE]),
+    // 這些憑證種類（沒有憑證）→ 賣方統編、格式、稅額清空並鎖住（create/edit 的 show、變更事件、存檔前都套用）
+    NO_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.NONE]),
+    // 這些憑證種類（收據，沒有統編／稅額）→ 賣方統編、格式清空並鎖住，稅額寫 0 並鎖住（套用時機同 NO_RECEIPT_TYPES；
+    //   優先於主檔的「要算稅」旗標）
+    PLAIN_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.RECEIPT]),
     // 交通工具 → 可選的憑證種類（沒列在這裡的交通工具不限制）。
     //   變更事件：選了不能用的組合就清空憑證種類；只有一種可選時自動帶入。存檔時再驗一次。
     //   桌面版：憑證種類的下拉選單只列出可選的項目（手機版選單是系統原生的，只靠變更事件清空）。

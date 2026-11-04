@@ -818,6 +818,22 @@ check('輸出：單一工作表「交通費」、檔名 交通費轉出_YYYYMMDD
   const now = new Date();
   const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
 
+  const apiCalls = [];
+  global.kintone.api = (url, method, params, ok) => {
+    apiCalls.push({ method, params });
+    ok({ records: [] });
+  };
+  global.kintone.api.url = (u) => u;
+  await B.fetchFieldMappings();
+  assert.strictEqual(apiCalls.length, 1);
+  assert.strictEqual(apiCalls[0].params.app, C.APPS.SAP_MAPPING);
+  assert.ok(apiCalls[0].params.query.includes('適用單據 in ("交通費")'), '只讀適用單據＝交通費');
+  assert.ok(apiCalls[0].params.query.includes('啟用 in ("啟用")'), '仍只讀啟用的');
+  assert.ok(apiCalls[0].params.query.includes('order by 排序 asc'), '依排序');
+  assert.ok(!apiCalls[0].params.query.includes('交際費'), '不讀交際費的對應');
+  passed += 1;
+  console.log('  ok - fetchFieldMappings：查詢帶適用單據＝交通費、啟用、依排序');
+
   const res = await B.generateExcel(FIXTURE, [mkRecord(5, 12, OWNER, [D(3476, 166)])]);
   assert.strictEqual(calls.length, 1);
   assert.strictEqual(calls[0].name, `交通費轉出_${stamp}.xlsx`);
@@ -834,6 +850,18 @@ check('輸出：單一工作表「交通費」、檔名 交通費轉出_YYYYMMDD
   assert.strictEqual(alerts.length, 1);
   passed += 1;
   console.log('  ok - generateExcel：沒有任何列可轉出 → 提示並不寫檔');
+
+  // 有全域 SweetAlert → 不再用瀏覽器 alert，視窗寬度 auto
+  const fires = [];
+  global.Swal = { fire: async (o) => { fires.push(o); return { isConfirmed: true }; } };
+  assert.strictEqual(await B.generateExcel(FIXTURE, []), null);
+  assert.strictEqual(alerts.length, 1, '有 Swal 就不呼叫 alert');
+  assert.strictEqual(fires.length, 1);
+  assert.strictEqual(fires[0].width, 'auto');
+  assert.strictEqual(fires[0].text, '沒有可轉出的資料');
+  delete global.Swal;
+  passed += 1;
+  console.log('  ok - generateExcel：有 SweetAlert 時改用 Swal（width auto），不用 alert');
 
   delete global.XLSX;
   assert.strictEqual(await B.generateExcel(FIXTURE, [record]), null);

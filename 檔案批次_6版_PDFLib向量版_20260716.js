@@ -904,6 +904,23 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
     }
   }
 
+  // ======================== 提示視窗（全域 SweetAlert，寬度自動）========================
+  /** 取代瀏覽器的 alert；icon: 'info'|'warning'|'error'|'success'。載不到 SweetAlert 才退回 alert */
+  function notify(text, icon = 'info') {
+    if (typeof Swal === 'undefined') {
+      alert(text);
+      return Promise.resolve();
+    }
+    return Swal.fire({ icon, text, width: 'auto', confirmButtonText: '好', customClass: { htmlContainer: 'pr-notice-text' } });
+  }
+
+  /** 取代瀏覽器的 confirm；回傳 true／false。載不到 SweetAlert 才退回 confirm */
+  async function askConfirm(text) {
+    if (typeof Swal === 'undefined') return confirm(text);
+    const result = await Swal.fire({ icon: 'question', text, width: 'auto', showCancelButton: true, confirmButtonText: '確定', cancelButtonText: '取消', customClass: { htmlContainer: 'pr-notice-text' } });
+    return result.isConfirmed;
+  }
+
   // ======================== 批次列印 PDF（PDFLib 版）========================
   async function handleBatchPrintPDF() {
     try {
@@ -913,26 +930,26 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       if (mode === 'range') {
         const start = parseInt(document.getElementById('range-start').value, 10);
         const end = parseInt(document.getElementById('range-end').value, 10);
-        if (isNaN(start) || isNaN(end)) return alert('請輸入有效的號碼範圍');
-        if (start > end) return alert('開始號碼不能大於結束號碼');
-        if (end - start + 1 > SECURITY_CONFIG.maxRecords) return alert(`單次最多列印 ${SECURITY_CONFIG.maxRecords} 筆記錄`);
+        if (isNaN(start) || isNaN(end)) return notify('請輸入有效的號碼範圍', 'warning');
+        if (start > end) return notify('開始號碼不能大於結束號碼', 'warning');
+        if (end - start + 1 > SECURITY_CONFIG.maxRecords) return notify(`單次最多列印 ${SECURITY_CONFIG.maxRecords} 筆記錄`, 'warning');
         recordIds = Array.from({ length: end - start + 1 }, (_, i) => start + i);
       } else {
         const input = document.getElementById('specific-records').value.trim();
-        if (!input) return alert('請輸入要列印的記錄號碼');
+        if (!input) return notify('請輸入要列印的記錄號碼', 'warning');
         recordIds = input
           .split(',')
           .map((id) => parseInt(id.trim(), 10))
           .filter((id) => !isNaN(id));
-        if (!recordIds.length) return alert('請輸入有效的記錄號碼');
-        if (recordIds.length > SECURITY_CONFIG.maxRecords) return alert(`單次最多列印 ${SECURITY_CONFIG.maxRecords} 筆記錄`);
+        if (!recordIds.length) return notify('請輸入有效的記錄號碼', 'warning');
+        if (recordIds.length > SECURITY_CONFIG.maxRecords) return notify(`單次最多列印 ${SECURITY_CONFIG.maxRecords} 筆記錄`, 'warning');
       }
 
-      if (!confirm(`確定要批次列印 ${recordIds.length} 筆記錄嗎？`)) return;
+      if (!(await askConfirm(`確定要批次列印 ${recordIds.length} 筆記錄嗎？`))) return;
       await performBatchPrintPDF(recordIds);
     } catch (error) {
       console.error('批次列印失敗:', error);
-      alert('批次列印失敗：' + error.message);
+      await notify('批次列印失敗：' + error.message, 'error');
     }
   }
 
@@ -1145,7 +1162,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       const organizeButton = document.createElement('button');
       organizeButton.id = 'batch-organize-button';
       organizeButton.className = 'batch-print-button';
-      organizeButton.textContent = '📊 批次整理資料(應付帳款、費用成本、稅額)';
+      organizeButton.textContent = '📋 交通費Excel資料轉出(AP、費用、稅額)';
       buttonsContainer.appendChild(organizeButton);
 
       buttonsContainer.appendChild(printButton);
@@ -1161,7 +1178,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       headerMenuSpace.appendChild(container);
     } catch (error) {
       console.error('初始化失敗:', error);
-      alert('無法在當前環境中啟用批次功能');
+      notify('無法在當前環境中啟用批次功能', 'error');
     }
   }
 

@@ -1,0 +1,493 @@
+{
+  "_note": "App 752 交通費明細規則主檔 初始記錄（2026-11-04 用 kintone MCP 讀取，表單 rev 9）。與 config TRAFFIC_RULES 等價，測試用。",
+  "records": [
+    {
+      "$id": {
+        "type": "__ID__",
+        "value": "1"
+      },
+      "類型": {
+        "type": "RADIO_BUTTON",
+        "value": "交通工具"
+      },
+      "名稱": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": "高鐵"
+      },
+      "使用狀況": {
+        "type": "DROP_DOWN",
+        "value": "使用中"
+      },
+      "可選憑證種類": {
+        "type": "CHECK_BOX",
+        "value": [
+          "高鐵票"
+        ]
+      },
+      "固定賣方統編": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": "00000000"
+      },
+      "固定格式": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": "22"
+      },
+      "交通工具規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "憑證種類規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      }
+    },
+    {
+      "$id": {
+        "type": "__ID__",
+        "value": "2"
+      },
+      "類型": {
+        "type": "RADIO_BUTTON",
+        "value": "交通工具"
+      },
+      "名稱": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": "捷運／公車"
+      },
+      "使用狀況": {
+        "type": "DROP_DOWN",
+        "value": "使用中"
+      },
+      "可選憑證種類": {
+        "type": "CHECK_BOX",
+        "value": [
+          "車票（高鐵外）",
+          "收據",
+          "無"
+        ]
+      },
+      "固定賣方統編": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "固定格式": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "交通工具規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "憑證種類規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      }
+    },
+    {
+      "$id": {
+        "type": "__ID__",
+        "value": "3"
+      },
+      "類型": {
+        "type": "RADIO_BUTTON",
+        "value": "交通工具"
+      },
+      "名稱": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": "停車費"
+      },
+      "使用狀況": {
+        "type": "DROP_DOWN",
+        "value": "使用中"
+      },
+      "可選憑證種類": {
+        "type": "CHECK_BOX",
+        "value": [
+          "發票",
+          "收據"
+        ]
+      },
+      "固定賣方統編": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "固定格式": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "交通工具規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "憑證種類規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      }
+    },
+    {
+      "$id": {
+        "type": "__ID__",
+        "value": "4"
+      },
+      "類型": {
+        "type": "RADIO_BUTTON",
+        "value": "交通工具"
+      },
+      "名稱": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": "火車"
+      },
+      "使用狀況": {
+        "type": "DROP_DOWN",
+        "value": "使用中"
+      },
+      "可選憑證種類": {
+        "type": "CHECK_BOX",
+        "value": [
+          "車票（高鐵外）",
+          "收據",
+          "無"
+        ]
+      },
+      "固定賣方統編": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "固定格式": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "交通工具規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "憑證種類規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      }
+    },
+    {
+      "$id": {
+        "type": "__ID__",
+        "value": "5"
+      },
+      "類型": {
+        "type": "RADIO_BUTTON",
+        "value": "交通工具"
+      },
+      "名稱": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": "計程車"
+      },
+      "使用狀況": {
+        "type": "DROP_DOWN",
+        "value": "使用中"
+      },
+      "可選憑證種類": {
+        "type": "CHECK_BOX",
+        "value": [
+          "發票",
+          "收據",
+          "無"
+        ]
+      },
+      "固定賣方統編": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "固定格式": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "交通工具規則": {
+        "type": "CHECK_BOX",
+        "value": [
+          "需紙本憑證",
+          "理由必填"
+        ]
+      },
+      "憑證種類規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      }
+    },
+    {
+      "$id": {
+        "type": "__ID__",
+        "value": "6"
+      },
+      "類型": {
+        "type": "RADIO_BUTTON",
+        "value": "交通工具"
+      },
+      "名稱": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": "Uber"
+      },
+      "使用狀況": {
+        "type": "DROP_DOWN",
+        "value": "使用中"
+      },
+      "可選憑證種類": {
+        "type": "CHECK_BOX",
+        "value": [
+          "發票",
+          "收據"
+        ]
+      },
+      "固定賣方統編": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "固定格式": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "交通工具規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "憑證種類規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      }
+    },
+    {
+      "$id": {
+        "type": "__ID__",
+        "value": "7"
+      },
+      "類型": {
+        "type": "RADIO_BUTTON",
+        "value": "交通工具"
+      },
+      "名稱": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": "汽機車短租"
+      },
+      "使用狀況": {
+        "type": "DROP_DOWN",
+        "value": "使用中"
+      },
+      "可選憑證種類": {
+        "type": "CHECK_BOX",
+        "value": [
+          "發票",
+          "收據"
+        ]
+      },
+      "固定賣方統編": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "固定格式": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "交通工具規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "憑證種類規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      }
+    },
+    {
+      "$id": {
+        "type": "__ID__",
+        "value": "8"
+      },
+      "類型": {
+        "type": "RADIO_BUTTON",
+        "value": "憑證種類"
+      },
+      "名稱": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": "高鐵票"
+      },
+      "使用狀況": {
+        "type": "DROP_DOWN",
+        "value": "使用中"
+      },
+      "可選憑證種類": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "固定賣方統編": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "固定格式": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "交通工具規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "憑證種類規則": {
+        "type": "CHECK_BOX",
+        "value": [
+          "要算稅",
+          "開放發票號碼"
+        ]
+      }
+    },
+    {
+      "$id": {
+        "type": "__ID__",
+        "value": "9"
+      },
+      "類型": {
+        "type": "RADIO_BUTTON",
+        "value": "憑證種類"
+      },
+      "名稱": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": "車票（高鐵外）"
+      },
+      "使用狀況": {
+        "type": "DROP_DOWN",
+        "value": "使用中"
+      },
+      "可選憑證種類": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "固定賣方統編": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "固定格式": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "交通工具規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "憑證種類規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      }
+    },
+    {
+      "$id": {
+        "type": "__ID__",
+        "value": "10"
+      },
+      "類型": {
+        "type": "RADIO_BUTTON",
+        "value": "憑證種類"
+      },
+      "名稱": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": "發票"
+      },
+      "使用狀況": {
+        "type": "DROP_DOWN",
+        "value": "使用中"
+      },
+      "可選憑證種類": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "固定賣方統編": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "固定格式": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "交通工具規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "憑證種類規則": {
+        "type": "CHECK_BOX",
+        "value": [
+          "要算稅",
+          "開放發票號碼"
+        ]
+      }
+    },
+    {
+      "$id": {
+        "type": "__ID__",
+        "value": "11"
+      },
+      "類型": {
+        "type": "RADIO_BUTTON",
+        "value": "憑證種類"
+      },
+      "名稱": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": "收據"
+      },
+      "使用狀況": {
+        "type": "DROP_DOWN",
+        "value": "使用中"
+      },
+      "可選憑證種類": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "固定賣方統編": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "固定格式": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "交通工具規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "憑證種類規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      }
+    },
+    {
+      "$id": {
+        "type": "__ID__",
+        "value": "12"
+      },
+      "類型": {
+        "type": "RADIO_BUTTON",
+        "value": "憑證種類"
+      },
+      "名稱": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": "無"
+      },
+      "使用狀況": {
+        "type": "DROP_DOWN",
+        "value": "使用中"
+      },
+      "可選憑證種類": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "固定賣方統編": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "固定格式": {
+        "type": "SINGLE_LINE_TEXT",
+        "value": ""
+      },
+      "交通工具規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "憑證種類規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      }
+    }
+  ]
+}

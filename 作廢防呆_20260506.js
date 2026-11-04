@@ -68,6 +68,7 @@
         CONFIG.CONFIRM_TEXT +
         '</b></div>' +
         '</div>',
+      width: 'auto',
       input: 'text',
       inputPlaceholder: '請輸入「作廢」',
       showCancelButton: true,
