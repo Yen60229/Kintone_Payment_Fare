@@ -3465,16 +3465,23 @@
         input.addEventListener('focus', refresh);
         input.addEventListener('keydown', (e) => {
           const n = state.options.length;
-          if (e.key === 'ArrowDown' && n > 0) {
-            e.preventDefault();
-            highlight(state, (state.active + 1) % n);
-          } else if (e.key === 'ArrowUp' && n > 0) {
-            e.preventDefault();
-            highlight(state, (state.active - 1 + n) % n);
-          } else if (e.key === 'Enter') {
-            e.preventDefault();
-            const option = state.options[state.active >= 0 ? state.active : 0];
-            if (option && input.value.trim()) choose(slot, option.user);
+          switch (e.key) {
+            case 'ArrowDown':
+              if (n === 0) break;
+              e.preventDefault();
+              highlight(state, (state.active + 1) % n);
+              break;
+            case 'ArrowUp':
+              if (n === 0) break;
+              e.preventDefault();
+              highlight(state, (state.active - 1 + n) % n);
+              break;
+            case 'Enter': {
+              e.preventDefault();
+              const option = state.options[state.active >= 0 ? state.active : 0];
+              if (option && input.value.trim()) choose(slot, option.user);
+              break;
+            }
           }
         });
         wrap.appendChild(input);
@@ -3930,8 +3937,14 @@
         else if (names.has(name)) errors.push(`${where}「${M.NAME}」${name} 重複`);
         names.add(name);
         if (text(rec, M.FIXED_FORMAT) && !text(rec, M.FIXED_SELLER_TAX_ID)) errors.push(`${where}${name}：有「${M.FIXED_FORMAT}」但「${M.FIXED_SELLER_TAX_ID}」空白`);
-        if (type === M.TYPE_VEHICLE) vehicles.push({ rec, name });
-        else if (type === M.TYPE_RECEIPT) receipts.push({ rec, name });
+        switch (type) {
+          case M.TYPE_VEHICLE:
+            vehicles.push({ rec, name });
+            break;
+          case M.TYPE_RECEIPT:
+            receipts.push({ rec, name });
+            break;
+        }
       });
       if (!vehicles.length) errors.push(`沒有任何使用中的「${M.TYPE_VEHICLE}」記錄`);
       if (!receipts.length) errors.push(`沒有任何使用中的「${M.TYPE_RECEIPT}」記錄`);
@@ -4498,8 +4511,14 @@
         const flag = r[CAL.IS_HOLIDAY]?.value;
         if (!date) return;
         if (date > lastDate) lastDate = date;
-        if (flag === CAL.HOLIDAY_VALUE) holidayOf[date] = true;
-        else if (flag === CAL.WORKDAY_VALUE) holidayOf[date] = false;
+        switch (flag) {
+          case CAL.HOLIDAY_VALUE:
+            holidayOf[date] = true;
+            break;
+          case CAL.WORKDAY_VALUE:
+            holidayOf[date] = false;
+            break;
+        }
       });
       // 行事曆每週都有週末記錄；查詢區間尾端超過 7 天沒記錄＝那段還沒建檔（例如下一年度），只能靠星期判斷
       if (addDays(parseDate(lastDate), 7) < end) {

@@ -112,8 +112,14 @@
       const flag = r[CAL.IS_HOLIDAY]?.value;
       if (!date) return;
       if (date > lastDate) lastDate = date;
-      if (flag === CAL.HOLIDAY_VALUE) holidayOf[date] = true;
-      else if (flag === CAL.WORKDAY_VALUE) holidayOf[date] = false;
+      switch (flag) {
+        case CAL.HOLIDAY_VALUE:
+          holidayOf[date] = true;
+          break;
+        case CAL.WORKDAY_VALUE:
+          holidayOf[date] = false;
+          break;
+      }
     });
     // 行事曆每週都有週末記錄；查詢區間尾端超過 7 天沒記錄＝那段還沒建檔（例如下一年度），只能靠星期判斷
     if (addDays(parseDate(lastDate), 7) < end) {

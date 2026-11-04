@@ -112,8 +112,14 @@
       else if (names.has(name)) errors.push(`${where}「${M.NAME}」${name} 重複`);
       names.add(name);
       if (text(rec, M.FIXED_FORMAT) && !text(rec, M.FIXED_SELLER_TAX_ID)) errors.push(`${where}${name}：有「${M.FIXED_FORMAT}」但「${M.FIXED_SELLER_TAX_ID}」空白`);
-      if (type === M.TYPE_VEHICLE) vehicles.push({ rec, name });
-      else if (type === M.TYPE_RECEIPT) receipts.push({ rec, name });
+      switch (type) {
+        case M.TYPE_VEHICLE:
+          vehicles.push({ rec, name });
+          break;
+        case M.TYPE_RECEIPT:
+          receipts.push({ rec, name });
+          break;
+      }
     });
     if (!vehicles.length) errors.push(`沒有任何使用中的「${M.TYPE_VEHICLE}」記錄`);
     if (!receipts.length) errors.push(`沒有任何使用中的「${M.TYPE_RECEIPT}」記錄`);

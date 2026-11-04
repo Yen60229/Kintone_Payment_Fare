@@ -352,16 +352,23 @@
       input.addEventListener('focus', refresh);
       input.addEventListener('keydown', (e) => {
         const n = state.options.length;
-        if (e.key === 'ArrowDown' && n > 0) {
-          e.preventDefault();
-          highlight(state, (state.active + 1) % n);
-        } else if (e.key === 'ArrowUp' && n > 0) {
-          e.preventDefault();
-          highlight(state, (state.active - 1 + n) % n);
-        } else if (e.key === 'Enter') {
-          e.preventDefault();
-          const option = state.options[state.active >= 0 ? state.active : 0];
-          if (option && input.value.trim()) choose(slot, option.user);
+        switch (e.key) {
+          case 'ArrowDown':
+            if (n === 0) break;
+            e.preventDefault();
+            highlight(state, (state.active + 1) % n);
+            break;
+          case 'ArrowUp':
+            if (n === 0) break;
+            e.preventDefault();
+            highlight(state, (state.active - 1 + n) % n);
+            break;
+          case 'Enter': {
+            e.preventDefault();
+            const option = state.options[state.active >= 0 ? state.active : 0];
+            if (option && input.value.trim()) choose(slot, option.user);
+            break;
+          }
         }
       });
       wrap.appendChild(input);

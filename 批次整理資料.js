@@ -308,16 +308,21 @@
     for (const raw of filters || []) {
       const f = String(raw).trim();
       const left = /^左(\d+)$/.exec(f);
-      if (f === '數字') {
-        out = out.replace(/\D/g, '');
-      } else if (left) {
-        out = Array.from(out).slice(0, Number(left[1])).join('');
-      } else if (f === '括號內') {
-        out = bracketInner(out);
-      } else if (f === 'BusinessArea') {
-        out = lookupBusinessArea(out, ctx);
-      } else {
-        console.warn('批次整理資料：不認得的篩選器', f);
+      switch (true) {
+        case f === '數字':
+          out = out.replace(/\D/g, '');
+          break;
+        case Boolean(left):
+          out = Array.from(out).slice(0, Number(left[1])).join('');
+          break;
+        case f === '括號內':
+          out = bracketInner(out);
+          break;
+        case f === 'BusinessArea':
+          out = lookupBusinessArea(out, ctx);
+          break;
+        default:
+          console.warn('批次整理資料：不認得的篩選器', f);
       }
     }
     return out;
@@ -348,23 +353,30 @@
     const record = ctx.record || {};
     let text;
 
-    if (name === 'TODAY') {
-      text = formatDate(ctx.today || new Date(), dateFormat);
-    } else if (name === '轉出日期') {
-      text = formatDate(ctx.exportDate || ctx.today || new Date(), dateFormat);
-    } else if (name === '序號') {
-      text = ctx.seq === undefined || ctx.seq === null ? '' : String(ctx.seq);
-    } else if (name === '$id') {
-      text = valueToText(record.$id?.value, dateFormat);
-    } else if (name.includes('.')) {
-      const dot = name.indexOf('.');
-      const tableCode = name.slice(0, dot);
-      const fieldCode = name.slice(dot + 1);
-      const rows = record[tableCode]?.value;
-      const row = tableCode === TABLE.CODE && ctx.detailRow ? ctx.detailRow : Array.isArray(rows) ? rows[0] : null;
-      text = valueToText(row?.value?.[fieldCode]?.value, dateFormat);
-    } else {
-      text = valueToText(record[name]?.value, dateFormat);
+    switch (name) {
+      case 'TODAY':
+        text = formatDate(ctx.today || new Date(), dateFormat);
+        break;
+      case '轉出日期':
+        text = formatDate(ctx.exportDate || ctx.today || new Date(), dateFormat);
+        break;
+      case '序號':
+        text = ctx.seq === undefined || ctx.seq === null ? '' : String(ctx.seq);
+        break;
+      case '$id':
+        text = valueToText(record.$id?.value, dateFormat);
+        break;
+      default:
+        if (name.includes('.')) {
+          const dot = name.indexOf('.');
+          const tableCode = name.slice(0, dot);
+          const fieldCode = name.slice(dot + 1);
+          const rows = record[tableCode]?.value;
+          const row = tableCode === TABLE.CODE && ctx.detailRow ? ctx.detailRow : Array.isArray(rows) ? rows[0] : null;
+          text = valueToText(row?.value?.[fieldCode]?.value, dateFormat);
+        } else {
+          text = valueToText(record[name]?.value, dateFormat);
+        }
     }
 
     return applyFilters(text, parts.slice(1), ctx);
