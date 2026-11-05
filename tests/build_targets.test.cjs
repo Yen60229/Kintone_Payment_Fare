@@ -36,6 +36,7 @@ const DESKTOP_ONLY = [
   '帳號權限設定_20260722.js',
   '檔案批次_6版_PDFLib向量版_20260716.js',
   '批次整理資料.js',
+  '表頭查詢連結_20261105.js',
   'print.show顯示單據編號_請款單據編號.js',
   '請款單作廢_style_20260506.js',
   'file_reader.js',

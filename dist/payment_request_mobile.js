@@ -241,9 +241,8 @@
           ROUTE: '起訖點',
           AMOUNT: '金額',
           EXPENSE: '費用歸屬',
-          NOTE: '備註',
           RECEIPT_TYPE: '憑證種類',
-          INVOICE_NO: '發票號碼', // 標籤「發票號碼／票號」
+          INVOICE_NO: '發票號碼', // 標籤「發票號碼／高鐵票號」
           SELLER_TAX_ID: '賣方統編',
           FORMAT: '格式',
           TAX: '稅額',
@@ -260,7 +259,7 @@
     });
 
     // ── 交通費明細子表格的版面（詳細頁／列印頁的欄寬用，payment_request_main 的 layoutTrafficTable）────
-    //   來源：kintone MCP 讀 749 表單 rev 1798（form_snapshots/749_rev1798_traffic_table.json，測試會比對）。
+    //   來源：kintone MCP 讀 749 表單 rev 1880（form_snapshots/749_rev1880_traffic_table.json，測試會比對）。
     //   COLUMNS 依畫面上的欄位順序；label＝表頭文字（用來找出畫面上是哪一欄），type／unit 決定顯示文字怎麼算。
     //   表單改了子表格欄位（順序、標籤、型別）→ 用 MCP 重讀、更新快照與這裡。
     const TRAFFIC_TABLE_LAYOUT = Object.freeze({
@@ -273,15 +272,37 @@
           { code: FIELDS.TRAFFIC_TABLE.COLS.VISIT_CUSTOMER, label: '拜訪客戶（目的）', type: 'SINGLE_LINE_TEXT' },
           { code: FIELDS.TRAFFIC_TABLE.COLS.AMOUNT, label: '金額（含稅）', type: 'NUMBER', unit: '元' },
           { code: FIELDS.TRAFFIC_TABLE.COLS.EXPENSE, label: '費用歸屬', type: 'SINGLE_LINE_TEXT' },
-          { code: FIELDS.TRAFFIC_TABLE.COLS.INVOICE_NO, label: '發票號碼／票號', type: 'SINGLE_LINE_TEXT' },
+          { code: FIELDS.TRAFFIC_TABLE.COLS.INVOICE_NO, label: '發票號碼／高鐵票號', type: 'SINGLE_LINE_TEXT' },
           { code: FIELDS.TRAFFIC_TABLE.COLS.SELLER_TAX_ID, label: '賣方統編', type: 'SINGLE_LINE_TEXT' },
           { code: FIELDS.TRAFFIC_TABLE.COLS.FORMAT, label: '格式', type: 'SINGLE_LINE_TEXT' },
           { code: FIELDS.TRAFFIC_TABLE.COLS.TAX, label: '稅額', type: 'NUMBER', unit: '元' },
-          { code: FIELDS.TRAFFIC_TABLE.COLS.NOTE, label: '備註', type: 'SINGLE_LINE_TEXT' },
         ].map(Object.freeze),
       ),
       // 欄寬＝文字單位數（中文 2、英數 1）× PX_PER_UNIT ＋ PADDING_PX，限制在 MIN～MAX；表頭文字也算進去
       WIDTH: Object.freeze({ PX_PER_UNIT: 8, PADDING_PX: 32, MIN_PX: 64, MAX_PX: 320 }),
+      // 表頭上的官方查詢連結（表頭查詢連結_20261105.js）：key 是欄位代碼，text 要是該欄 label 裡的文字。
+      //   一個表頭可放多個連結，依 label 裡出現的順序排；網址換了改這裡，重新打包上傳。
+      HEADER_LINKS: Object.freeze({
+        [FIELDS.TRAFFIC_TABLE.COLS.INVOICE_NO]: Object.freeze([
+          Object.freeze({
+            text: '發票號碼',
+            url: 'https://www.einvoice.nat.gov.tw/portal/btc/audit/btc601w/search',
+            title: '查看發票號碼說明',
+          }),
+          Object.freeze({
+            text: '高鐵票號',
+            url: 'https://ptis.thsrc.com.tw/ptis/',
+            title: '另開新分頁：台灣高鐵各式票證交易／搭乘紀錄查詢',
+          }),
+        ]),
+        [FIELDS.TRAFFIC_TABLE.COLS.SELLER_TAX_ID]: Object.freeze([
+          Object.freeze({
+            text: '賣方統編',
+            url: 'https://www.etax.nat.gov.tw/etwmain/etw113w1/ban/query',
+            title: '另開新分頁：財政部稅務入口網－稅籍登記資料公示查詢',
+          }),
+        ]),
+      }),
     });
 
     // ── 列表直接編輯（payment_request_main 的 index.edit.show）────────────────

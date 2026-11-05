@@ -874,6 +874,16 @@
   display: none !important;
 }
 
+/* 交通費明細表頭的官方查詢連結（表頭查詢連結_20261105.js）：沿用表頭文字顏色，只靠底線表示可點 */
+.pr-header-link,
+.pr-header-link:visited {
+  color: inherit;
+  text-decoration: underline;
+}
+.pr-header-link:hover {
+  opacity: 0.75;
+}
+
 /* ── 欄位標籤說明圖示（欄位標籤說明圖示_20261104.js，只上傳到 App 752） ──
    問號小圖標；說明文字放在 data-pr-hint，hover／鍵盤 focus 時用 ::after 顯示（往下展開）。
    表頭或欄位容器若 overflow:hidden 會切到 tooltip，JS 替祖先加 .pr-label-hint-host 改成 visible。 */

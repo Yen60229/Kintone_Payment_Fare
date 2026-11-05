@@ -276,7 +276,6 @@ const fullRow = (F) => {
     [c.SELLER_TAX_ID]: '00000000',
     [c.FORMAT]: '22',
     [c.TAX]: '71',
-    [c.NOTE]: '回程',
   });
 };
 
@@ -331,7 +330,7 @@ check('planTrafficTable：整欄沒有值就藏；有值依最長顯示文字與
   const byCode = Object.fromEntries(plan.map((p) => [p.code, p]));
   assert.deepStrictEqual(plan.map((p) => p.code), C.TRAFFIC_TABLE_LAYOUT.COLUMNS.map((col) => col.code), '依版面順序');
   assert.strictEqual(byCode[c.TAX].hidden, true, '稅額全是 0／空白 → 藏');
-  assert.strictEqual(byCode[c.NOTE].hidden, true, '備註沒填 → 藏');
+  assert.strictEqual(byCode[c.FORMAT].hidden, true, '格式沒填 → 藏');
   // 金額：顯示「12,345元」7 單位 < 表頭「金額（含稅）」12 單位 → 12 × 8 ＋ 32
   assert.strictEqual(T.displayText({ value: '12345' }, { type: 'NUMBER', unit: '元' }), '12,345元');
   assert.strictEqual(byCode[c.AMOUNT].width, '128px');
@@ -379,18 +378,18 @@ check('詳細頁：依記錄的值定寬、沒有值的欄藏起來；只設 wid
   const t = fakeTable(labelsOf(C), { rowCount: 2 });
   useTables(env, t);
   const row1 = fullRow(F);
-  row1.value[c.NOTE].value = '';
+  row1.value[c.FORMAT].value = '';
   const row2 = fullRow(F);
-  row2.value[c.NOTE].value = '';
+  row2.value[c.FORMAT].value = '';
   await env.fire('app.record.detail.show', { record: recordWithRows(F, [row1, row2]) });
   env.flushTimers();
   const visit = t.col('拜訪客戶（目的）');
   assert.strictEqual(visit.th.style.width, `${'台中營業部-綜合物流營業課'.length * 2 * 8 - 8 + 32}px`, '12 個中文 ＋ 1 個「-」');
   assert.deepStrictEqual(visit.tds.map((td) => td.style.minWidth), [visit.th.style.width, visit.th.style.width]);
   assert.ok(t.cells.every((cell) => !cell.style.maxWidth), '不設 max-width');
-  const note = t.col('備註');
-  assert.strictEqual(note.th.style.display, 'none');
-  assert.ok(note.tds.every((td) => td.style.display === 'none'));
+  const format = t.col('格式');
+  assert.strictEqual(format.th.style.display, 'none');
+  assert.ok(format.tds.every((td) => td.style.display === 'none'));
   assert.strictEqual(t.marked().length, t.cells.length, '每一格都有記號（可還原）');
 });
 
@@ -445,7 +444,7 @@ check('進新增／編輯畫面：把詳細頁調過的格子寬度與隱藏還�
     useTables(env, t);
     await env.fire('app.record.detail.show', { record: recordWithRows(F, [tableRow({ [F.TRAFFIC_TABLE.COLS.ROUTE]: '台北→台中' })]) });
     env.flushTimers();
-    assert.strictEqual(t.col('備註').th.style.display, 'none', '沒有值的欄位在詳細頁藏起來');
+    assert.strictEqual(t.col('格式').th.style.display, 'none', '沒有值的欄位在詳細頁藏起來');
     assert.ok(t.col('起訖點').th.style.width);
     await env.fire(`app.record.${type}.show`, { record: baseRecord(F) });
     assert.ok(t.cells.every((cell) => !cell.style.display && !cell.style.width && !cell.style.minWidth), type);
@@ -479,7 +478,7 @@ check('稅額、總金額、借支等 723 功能已刪：沒有註冊稅額／�
   const { env, F } = await loadMain();
   const T = F.TRAFFIC_TABLE;
   const registered = env.registeredTypes().join('\n');
-  [T.COLS.AMOUNT, T.COLS.TAX, T.COLS.NOTE, T.COLS.RECEIPT_TYPE, T.CODE, F.PAY_METHOD].forEach((code) => {
+  [T.COLS.AMOUNT, T.COLS.TAX, T.COLS.RECEIPT_TYPE, T.CODE, F.PAY_METHOD].forEach((code) => {
     assert.ok(!registered.includes(`change.${code}`), `不應註冊 ${code} 的 change 事件`);
   });
 });

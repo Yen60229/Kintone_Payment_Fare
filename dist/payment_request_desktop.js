@@ -237,9 +237,8 @@
           ROUTE: '起訖點',
           AMOUNT: '金額',
           EXPENSE: '費用歸屬',
-          NOTE: '備註',
           RECEIPT_TYPE: '憑證種類',
-          INVOICE_NO: '發票號碼', // 標籤「發票號碼／票號」
+          INVOICE_NO: '發票號碼', // 標籤「發票號碼／高鐵票號」
           SELLER_TAX_ID: '賣方統編',
           FORMAT: '格式',
           TAX: '稅額',
@@ -256,7 +255,7 @@
     });
 
     // ── 交通費明細子表格的版面（詳細頁／列印頁的欄寬用，payment_request_main 的 layoutTrafficTable）────
-    //   來源：kintone MCP 讀 749 表單 rev 1798（form_snapshots/749_rev1798_traffic_table.json，測試會比對）。
+    //   來源：kintone MCP 讀 749 表單 rev 1880（form_snapshots/749_rev1880_traffic_table.json，測試會比對）。
     //   COLUMNS 依畫面上的欄位順序；label＝表頭文字（用來找出畫面上是哪一欄），type／unit 決定顯示文字怎麼算。
     //   表單改了子表格欄位（順序、標籤、型別）→ 用 MCP 重讀、更新快照與這裡。
     const TRAFFIC_TABLE_LAYOUT = Object.freeze({
@@ -269,15 +268,37 @@
           { code: FIELDS.TRAFFIC_TABLE.COLS.VISIT_CUSTOMER, label: '拜訪客戶（目的）', type: 'SINGLE_LINE_TEXT' },
           { code: FIELDS.TRAFFIC_TABLE.COLS.AMOUNT, label: '金額（含稅）', type: 'NUMBER', unit: '元' },
           { code: FIELDS.TRAFFIC_TABLE.COLS.EXPENSE, label: '費用歸屬', type: 'SINGLE_LINE_TEXT' },
-          { code: FIELDS.TRAFFIC_TABLE.COLS.INVOICE_NO, label: '發票號碼／票號', type: 'SINGLE_LINE_TEXT' },
+          { code: FIELDS.TRAFFIC_TABLE.COLS.INVOICE_NO, label: '發票號碼／高鐵票號', type: 'SINGLE_LINE_TEXT' },
           { code: FIELDS.TRAFFIC_TABLE.COLS.SELLER_TAX_ID, label: '賣方統編', type: 'SINGLE_LINE_TEXT' },
           { code: FIELDS.TRAFFIC_TABLE.COLS.FORMAT, label: '格式', type: 'SINGLE_LINE_TEXT' },
           { code: FIELDS.TRAFFIC_TABLE.COLS.TAX, label: '稅額', type: 'NUMBER', unit: '元' },
-          { code: FIELDS.TRAFFIC_TABLE.COLS.NOTE, label: '備註', type: 'SINGLE_LINE_TEXT' },
         ].map(Object.freeze),
       ),
       // 欄寬＝文字單位數（中文 2、英數 1）× PX_PER_UNIT ＋ PADDING_PX，限制在 MIN～MAX；表頭文字也算進去
       WIDTH: Object.freeze({ PX_PER_UNIT: 8, PADDING_PX: 32, MIN_PX: 64, MAX_PX: 320 }),
+      // 表頭上的官方查詢連結（表頭查詢連結_20261105.js）：key 是欄位代碼，text 要是該欄 label 裡的文字。
+      //   一個表頭可放多個連結，依 label 裡出現的順序排；網址換了改這裡，重新打包上傳。
+      HEADER_LINKS: Object.freeze({
+        [FIELDS.TRAFFIC_TABLE.COLS.INVOICE_NO]: Object.freeze([
+          Object.freeze({
+            text: '發票號碼',
+            url: 'https://www.einvoice.nat.gov.tw/portal/btc/audit/btc601w/search',
+            title: '另開新分頁：財政部電子發票整合服務平台－一般性發票查詢',
+          }),
+          Object.freeze({
+            text: '高鐵票號',
+            url: 'https://ptis.thsrc.com.tw/ptis/',
+            title: '另開新分頁：台灣高鐵各式票證交易／搭乘紀錄查詢',
+          }),
+        ]),
+        [FIELDS.TRAFFIC_TABLE.COLS.SELLER_TAX_ID]: Object.freeze([
+          Object.freeze({
+            text: '賣方統編',
+            url: 'https://www.etax.nat.gov.tw/etwmain/etw113w1/ban/query',
+            title: '另開新分頁：財政部稅務入口網－稅籍登記資料公示查詢',
+          }),
+        ]),
+      }),
     });
 
     // ── 列表直接編輯（payment_request_main 的 index.edit.show）────────────────
@@ -5580,7 +5601,6 @@
         ['起訖點', F.TRAFFIC_TABLE.COLS.ROUTE],
         ['金額', F.TRAFFIC_TABLE.COLS.AMOUNT],
         ['費用歸屬', F.TRAFFIC_TABLE.COLS.EXPENSE],
-        ['備註', F.TRAFFIC_TABLE.COLS.NOTE],
         ['憑證種類', F.TRAFFIC_TABLE.COLS.RECEIPT_TYPE],
         ['發票號碼', F.TRAFFIC_TABLE.COLS.INVOICE_NO],
         ['賣方統編', F.TRAFFIC_TABLE.COLS.SELLER_TAX_ID],
@@ -8049,6 +8069,135 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       KT.record().setFieldShown(C.FIELDS.DEV_ONLY_DATA, C.ADMIN_USERS.includes(kintone.getLoginUser().code));
       return event;
     });
+  })();
+
+  (() => {
+
+    // =============================================================================
+    // 交通費明細表頭的官方查詢連結（桌面版的新增、編輯、詳細畫面；列印頁和手機版不加）
+    //
+    // 表頭文字在 kintone 表單上，子表格表頭放不了連結，所以由程式把文字換成連結。
+    // 連結清單在 config 的 TRAFFIC_TABLE_LAYOUT.HEADER_LINKS，另開新分頁。
+    // 只包住表頭裡的文字，不動必填的 *；文字本身不變，main 靠表頭文字找欄位的邏輯不受影響。
+    //
+    // 【DOM class 是 kintone 內部的】HEADER_SELECTOR 不是公開 API，kintone 改版可能失效；
+    //   找不到元素就什麼都不做（不丟錯、不影響其他功能）。
+    // 【畫面可能還沒畫好】show 事件當下找不到要加的表頭時，隔一小段時間再試，最多 MAX_RETRY 次。
+    // =============================================================================
+
+    const HEADER_SELECTOR = 'thead th.subtable-label-gaia';
+    const DONE_CLASS = 'pr-header-links-done';
+    const LINK_CLASS = 'pr-header-link';
+    const RETRY_MS = 500;
+    const MAX_RETRY = 4;
+    const TEXT_NODE = 3;
+
+    /** 表頭格的文字（去掉必填的 *） */
+    const headerLabel = (th) => String(th?.textContent || '').replace(/\*/g, '').trim();
+
+    /**
+     * 把表頭文字切成一般文字與連結（純函式）。連結文字依 links 的順序往後找，找不到的略過。
+     * @param {string} text
+     * @param {Array<{ text: string, url: string, title?: string }>} links
+     * @returns {Array<{ text: string, url?: string, title?: string }>}
+     */
+    const splitByLinks = (text, links) => {
+      const segments = [];
+      let rest = text;
+      links.forEach((link) => {
+        const at = rest.indexOf(link.text);
+        if (at < 0) return;
+        if (at > 0) segments.push({ text: rest.slice(0, at) });
+        segments.push({ text: link.text, url: link.url, title: link.title });
+        rest = rest.slice(at + link.text.length);
+      });
+      if (rest) segments.push({ text: rest });
+      return segments;
+    };
+
+    /** 在 node 底下找內容等於 label 的文字節點；沒有 → null */
+    const findTextNode = (node, label) => {
+      if (node.nodeType === TEXT_NODE) return node.nodeValue.trim() === label ? node : null;
+      for (const child of Array.from(node.childNodes || [])) {
+        const found = findTextNode(child, label);
+        if (found) return found;
+      }
+      return null;
+    };
+
+    /** 建一個另開新分頁的連結 */
+    const createLink = (segment, doc) => {
+      const a = doc.createElement('a');
+      a.className = LINK_CLASS;
+      a.textContent = segment.text;
+      a.setAttribute('href', segment.url);
+      a.setAttribute('target', '_blank');
+      a.setAttribute('rel', 'noopener noreferrer');
+      if (segment.title) a.setAttribute('title', segment.title);
+      return a;
+    };
+
+    /**
+     * 把一格表頭的文字換成連結。
+     * @param {Element} th
+     * @param {string} label 表頭文字
+     * @param {Array} links
+     * @param {Document} doc
+     * @returns {boolean} 有沒有換
+     */
+    const linkHeader = (th, label, links, doc) => {
+      const textNode = findTextNode(th, label);
+      if (!textNode) return false;
+      const parent = textNode.parentNode;
+      splitByLinks(textNode.nodeValue, links).forEach((segment) => {
+        const node = segment.url ? createLink(segment, doc) : doc.createTextNode(segment.text);
+        parent.insertBefore(node, textNode);
+      });
+      parent.removeChild(textNode);
+      th.classList.add(DONE_CLASS);
+      return true;
+    };
+
+    /**
+     * 處理畫面上的表頭；已處理過的跳過，可重複執行。
+     * @param {Document} doc
+     * @param {{ COLUMNS: Array, HEADER_LINKS: Object }} layout
+     * @returns {number} 畫面上有設定連結的表頭數（含已處理過的）
+     */
+    const decorateHeaders = (doc, layout) => {
+      const linksByLabel = new Map(
+        layout.COLUMNS.filter((column) => layout.HEADER_LINKS[column.code]).map((column) => [column.label, layout.HEADER_LINKS[column.code]]),
+      );
+      let matched = 0;
+      Array.from(doc.querySelectorAll(HEADER_SELECTOR)).forEach((th) => {
+        const label = headerLabel(th);
+        const links = linksByLabel.get(label);
+        if (!links) return;
+        matched += 1;
+        if (!th.classList.contains(DONE_CLASS)) linkHeader(th, label, links, doc);
+      });
+      return matched;
+    };
+
+    const KT = window.PR_KT;
+    const layout = window.PR_CONFIG.TRAFFIC_TABLE_LAYOUT;
+
+    /** 找不到表頭就稍後再試；一切失敗都不影響表單 */
+    const tryDecorate = (retriesLeft) => {
+      try {
+        if (decorateHeaders(document, layout) > 0 || retriesLeft <= 0) return;
+        setTimeout(() => tryDecorate(retriesLeft - 1), RETRY_MS);
+      } catch (e) {
+        console.warn('交通費明細表頭連結失敗（不影響使用）', e);
+      }
+    };
+
+    KT.on(['app.record.create.show', 'app.record.edit.show', 'app.record.detail.show'], (event) => {
+      tryDecorate(MAX_RETRY);
+      return event;
+    });
+
+    window.PR_TABLE_HEADER_LINKS = Object.freeze({ splitByLinks, decorateHeaders, HEADER_SELECTOR });
   })();
 
   (() => {

@@ -60,12 +60,30 @@ check('已刪除的 723 設定鍵全部不存在（頂層）', () => {
 
 // ── 子表格版面（MCP 快照）───────────────────────────────────────────────────
 check('TRAFFIC_TABLE_LAYOUT.COLUMNS 和 MCP 讀出的 749 表單快照一致（順序、代碼、標籤、型別、單位），且涵蓋子表格全部欄位', () => {
-  const snap = JSON.parse(fs.readFileSync(path.join(rootDir, 'form_snapshots', '749_rev1798_traffic_table.json'), 'utf8'));
+  const snap = JSON.parse(fs.readFileSync(path.join(rootDir, 'form_snapshots', '749_rev1880_traffic_table.json'), 'utf8'));
   assert.strictEqual(snap.subtable, c.FIELDS.TRAFFIC_TABLE.CODE);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(c.TRAFFIC_TABLE_LAYOUT.COLUMNS)), snap.columns);
   assert.deepStrictEqual(c.TRAFFIC_TABLE_LAYOUT.COLUMNS.map((col) => col.code).sort(), Object.values(c.FIELDS.TRAFFIC_TABLE.COLS).sort());
   const w = c.TRAFFIC_TABLE_LAYOUT.WIDTH;
   assert.ok(w.MIN_PX > 0 && w.MIN_PX < w.MAX_PX);
+});
+
+check('TRAFFIC_TABLE_LAYOUT.HEADER_LINKS：欄位存在、連結文字都在表頭標籤裡且照順序、網址全是 https', () => {
+  const { COLUMNS, HEADER_LINKS } = c.TRAFFIC_TABLE_LAYOUT;
+  const { INVOICE_NO, SELLER_TAX_ID } = c.FIELDS.TRAFFIC_TABLE.COLS;
+  assert.deepStrictEqual(Object.keys(HEADER_LINKS).sort(), [INVOICE_NO, SELLER_TAX_ID].sort());
+  Object.entries(HEADER_LINKS).forEach(([code, links]) => {
+    const column = COLUMNS.find((col) => col.code === code);
+    assert.ok(column, code);
+    let from = 0;
+    links.forEach((link) => {
+      const at = column.label.indexOf(link.text, from);
+      assert.ok(at >= 0, `「${link.text}」要依序出現在「${column.label}」`);
+      from = at + link.text.length;
+      assert.ok(new URL(link.url).protocol === 'https:', link.url);
+      assert.ok(link.title);
+    });
+  });
 });
 
 // ── 列表直接編輯 ────────────────────────────────────────────────────────────
@@ -175,7 +193,7 @@ check('FIELDS 主表欄位代碼正確', () => {
   );
 });
 
-check('FIELDS 子表格：交通費請款單 12 欄、簽核記錄 3 欄，欄位代碼正確', () => {
+check('FIELDS 子表格：交通費請款單 11 欄、簽核記錄 3 欄，欄位代碼正確', () => {
   assert.strictEqual(F.TRAFFIC_TABLE.CODE, '交通費請款單');
   assert.deepStrictEqual(
     { ...F.TRAFFIC_TABLE.COLS },
@@ -186,7 +204,6 @@ check('FIELDS 子表格：交通費請款單 12 欄、簽核記錄 3 欄，欄�
       ROUTE: '起訖點',
       AMOUNT: '金額',
       EXPENSE: '費用歸屬',
-      NOTE: '備註',
       RECEIPT_TYPE: '憑證種類',
       INVOICE_NO: '發票號碼',
       SELLER_TAX_ID: '賣方統編',
