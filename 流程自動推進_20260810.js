@@ -125,7 +125,7 @@
 
   /**
    * 判斷這筆記錄是否該在詳細頁自動補推一次（純函式，供測試）
-   * 僅限本人（申請人或建立人）觸發，避免他人瀏覽時誤打 API。
+   * 僅限本人（建立人）觸發，避免他人瀏覽時誤打 API。
    * @param {Object} record kintone 記錄物件
    * @param {string} loginCode 登入者帳號 code
    * @returns {boolean}
@@ -139,11 +139,10 @@
     if (!recordId || recordId === '0') return false;
     if (!loginCode) return false;
 
-    const applicantCode = record[F.APPLICANT]?.value?.[0]?.code;
-    // '建立人' 為 kintone 內建欄位，非本表單自訂欄位，故不進 PR_CONFIG.FIELDS
+    // '建立人' 為 kintone 內建欄位（CREATOR，值是單一物件，沒有 value[0]），非本表單自訂欄位，故不進 PR_CONFIG.FIELDS
     const creatorCode = record['建立人']?.value?.code;
 
-    return loginCode === applicantCode || loginCode === creatorCode;
+    return Boolean(creatorCode) && loginCode === creatorCode;
   };
 
   /**

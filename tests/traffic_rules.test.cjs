@@ -334,7 +334,7 @@ check('開畫面不改憑證種類（舊單照原樣顯示），存檔時 valida
   const ev = await env.fire('app.record.edit.show', { record: r });
   assert.strictEqual(ev.record[T.CODE].value[0].value[COLS.RECEIPT_TYPE].value, '高鐵票');
   const errs = R.validate(r);
-  assert.ok(errs.some((e) => e.includes('第 1 行') && e.includes('計程車') && e.includes('高鐵票') && e.includes('發票、收據、無')), errs.join('\n'));
+  assert.ok(errs.some((e) => e.includes('第 1 行') && e.includes('計程車') && e.includes('高鐵票') && e.includes('發票、收據')), errs.join('\n'));
 });
 
 check('allowedReceiptTypes：交通工具空白 → null（不限制）', () => {
@@ -356,7 +356,7 @@ check('改憑證種類成「無」（create／edit 變更事件）→ 賣方統�
   for (const type of ['create', 'edit']) {
     const { env } = setup();
     const r = record([
-      row({ [COLS.VEHICLE]: '計程車', [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '無', [COLS.SELLER_TAX_ID]: '12345678', [COLS.FORMAT]: '21', [COLS.TAX]: '50' }),
+      row({ [COLS.VEHICLE]: '捷運／公車', [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '無', [COLS.SELLER_TAX_ID]: '12345678', [COLS.FORMAT]: '21', [COLS.TAX]: '50' }),
       row({ [COLS.VEHICLE]: '計程車', [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '發票', [COLS.SELLER_TAX_ID]: '87654321', [COLS.FORMAT]: '21', [COLS.TAX]: '50' }),
     ]);
     const ev = await fireRowChange(env, `app.record.${type}.change.${COLS.RECEIPT_TYPE}`, r, 0);
@@ -384,8 +384,9 @@ check('detail.show 不處理（唯讀頁面不清值）', async () => {
 
 check('從「無」改回發票 → 三欄解鎖，稅額重算', async () => {
   const { env } = setup();
-  const r = record([row({ [COLS.VEHICLE]: '計程車', [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '無' })]);
+  const r = record([row({ [COLS.VEHICLE]: '捷運／公車', [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '無' })]);
   let ev = await fireRowChange(env, `app.record.edit.change.${COLS.RECEIPT_TYPE}`, r, 0);
+  ev.record[T.CODE].value[0].value[COLS.VEHICLE].value = '計程車'; // 「無」只有捷運／公車能選，要改回發票得先換成能開發票的交通工具
   ev.record[T.CODE].value[0].value[COLS.RECEIPT_TYPE].value = '發票';
   ev = await fireRowChange(env, `app.record.edit.change.${COLS.RECEIPT_TYPE}`, ev.record, 0);
   const v = ev.record[T.CODE].value[0].value;
@@ -437,10 +438,11 @@ check('create.show／edit.show、改金額、存檔前 normalize：收據的列�
 
 check('從「無」改收據 → 仍鎖住、稅額 0；收據改發票 → 解鎖、稅額重算', async () => {
   const { env } = setup();
-  const r = record([row({ [COLS.VEHICLE]: '計程車', [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '無' })]);
+  const r = record([row({ [COLS.VEHICLE]: '捷運／公車', [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '無' })]);
   let ev = await fireRowChange(env, `app.record.edit.change.${COLS.RECEIPT_TYPE}`, r, 0);
   ev.record[T.CODE].value[0].value[COLS.RECEIPT_TYPE].value = '收據';
   ev = await fireRowChange(env, `app.record.edit.change.${COLS.RECEIPT_TYPE}`, ev.record, 0);
+  ev.record[T.CODE].value[0].value[COLS.VEHICLE].value = '計程車'; // 捷運／公車不能選發票，先換成能開發票的交通工具
   assertPlainReceiptRow(ev.record[T.CODE].value[0].value, '無→收據');
   ev.record[T.CODE].value[0].value[COLS.RECEIPT_TYPE].value = '發票';
   ev = await fireRowChange(env, `app.record.edit.change.${COLS.RECEIPT_TYPE}`, ev.record, 0);
@@ -472,7 +474,7 @@ check('改回別的種類時只回到開畫面的權限狀態：帳號權限設�
 
 check('改交通工具（變更事件）時「無」的列一樣清空並鎖住；normalize（存檔前）也清空', async () => {
   const { env, R } = setup();
-  const r = record([row({ [COLS.VEHICLE]: '火車', [COLS.RECEIPT_TYPE]: '無', [COLS.TAX]: '9', [COLS.FORMAT]: '21' })]);
+  const r = record([row({ [COLS.VEHICLE]: '捷運／公車', [COLS.RECEIPT_TYPE]: '無', [COLS.TAX]: '9', [COLS.FORMAT]: '21' })]);
   const ev = await fireRowChange(env, `app.record.edit.change.${COLS.VEHICLE}`, r, 0);
   assertNoReceiptRow(ev.record[T.CODE].value[0].value, '改交通工具');
   const r2 = record([row({ [COLS.RECEIPT_TYPE]: '無', [COLS.SELLER_TAX_ID]: '1', [COLS.FORMAT]: '2', [COLS.TAX]: '3' })]);
@@ -580,7 +582,7 @@ check('menuContext：點憑證種類欄的下拉 → 依這列交通工具限制
   const receiptSel = fakeEl('div', { cls: ['gaia-argoui-select'] });
   const tbody = fakeEl('tbody').append(fakeEl('tr').append(fakeEl('td').append(vehicleSel), fakeEl('td').append(receiptSel)));
   fakeEl('table').append(thead, tbody);
-  assert.deepStrictEqual([...R.menuContext(receiptSel).allowed], ['發票', '收據', '無']);
+  assert.deepStrictEqual([...R.menuContext(receiptSel).allowed], ['發票', '收據']);
   assert.strictEqual(R.menuContext(vehicleSel).allowed, null);
   const other = fakeEl('div', { cls: ['gaia-argoui-select'] });
   fakeEl('table').append(fakeEl('thead').append(fakeEl('tr').append(fakeEl('th', { text: '公司' }))), fakeEl('tbody').append(fakeEl('tr').append(fakeEl('td').append(other))));
@@ -591,8 +593,8 @@ check('filterMenuItems：藏起不能選的憑證種類、不碰「-----」；al
   const { R } = setup();
   const items = ['-----', '高鐵票', '車票（高鐵外）', '發票', '收據', '無'].map((t) => fakeEl('div', { text: t, cls: ['goog-menuitem'] }));
   const menu = fakeEl('div', { cls: ['goog-menu'] }).append(...items);
-  assert.strictEqual(R.filterMenuItems(menu, ['發票', '收據', '無']), 2);
-  assert.deepStrictEqual(items.filter((i) => i.classes.has('pr-option-hidden')).map((i) => i.textContent), ['高鐵票', '車票（高鐵外）']);
+  assert.strictEqual(R.filterMenuItems(menu, ['發票', '收據']), 3);
+  assert.deepStrictEqual(items.filter((i) => i.classes.has('pr-option-hidden')).map((i) => i.textContent), ['高鐵票', '車票（高鐵外）', '無']);
   assert.strictEqual(R.filterMenuItems(menu, null), 0);
   assert.ok(items.every((i) => !i.classes.has('pr-option-hidden')));
 });

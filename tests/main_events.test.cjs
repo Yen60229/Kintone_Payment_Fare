@@ -2,7 +2,7 @@
 
 // 測試：payment_request_main_20260521.js 的畫面事件（749 交通費請款單）
 //   1. 說明文字 Space_Noti_1/2/3（不再依類型切換）
-//   2. 欄位鎖定：請款日期鎖、申請人／受款人只有管理員能改、申請人部門／費用所屬人部門一律鎖（依人員帶入）、
+//   2. 欄位鎖定：請款日期鎖、申請人只有管理員能改（受款人開放手 key）、申請人部門／費用所屬人部門一律鎖（依人員帶入）、
 //      會計單位承辦人／權限開放人員只有管理員看得到、手動簽核欄位在詳細頁有勾才顯示
 //   3. 費用歸屬變更：轉大寫；不動會計單位（會計單位只依費用所屬人部門，由簽核人員程式帶入）
 //   4. 費用歸屬中文名稱（綠字）／代碼不存在（紅字）提示
@@ -83,26 +83,26 @@ check('說明文字在新增／編輯／詳細／列印四種畫面都有套用�
 });
 
 // ── 2. 欄位鎖定 ─────────────────────────────────────────────────────────────
-check('一般使用者：請款日期、申請人、受款人、申請人部門、費用所屬人部門鎖住；費用所屬人不鎖', async () => {
+check('一般使用者：請款日期、申請人、申請人部門、費用所屬人部門鎖住；費用所屬人、受款人不鎖（受款人可手 key）', async () => {
   const { env, F } = await loadMain({ loginCode: 'someone' });
   for (const type of ['create', 'edit']) {
     const ev = await env.fire(`app.record.${type}.show`, { record: baseRecord(F) });
     assert.strictEqual(ev.record[F.PAYMENT_DATE].disabled, true);
     assert.strictEqual(ev.record[F.APPLICANT].disabled, true);
     assert.strictEqual(ev.record[F.APPLICANT_ORG].disabled, true);
-    assert.strictEqual(ev.record[F.PAYEE].disabled, true);
+    assert.ok(!ev.record[F.PAYEE].disabled);
     assert.ok(!ev.record[F.EXPENSE_OWNER].disabled);
     assert.strictEqual(ev.record[F.EXPENSE_OWNER_ORG].disabled, true);
   }
 });
 
-check('管理員：申請人、受款人可改；請款日期、申請人部門、費用所屬人部門照樣鎖（部門只依人員帶入）', async () => {
+check('管理員：申請人、受款人都可改；請款日期、申請人部門、費用所屬人部門照樣鎖（部門只依人員帶入）', async () => {
   const { env, F } = await loadMain({ loginCode: '24136' });
   for (const type of ['create', 'edit']) {
     const ev = await env.fire(`app.record.${type}.show`, { record: baseRecord(F) });
     assert.strictEqual(ev.record[F.PAYMENT_DATE].disabled, true);
     assert.strictEqual(ev.record[F.APPLICANT].disabled, false);
-    assert.strictEqual(ev.record[F.PAYEE].disabled, false);
+    assert.ok(!ev.record[F.PAYEE].disabled);
     assert.strictEqual(ev.record[F.APPLICANT_ORG].disabled, true);
     assert.strictEqual(ev.record[F.EXPENSE_OWNER_ORG].disabled, true);
   }

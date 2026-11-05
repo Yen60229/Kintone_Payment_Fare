@@ -385,10 +385,8 @@
     // 帳號權限設定模組先載入，這裡最後套用，以這裡為準。
     // -------------------------------------------------------------------------
     record[F.PAYMENT_DATE].disabled = true;
-    // 申請人、受款人：只有管理員可改（費用所屬人開放所有人改）
-    [F.APPLICANT, F.PAYEE].forEach((field) => {
-      if (record[field]) record[field].disabled = !C.isAdmin();
-    });
+    // 申請人：只有管理員可改（費用所屬人、受款人開放所有人改，受款人可手 key）
+    if (record[F.APPLICANT]) record[F.APPLICANT].disabled = !C.isAdmin();
     // 申請人部門、費用所屬人部門：一律鎖住（含管理員），只能依申請人／費用所屬人帶入
     //   （申請人部門帶入_20261022.js、signing_personnel_manager 的改費用所屬人流程）
     [F.APPLICANT_ORG, F.EXPENSE_OWNER_ORG].forEach((field) => {

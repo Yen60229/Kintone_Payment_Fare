@@ -374,14 +374,14 @@
       // 這些憑證種類（收據，沒有統編／稅額）→ 賣方統編、格式清空並鎖住，稅額寫 0 並鎖住（套用時機同 NO_RECEIPT_TYPES；
       //   優先於主檔的「要算稅」旗標）
       PLAIN_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.RECEIPT]),
-      // 交通工具 → 可選的憑證種類（沒列在這裡的交通工具不限制）。
+      // 交通工具 → 可選的憑證種類（沒列在這裡的交通工具不限制）。憑證種類「無」只有捷運／公車能選。
       //   變更事件：選了不能用的組合就清空憑證種類；只有一種可選時自動帶入。存檔時再驗一次。
       //   桌面版：憑證種類的下拉選單只列出可選的項目（手機版選單是系統原生的，只靠變更事件清空）。
       RECEIPT_BY_VEHICLE: Object.freeze({
         [OPTIONS.VEHICLE.HSR]: Object.freeze([OPTIONS.RECEIPT_TYPE.HSR_TICKET]),
-        [OPTIONS.VEHICLE.TRAIN]: Object.freeze([OPTIONS.RECEIPT_TYPE.TICKET, OPTIONS.RECEIPT_TYPE.RECEIPT, OPTIONS.RECEIPT_TYPE.NONE]),
+        [OPTIONS.VEHICLE.TRAIN]: Object.freeze([OPTIONS.RECEIPT_TYPE.TICKET, OPTIONS.RECEIPT_TYPE.RECEIPT]),
         [OPTIONS.VEHICLE.MRT_BUS]: Object.freeze([OPTIONS.RECEIPT_TYPE.TICKET, OPTIONS.RECEIPT_TYPE.RECEIPT, OPTIONS.RECEIPT_TYPE.NONE]),
-        [OPTIONS.VEHICLE.TAXI]: Object.freeze([OPTIONS.RECEIPT_TYPE.INVOICE, OPTIONS.RECEIPT_TYPE.RECEIPT, OPTIONS.RECEIPT_TYPE.NONE]),
+        [OPTIONS.VEHICLE.TAXI]: Object.freeze([OPTIONS.RECEIPT_TYPE.INVOICE, OPTIONS.RECEIPT_TYPE.RECEIPT]),
         [OPTIONS.VEHICLE.UBER]: Object.freeze([OPTIONS.RECEIPT_TYPE.INVOICE, OPTIONS.RECEIPT_TYPE.RECEIPT]),
         [OPTIONS.VEHICLE.PARKING]: Object.freeze([OPTIONS.RECEIPT_TYPE.INVOICE, OPTIONS.RECEIPT_TYPE.RECEIPT]),
         [OPTIONS.VEHICLE.RENTAL]: Object.freeze([OPTIONS.RECEIPT_TYPE.INVOICE, OPTIONS.RECEIPT_TYPE.RECEIPT]),
@@ -990,10 +990,8 @@
       // 帳號權限設定模組先載入，這裡最後套用，以這裡為準。
       // -------------------------------------------------------------------------
       record[F.PAYMENT_DATE].disabled = true;
-      // 申請人、受款人：只有管理員可改（費用所屬人開放所有人改）
-      [F.APPLICANT, F.PAYEE].forEach((field) => {
-        if (record[field]) record[field].disabled = !C.isAdmin();
-      });
+      // 申請人：只有管理員可改（費用所屬人、受款人開放所有人改，受款人可手 key）
+      if (record[F.APPLICANT]) record[F.APPLICANT].disabled = !C.isAdmin();
       // 申請人部門、費用所屬人部門：一律鎖住（含管理員），只能依申請人／費用所屬人帶入
       //   （申請人部門帶入_20261022.js、signing_personnel_manager 的改費用所屬人流程）
       [F.APPLICANT_ORG, F.EXPENSE_OWNER_ORG].forEach((field) => {
@@ -4799,7 +4797,7 @@
 
     /**
      * 判斷這筆記錄是否該在詳細頁自動補推一次（純函式，供測試）
-     * 僅限本人（申請人或建立人）觸發，避免他人瀏覽時誤打 API。
+     * 僅限本人（建立人）觸發，避免他人瀏覽時誤打 API。
      * @param {Object} record kintone 記錄物件
      * @param {string} loginCode 登入者帳號 code
      * @returns {boolean}
@@ -4813,11 +4811,10 @@
       if (!recordId || recordId === '0') return false;
       if (!loginCode) return false;
 
-      const applicantCode = record[F.APPLICANT]?.value?.[0]?.code;
-      // '建立人' 為 kintone 內建欄位，非本表單自訂欄位，故不進 PR_CONFIG.FIELDS
+      // '建立人' 為 kintone 內建欄位（CREATOR，值是單一物件，沒有 value[0]），非本表單自訂欄位，故不進 PR_CONFIG.FIELDS
       const creatorCode = record['建立人']?.value?.code;
 
-      return loginCode === applicantCode || loginCode === creatorCode;
+      return Boolean(creatorCode) && loginCode === creatorCode;
     };
 
     /**

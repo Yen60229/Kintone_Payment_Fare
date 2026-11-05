@@ -132,6 +132,13 @@ check('登入者非申請人但為建立人 → 仍補償', () => {
   assert.strictEqual(shouldCompensate(record, 'u1'), true);
 });
 
+check('只認建立人：登入者是申請人但不是建立人 → 不補償；建立人欄位缺漏 → 不補償', () => {
+  const { shouldCompensate } = build({}, compensateFns, ['shouldCompensate']);
+  const asApplicantOnly = makeRecord({ 申請人: { value: [{ code: 'u1' }] }, 建立人: { value: { code: 'creator' } } });
+  assert.strictEqual(shouldCompensate(asApplicantOnly, 'u1'), false);
+  assert.strictEqual(shouldCompensate(makeRecord({ 建立人: undefined }), 'u1'), false);
+});
+
 check('$id 缺漏或為 0 → 不補償', () => {
   const { shouldCompensate } = build({}, compensateFns, ['shouldCompensate']);
   assert.strictEqual(shouldCompensate(makeRecord({ $id: { value: '0' } }), 'u1'), false);
