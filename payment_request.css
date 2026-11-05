@@ -874,7 +874,7 @@
   display: none !important;
 }
 
-/* 交通費明細表頭的官方查詢連結（表頭查詢連結_20261105.js）：沿用表頭文字顏色，只靠底線表示可點 */
+/* 交通費明細表頭的說明文件連結（表頭查詢連結_20261105.js）：沿用表頭文字顏色，只靠底線表示可點 */
 .pr-header-link,
 .pr-header-link:visited {
   color: inherit;

@@ -261,41 +261,92 @@
     const TRAFFIC_TABLE_LAYOUT = Object.freeze({
       COLUMNS: Object.freeze(
         [
-          { code: FIELDS.TRAFFIC_TABLE.COLS.DATE, label: '憑證日期', type: 'DATE' },
-          { code: FIELDS.TRAFFIC_TABLE.COLS.VEHICLE, label: '交通工具', type: 'DROP_DOWN' },
-          { code: FIELDS.TRAFFIC_TABLE.COLS.RECEIPT_TYPE, label: '憑證種類', type: 'DROP_DOWN' },
-          { code: FIELDS.TRAFFIC_TABLE.COLS.ROUTE, label: '起訖點', type: 'SINGLE_LINE_TEXT' },
-          { code: FIELDS.TRAFFIC_TABLE.COLS.VISIT_CUSTOMER, label: '拜訪客戶（目的）', type: 'SINGLE_LINE_TEXT' },
-          { code: FIELDS.TRAFFIC_TABLE.COLS.AMOUNT, label: '金額（含稅）', type: 'NUMBER', unit: '元' },
-          { code: FIELDS.TRAFFIC_TABLE.COLS.EXPENSE, label: '費用歸屬', type: 'SINGLE_LINE_TEXT' },
-          { code: FIELDS.TRAFFIC_TABLE.COLS.INVOICE_NO, label: '發票號碼／高鐵票號', type: 'SINGLE_LINE_TEXT' },
-          { code: FIELDS.TRAFFIC_TABLE.COLS.SELLER_TAX_ID, label: '賣方統編', type: 'SINGLE_LINE_TEXT' },
-          { code: FIELDS.TRAFFIC_TABLE.COLS.FORMAT, label: '格式', type: 'SINGLE_LINE_TEXT' },
-          { code: FIELDS.TRAFFIC_TABLE.COLS.TAX, label: '稅額', type: 'NUMBER', unit: '元' },
+          {
+            code: FIELDS.TRAFFIC_TABLE.COLS.DATE,
+            label: '憑證日期',
+            type: 'DATE',
+          },
+          {
+            code: FIELDS.TRAFFIC_TABLE.COLS.VEHICLE,
+            label: '交通工具',
+            type: 'DROP_DOWN',
+          },
+          {
+            code: FIELDS.TRAFFIC_TABLE.COLS.RECEIPT_TYPE,
+            label: '憑證種類',
+            type: 'DROP_DOWN',
+          },
+          {
+            code: FIELDS.TRAFFIC_TABLE.COLS.ROUTE,
+            label: '起訖點',
+            type: 'SINGLE_LINE_TEXT',
+          },
+          {
+            code: FIELDS.TRAFFIC_TABLE.COLS.VISIT_CUSTOMER,
+            label: '拜訪客戶（目的）',
+            type: 'SINGLE_LINE_TEXT',
+          },
+          {
+            code: FIELDS.TRAFFIC_TABLE.COLS.AMOUNT,
+            label: '金額（含稅）',
+            type: 'NUMBER',
+            unit: '元',
+          },
+          {
+            code: FIELDS.TRAFFIC_TABLE.COLS.EXPENSE,
+            label: '費用歸屬',
+            type: 'SINGLE_LINE_TEXT',
+          },
+          {
+            code: FIELDS.TRAFFIC_TABLE.COLS.INVOICE_NO,
+            label: '發票號碼／高鐵票號',
+            type: 'SINGLE_LINE_TEXT',
+          },
+          {
+            code: FIELDS.TRAFFIC_TABLE.COLS.SELLER_TAX_ID,
+            label: '賣方統編',
+            type: 'SINGLE_LINE_TEXT',
+          },
+          {
+            code: FIELDS.TRAFFIC_TABLE.COLS.FORMAT,
+            label: '格式',
+            type: 'SINGLE_LINE_TEXT',
+          },
+          {
+            code: FIELDS.TRAFFIC_TABLE.COLS.TAX,
+            label: '稅額',
+            type: 'NUMBER',
+            unit: '元',
+          },
         ].map(Object.freeze),
       ),
       // 欄寬＝文字單位數（中文 2、英數 1）× PX_PER_UNIT ＋ PADDING_PX，限制在 MIN～MAX；表頭文字也算進去
-      WIDTH: Object.freeze({ PX_PER_UNIT: 8, PADDING_PX: 32, MIN_PX: 64, MAX_PX: 320 }),
-      // 表頭上的官方查詢連結（表頭查詢連結_20261105.js）：key 是欄位代碼，text 要是該欄 label 裡的文字。
+      WIDTH: Object.freeze({
+        PX_PER_UNIT: 8,
+        PADDING_PX: 32,
+        MIN_PX: 64,
+        MAX_PX: 320,
+      }),
+      // 表頭上的說明文件連結（表頭查詢連結_20261105.js）：key 是欄位代碼，text 要是該欄 label 裡的文字。
       //   一個表頭可放多個連結，依 label 裡出現的順序排；網址換了改這裡，重新打包上傳。
       HEADER_LINKS: Object.freeze({
         [FIELDS.TRAFFIC_TABLE.COLS.INVOICE_NO]: Object.freeze([
           Object.freeze({
             text: '發票號碼',
-            url: 'https://www.einvoice.nat.gov.tw/portal/btc/audit/btc601w/search',
-            title: '另開新分頁：財政部電子發票整合服務平台－一般性發票查詢',
+            url: 'https://nipponexpressgroup.sharepoint.com/:b:/r/sites/EAR-NXTW-Bulletin/Shared%20Documents/Kintone%20%E7%B0%BD%E6%A0%B8%E7%B3%BB%E7%B5%B1%E7%9B%B8%E9%97%9C%E8%B3%87%E6%96%99/%E8%A1%A8%E5%96%AE%E6%93%8D%E4%BD%9C%E6%89%8B%E5%86%8A/ACC-%E7%B8%BD%E5%8B%99%E9%83%A8%E6%9C%83%E8%A8%88%E8%AA%B2/ACC-02-2_%E4%BA%A4%E9%80%9A%E8%B2%BB%E8%AB%8B%E6%AC%BE%E5%96%AE/%E7%99%BC%E7%A5%A8%E8%99%9F%E7%A2%BC_%E8%AA%AA%E6%98%8E.pdf?d=wa33a4304906f4aa1a7093cc94f0b339e&csf=1&web=1&e=nPlbYE',
+            title: '點選查看 發票號碼說明',
           }),
           Object.freeze({
             text: '高鐵票號',
-            url: 'https://ptis.thsrc.com.tw/ptis/',
-            title: '另開新分頁：台灣高鐵各式票證交易／搭乘紀錄查詢',
+            url: 'https://nipponexpressgroup.sharepoint.com/:b:/r/sites/EAR-NXTW-Bulletin/Shared%20Documents/Kintone%20%E7%B0%BD%E6%A0%B8%E7%B3%BB%E7%B5%B1%E7%9B%B8%E9%97%9C%E8%B3%87%E6%96%99/%E8%A1%A8%E5%96%AE%E6%93%8D%E4%BD%9C%E6%89%8B%E5%86%8A/ACC-%E7%B8%BD%E5%8B%99%E9%83%A8%E6%9C%83%E8%A8%88%E8%AA%B2/ACC-02-2_%E4%BA%A4%E9%80%9A%E8%B2%BB%E8%AB%8B%E6%AC%BE%E5%96%AE/%E9%AB%98%E9%90%B5%E7%A5%A8%E8%99%9F_%E8%AA%AA%E6%98%8E.pdf?d=w99ebf9d9c09c467cb3e98758c573e9d3&csf=1&web=1&e=Ta78w5',
+            title: '點選查看 高鐵票號說明',
           }),
         ]),
         [FIELDS.TRAFFIC_TABLE.COLS.SELLER_TAX_ID]: Object.freeze([
           Object.freeze({
             text: '賣方統編',
-            url: 'https://www.etax.nat.gov.tw/etwmain/etw113w1/ban/query',
-            title: '另開新分頁：財政部稅務入口網－稅籍登記資料公示查詢',
+            url: 'https://nipponexpressgroup.sharepoint.com/:b:/r/sites/EAR-NXTW-Bulletin/Shared%20Documents/Kintone%20%E7%B0%BD%E6%A0%B8%E7%B3%BB%E7%B5%B1%E7%9B%B8%E9%97%9C%E8%B3%87%E6%96%99/%E8%A1%A8%E5%96%AE%E6%93%8D%E4%BD%9C%E6%89%8B%E5%86%8A/ACC-%E7%B8%BD%E5%8B%99%E9%83%A8%E6%9C%83%E8%A8%88%E8%AA%B2/ACC-02-2_%E4%BA%A4%E9%80%9A%E8%B2%BB%E8%AB%8B%E6%AC%BE%E5%96%AE/%E8%B3%A3%E6%96%B9%E7%99%BC%E7%A5%A8_%E7%B5%B1%E7%B7%A8%E8%AA%AA%E6%98%8E.pdf?d=w9b44a6de2f0e44c791c3d238c2b001ff&csf=1&web=1&e=mps4KF',
+            title: '點選查看 發票 賣方統編說明',
           }),
         ]),
       }),
@@ -8074,7 +8125,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
   (() => {
 
     // =============================================================================
-    // 交通費明細表頭的官方查詢連結（桌面版的新增、編輯、詳細畫面；列印頁和手機版不加）
+    // 交通費明細表頭的說明文件連結（桌面版的新增、編輯、詳細畫面；列印頁和手機版不加）
     //
     // 表頭文字在 kintone 表單上，子表格表頭放不了連結，所以由程式把文字換成連結。
     // 連結清單在 config 的 TRAFFIC_TABLE_LAYOUT.HEADER_LINKS，另開新分頁。
