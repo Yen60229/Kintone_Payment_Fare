@@ -153,6 +153,13 @@
       RECEIPT_FLAGS: '憑證種類規則', // CHECK_BOX
       FLAG_TAX: '要算稅',
       FLAG_INVOICE_NO: '開放發票號碼',
+      // CHECK_BOX（憑證種類用）：選這個憑證種類時，勾選的欄位清空並鎖住；改成別的種類只解回權限狀態
+      //   稅額清空與稅額寫0 只能擇一，且優先於「要算稅」
+      LOCK_COLS: '鎖住欄位',
+      LOCK_SELLER_TAX_ID: '賣方統編清空',
+      LOCK_FORMAT: '格式清空',
+      LOCK_TAX_EMPTY: '稅額清空',
+      LOCK_TAX_ZERO: '稅額寫0',
     }),
     // 簽核流程主檔（APPS.APPROVAL_FLOW）：一般單位用「簽核所屬單位」（組織欄位，存組織代碼）查，
     //   改組織名稱不用改程式；依職稱改查的合併流程（特殊簽核流程，例如「物流部次長級」）才用「簽核流程名稱」查。
@@ -435,11 +442,21 @@
     TAX_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.HSR_TICKET, OPTIONS.RECEIPT_TYPE.INVOICE]),
     // 這些憑證種類才開放填發票號碼（存檔時必填、不可重複）
     INVOICE_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.HSR_TICKET, OPTIONS.RECEIPT_TYPE.INVOICE]),
-    // 這些憑證種類（沒有憑證）→ 賣方統編、格式、稅額清空並鎖住（create/edit 的 show、變更事件、存檔前都套用）
-    NO_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.NONE]),
-    // 這些憑證種類（收據，沒有統編／稅額）→ 賣方統編、格式清空並鎖住，稅額寫 0 並鎖住（套用時機同 NO_RECEIPT_TYPES；
-    //   優先於主檔的「要算稅」旗標）
-    PLAIN_RECEIPT_TYPES: Object.freeze([OPTIONS.RECEIPT_TYPE.RECEIPT]),
+    // 憑證種類 → 清空並鎖住的欄位（值＝主檔「鎖住欄位」的選項；create/edit 的 show、變更事件、存檔前都套用）
+    //   無：賣方統編、格式、稅額清空；收據：賣方統編、格式清空，稅額寫 0；車票：賣方統編清空。沒列＝不鎖
+    LOCK_BY_RECEIPT: Object.freeze({
+      [OPTIONS.RECEIPT_TYPE.NONE]: Object.freeze([
+        REF_FIELDS.TRAFFIC_RULE_MASTER.LOCK_SELLER_TAX_ID,
+        REF_FIELDS.TRAFFIC_RULE_MASTER.LOCK_FORMAT,
+        REF_FIELDS.TRAFFIC_RULE_MASTER.LOCK_TAX_EMPTY,
+      ]),
+      [OPTIONS.RECEIPT_TYPE.RECEIPT]: Object.freeze([
+        REF_FIELDS.TRAFFIC_RULE_MASTER.LOCK_SELLER_TAX_ID,
+        REF_FIELDS.TRAFFIC_RULE_MASTER.LOCK_FORMAT,
+        REF_FIELDS.TRAFFIC_RULE_MASTER.LOCK_TAX_ZERO,
+      ]),
+      [OPTIONS.RECEIPT_TYPE.TICKET]: Object.freeze([REF_FIELDS.TRAFFIC_RULE_MASTER.LOCK_SELLER_TAX_ID]),
+    }),
     // 交通工具 → 可選的憑證種類（沒列在這裡的交通工具不限制）。憑證種類「無」只有捷運／公車能選。
     //   變更事件：選了不能用的組合就清空憑證種類；只有一種可選時自動帶入。存檔時再驗一次。
     //   桌面版：憑證種類的下拉選單只列出可選的項目（手機版選單是系統原生的，只靠變更事件清空）。

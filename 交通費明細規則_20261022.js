@@ -21,11 +21,11 @@
   //      有「理由必填」旗標 → 理由動態必填（標籤加紅色 *）
   //   5. 交通工具限制憑證種類（主檔的「可選憑證種類」）：變更事件清掉不能用的組合、只有一種就自動帶入；
   //      存檔時擋下不能用的組合；桌面版下拉選單只列出可選的項目
-  //   6. 憑證種類＝無（config 的 NO_RECEIPT_TYPES）→ 賣方統編、格式、稅額清空並鎖住；
+  //   6. 憑證種類的「鎖住欄位」（主檔；config 備援 LOCK_BY_RECEIPT）→ 勾選的欄位清空並鎖住：
+  //      現在是 無＝賣方統編、格式、稅額清空；收據＝賣方統編、格式清空，稅額寫 0；車票＝賣方統編清空。
   //      create/edit 的 show、上面的變更事件、存檔前 normalize 都套用（detail.show 唯讀不處理）。
-  //      改回別的種類 → 解鎖，但只回到開畫面時帳號權限設定給的狀態（不會打開權限鎖住的欄位）。
-  //      憑證種類＝收據（config 的 PLAIN_RECEIPT_TYPES）→ 同上，但稅額寫 0（不是空白）；優先於主檔的「要算稅」旗標。
-  //      發票號碼照 3 處理（收據沒有「開放發票號碼」旗標 → 清空並鎖住）
+  //      改成別的種類 → 解鎖，但只回到開畫面時帳號權限設定給的狀態（不會打開權限鎖住的欄位）。
+  //      稅額清空／寫 0 優先於「要算稅」旗標；鎖住優先於交通工具的固定賣方統編。發票號碼照 3 處理
   //   7. 是否有紙本憑證＝否 → 「會計課承辦註記是否收到單據紙本」寫「不適用」（show、變更事件含是否有紙本憑證、存檔前）；
   //      變更事件改回「是」且還是「不適用」→ 回到「未收到」
   //
@@ -53,10 +53,19 @@
   //     fixedByVehicle: { [交通工具]: { sellerTaxId, format } },
   //     paperReceiptVehicles: string[],               // 需紙本憑證（排序）
   //     reasonRequiredVehicles: string[],             // 理由必填（排序）
+  //     lockByReceipt: { [憑證種類]: string[] },       // 鎖住欄位（主檔選項值，排序）；只放有勾的憑證種類
   //   }
 
   const sortedUnique = (list) => Array.from(new Set(list)).sort();
   const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+  /** [{ name, locks }] → { [name]: 排序後的 locks }（沒勾的不放） */
+  const lockMap = (items) => {
+    const map = {};
+    items.forEach(({ name, locks }) => {
+      if (locks && locks.length) map[name] = sortedUnique(locks);
+    });
+    return map;
+  };
   const getRowsOf = (record) => (Array.isArray(record?.[TRAFFIC.CODE]?.value) ? record[TRAFFIC.CODE].value.filter((r) => r?.value) : []);
 
   /**
@@ -80,6 +89,7 @@
       fixedByVehicle: { [options.VEHICLE.HSR]: { sellerTaxId: rules.HSR_SELLER_TAX_ID, format: rules.HSR_FORMAT } },
       paperReceiptVehicles: [options.VEHICLE.TAXI],
       reasonRequiredVehicles: [options.VEHICLE.TAXI],
+      lockByReceipt: lockMap(Object.keys(rules.LOCK_BY_RECEIPT).map((name) => ({ name, locks: rules.LOCK_BY_RECEIPT[name] }))),
     };
   };
 
@@ -112,6 +122,9 @@
       else if (names.has(name)) errors.push(`${where}「${M.NAME}」${name} 重複`);
       names.add(name);
       if (text(rec, M.FIXED_FORMAT) && !text(rec, M.FIXED_SELLER_TAX_ID)) errors.push(`${where}${name}：有「${M.FIXED_FORMAT}」但「${M.FIXED_SELLER_TAX_ID}」空白`);
+      if (list(rec, M.LOCK_COLS).includes(M.LOCK_TAX_EMPTY) && list(rec, M.LOCK_COLS).includes(M.LOCK_TAX_ZERO)) {
+        errors.push(`${where}${name}：「${M.LOCK_COLS}」的「${M.LOCK_TAX_EMPTY}」和「${M.LOCK_TAX_ZERO}」只能擇一`);
+      }
       switch (type) {
         case M.TYPE_VEHICLE:
           vehicles.push({ rec, name });
@@ -144,6 +157,7 @@
       fixedByVehicle,
       paperReceiptVehicles: vehiclesWith(M.FLAG_PAPER_RECEIPT),
       reasonRequiredVehicles: vehiclesWith(M.FLAG_REASON_REQUIRED),
+      lockByReceipt: lockMap(receipts.map(({ rec, name }) => ({ name, locks: list(rec, M.LOCK_COLS) }))),
     };
   };
 
@@ -179,7 +193,7 @@
     loadPromise = (async () => {
       try {
         const call = api || kintone.api;
-        const fields = [M.TYPE, M.NAME, M.IN_USE, M.ALLOWED_RECEIPTS, M.FIXED_SELLER_TAX_ID, M.FIXED_FORMAT, M.VEHICLE_FLAGS, M.RECEIPT_FLAGS];
+        const fields = [M.TYPE, M.NAME, M.IN_USE, M.ALLOWED_RECEIPTS, M.FIXED_SELLER_TAX_ID, M.FIXED_FORMAT, M.VEHICLE_FLAGS, M.RECEIPT_FLAGS, M.LOCK_COLS];
         const params = { app: C.APPS.TRAFFIC_RULE_MASTER, query: `${M.IN_USE} in ("${M.IN_USE_VALUE}") limit 500`, fields };
         const resp = await withTimeout(Promise.resolve().then(() => call(kintone.api.url('/k/v1/records', true), 'GET', params)), RULES.MASTER_TIMEOUT_MS);
         const result = rulesFromMaster(resp?.records);
@@ -219,11 +233,19 @@
 
   const isInvoiceReceipt = (row) => active.invoiceReceiptTypes.includes(row.value[COLS.RECEIPT_TYPE]?.value);
   const isTaxReceipt = (row) => active.taxReceiptTypes.includes(row.value[COLS.RECEIPT_TYPE]?.value);
-  /** 6. 憑證種類＝無（沒有憑證）→ 賣方統編、格式、稅額清空並鎖住 */
-  const isNoReceipt = (row) => RULES.NO_RECEIPT_TYPES.includes(row.value[COLS.RECEIPT_TYPE]?.value);
-  /** 6. 憑證種類＝收據 → 賣方統編、格式清空並鎖住，稅額寫 0 並鎖住 */
-  const isPlainReceipt = (row) => RULES.PLAIN_RECEIPT_TYPES.includes(row.value[COLS.RECEIPT_TYPE]?.value);
-  const NO_RECEIPT_CLEAR_COLS = [COLS.SELLER_TAX_ID, COLS.FORMAT, COLS.TAX];
+  /**
+   * 6. 這一列憑證種類的「鎖住欄位」→ 各欄要不要清空鎖住。
+   * @param {Object} row
+   * @returns {{ sellerTaxId: boolean, format: boolean, tax: null|''|'0' }} tax：null＝不鎖，''＝清空，'0'＝寫 0
+   */
+  const lockedColsOf = (row) => {
+    const receipt = row.value[COLS.RECEIPT_TYPE]?.value;
+    const locks = (receipt && own(active.lockByReceipt, receipt) && active.lockByReceipt[receipt]) || [];
+    let tax = null;
+    if (locks.includes(M.LOCK_TAX_EMPTY)) tax = '';
+    else if (locks.includes(M.LOCK_TAX_ZERO)) tax = '0';
+    return { sellerTaxId: locks.includes(M.LOCK_SELLER_TAX_ID), format: locks.includes(M.LOCK_FORMAT), tax };
+  };
 
   // 開畫面時（帳號權限設定已套用、本模組還沒鎖）各欄的鎖定狀態。
   //   變更事件「解鎖」只回到這個狀態，不會把帳號權限設定鎖住的欄位打開。
@@ -303,19 +325,15 @@
       setLock(COLS.INVOICE_NO, !isInvoiceReceipt(row));
     }
 
-    // 6. 憑證種類＝無 → 賣方統編、格式、稅額清空並鎖住（排在 1、5 後面：憑證種類可能剛被清空或帶入，固定值也要被蓋掉）
-    //    憑證種類＝收據 → 同上，但稅額寫 0
-    //    改成別的憑證種類（變更事件）→ 稅額解鎖；賣方統編、格式照 1 的固定值決定
-    const none = isNoReceipt(row);
-    const plain = isPlainReceipt(row);
-    const cleared = none || plain;
-    NO_RECEIPT_CLEAR_COLS.forEach((code) => {
-      if (cleared && v[code]) v[code].value = '';
-    });
-    if (plain && v[COLS.TAX]) v[COLS.TAX].value = '0';
-    setLock(COLS.SELLER_TAX_ID, cleared || !!fixed);
-    setLock(COLS.FORMAT, cleared || !!fixed);
-    setLock(COLS.TAX, cleared);
+    // 6. 憑證種類的鎖住欄位 → 清空（稅額可能寫 0）並鎖住（排在 1、5 後面：憑證種類可能剛被清空或帶入，固定值也要被蓋掉）
+    //    改成別的憑證種類（變更事件）→ 解鎖；賣方統編、格式照 1 的固定值決定
+    const lock = lockedColsOf(row);
+    if (lock.sellerTaxId && v[COLS.SELLER_TAX_ID]) v[COLS.SELLER_TAX_ID].value = '';
+    if (lock.format && v[COLS.FORMAT]) v[COLS.FORMAT].value = '';
+    if (lock.tax !== null && v[COLS.TAX]) v[COLS.TAX].value = lock.tax;
+    setLock(COLS.SELLER_TAX_ID, lock.sellerTaxId || !!fixed);
+    setLock(COLS.FORMAT, lock.format || !!fixed);
+    setLock(COLS.TAX, lock.tax !== null);
   };
 
   /**
@@ -327,8 +345,8 @@
   const recalcRowTax = (row) => {
     const v = row?.value;
     if (!v?.[COLS.TAX]) return;
-    if (isNoReceipt(row)) v[COLS.TAX].value = ''; // 6. 憑證種類＝無 → 稅額清空
-    else if (isPlainReceipt(row)) v[COLS.TAX].value = '0'; // 6. 憑證種類＝收據 → 稅額 0
+    const locked = lockedColsOf(row).tax; // 6. 鎖住欄位的稅額清空／寫 0 優先
+    if (locked !== null) v[COLS.TAX].value = locked;
     else v[COLS.TAX].value = isTaxReceipt(row) ? calcTax(v[COLS.AMOUNT]?.value) : '0';
   };
 
@@ -570,5 +588,5 @@
     return event;
   });
 
-  window.PR_TRAFFIC_RULES = Object.freeze({ calcTax, recalcRowTax, changedRow, hasTaxi, rulesFromConfig, rulesFromMaster, loadRules, getActiveRules, _resetForTest, allowedReceiptTypes, isNoReceipt, isPlainReceipt, filterMenuItems, menuContext, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
+  window.PR_TRAFFIC_RULES = Object.freeze({ calcTax, recalcRowTax, changedRow, hasTaxi, rulesFromConfig, rulesFromMaster, loadRules, getActiveRules, _resetForTest, allowedReceiptTypes, lockedColsOf, filterMenuItems, menuContext, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
 })();

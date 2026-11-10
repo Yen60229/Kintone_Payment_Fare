@@ -1,5 +1,5 @@
 {
-  "_note": "App 752 交通費明細規則主檔 初始記錄（2026-11-04 用 kintone MCP 讀取，表單 rev 9）。與 config TRAFFIC_RULES 等價，測試用。",
+  "_note": "App 752 交通費明細規則主檔記錄（2026-11-10 用 kintone MCP 讀取，表單 rev 12：新增「鎖住欄位」）。與 config TRAFFIC_RULES 等價，測試用。",
   "records": [
     {
       "$id": {
@@ -37,6 +37,10 @@
         "value": []
       },
       "憑證種類規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "鎖住欄位": {
         "type": "CHECK_BOX",
         "value": []
       }
@@ -81,6 +85,10 @@
       "憑證種類規則": {
         "type": "CHECK_BOX",
         "value": []
+      },
+      "鎖住欄位": {
+        "type": "CHECK_BOX",
+        "value": []
       }
     },
     {
@@ -122,6 +130,10 @@
       "憑證種類規則": {
         "type": "CHECK_BOX",
         "value": []
+      },
+      "鎖住欄位": {
+        "type": "CHECK_BOX",
+        "value": []
       }
     },
     {
@@ -161,6 +173,10 @@
         "value": []
       },
       "憑證種類規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "鎖住欄位": {
         "type": "CHECK_BOX",
         "value": []
       }
@@ -207,6 +223,10 @@
       "憑證種類規則": {
         "type": "CHECK_BOX",
         "value": []
+      },
+      "鎖住欄位": {
+        "type": "CHECK_BOX",
+        "value": []
       }
     },
     {
@@ -246,6 +266,10 @@
         "value": []
       },
       "憑證種類規則": {
+        "type": "CHECK_BOX",
+        "value": []
+      },
+      "鎖住欄位": {
         "type": "CHECK_BOX",
         "value": []
       }
@@ -289,6 +313,10 @@
       "憑證種類規則": {
         "type": "CHECK_BOX",
         "value": []
+      },
+      "鎖住欄位": {
+        "type": "CHECK_BOX",
+        "value": []
       }
     },
     {
@@ -330,6 +358,10 @@
           "要算稅",
           "開放發票號碼"
         ]
+      },
+      "鎖住欄位": {
+        "type": "CHECK_BOX",
+        "value": []
       }
     },
     {
@@ -368,6 +400,12 @@
       "憑證種類規則": {
         "type": "CHECK_BOX",
         "value": []
+      },
+      "鎖住欄位": {
+        "type": "CHECK_BOX",
+        "value": [
+          "賣方統編清空"
+        ]
       }
     },
     {
@@ -409,6 +447,10 @@
           "要算稅",
           "開放發票號碼"
         ]
+      },
+      "鎖住欄位": {
+        "type": "CHECK_BOX",
+        "value": []
       }
     },
     {
@@ -447,6 +489,14 @@
       "憑證種類規則": {
         "type": "CHECK_BOX",
         "value": []
+      },
+      "鎖住欄位": {
+        "type": "CHECK_BOX",
+        "value": [
+          "賣方統編清空",
+          "格式清空",
+          "稅額寫0"
+        ]
       }
     },
     {
@@ -485,6 +535,14 @@
       "憑證種類規則": {
         "type": "CHECK_BOX",
         "value": []
+      },
+      "鎖住欄位": {
+        "type": "CHECK_BOX",
+        "value": [
+          "賣方統編清空",
+          "格式清空",
+          "稅額清空"
+        ]
       }
     }
   ]

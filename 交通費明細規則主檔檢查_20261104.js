@@ -88,9 +88,9 @@
       if (text(valueOf(record, M.FIXED_FORMAT)).trim() && !text(valueOf(record, M.FIXED_SELLER_TAX_ID)).trim()) {
         errors.push(`「${M.FIXED_FORMAT}」有填但「${M.FIXED_SELLER_TAX_ID}」空白（有填固定賣方統編才能填固定格式）`);
       }
-      if (list(valueOf(record, M.RECEIPT_FLAGS)).length) {
-        errors.push(`${M.TYPE}是${M.TYPE_VEHICLE}時，「${M.RECEIPT_FLAGS}」要留空`);
-      }
+      [M.RECEIPT_FLAGS, M.LOCK_COLS].forEach((code) => {
+        if (list(valueOf(record, code)).length) errors.push(`${M.TYPE}是${M.TYPE_VEHICLE}時，「${code}」要留空`);
+      });
     }
 
     // ── 憑證種類不用的欄位（請款單端會忽略，擋下避免誤會）──
@@ -101,6 +101,10 @@
       if (text(valueOf(record, M.FIXED_FORMAT)).trim()) filled.push(M.FIXED_FORMAT);
       if (list(valueOf(record, M.VEHICLE_FLAGS)).length) filled.push(M.VEHICLE_FLAGS);
       filled.forEach((f) => errors.push(`${M.TYPE}是${M.TYPE_RECEIPT}時，「${f}」是${M.TYPE_VEHICLE}用的欄位，要留空`));
+      const locks = list(valueOf(record, M.LOCK_COLS));
+      if (locks.includes(M.LOCK_TAX_EMPTY) && locks.includes(M.LOCK_TAX_ZERO)) {
+        errors.push(`「${M.LOCK_COLS}」的「${M.LOCK_TAX_EMPTY}」和「${M.LOCK_TAX_ZERO}」只能擇一`);
+      }
     }
     return errors;
   };

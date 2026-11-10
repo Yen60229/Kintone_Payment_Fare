@@ -306,8 +306,14 @@ check('TRAFFIC_RULES：高鐵賣方統編 00000000、格式 22、稅率 5%、高
   assert.strictEqual(t.TAX_RATE_PERCENT, 5);
   assert.deepStrictEqual([...t.INVOICE_RECEIPT_TYPES], [c.OPTIONS.RECEIPT_TYPE.HSR_TICKET, c.OPTIONS.RECEIPT_TYPE.INVOICE]);
   assert.deepStrictEqual([...t.TAX_RECEIPT_TYPES], [c.OPTIONS.RECEIPT_TYPE.HSR_TICKET, c.OPTIONS.RECEIPT_TYPE.INVOICE], '高鐵票與發票才算稅額');
-  assert.deepStrictEqual([...t.NO_RECEIPT_TYPES], [c.OPTIONS.RECEIPT_TYPE.NONE]);
-  assert.deepStrictEqual([...t.PLAIN_RECEIPT_TYPES], [c.OPTIONS.RECEIPT_TYPE.RECEIPT], '收據 → 賣方統編、格式清空鎖住，稅額 0 鎖住');
+  const M = c.REF_FIELDS.TRAFFIC_RULE_MASTER;
+  const R = c.OPTIONS.RECEIPT_TYPE;
+  assert.deepStrictEqual(Object.keys(t.LOCK_BY_RECEIPT).sort(), [R.NONE, R.RECEIPT, R.TICKET].sort(), '只有無、收據、車票鎖欄位');
+  assert.deepStrictEqual([...t.LOCK_BY_RECEIPT[R.NONE]], [M.LOCK_SELLER_TAX_ID, M.LOCK_FORMAT, M.LOCK_TAX_EMPTY]);
+  assert.deepStrictEqual([...t.LOCK_BY_RECEIPT[R.RECEIPT]], [M.LOCK_SELLER_TAX_ID, M.LOCK_FORMAT, M.LOCK_TAX_ZERO], '收據 → 賣方統編、格式清空鎖住，稅額 0 鎖住');
+  assert.deepStrictEqual([...t.LOCK_BY_RECEIPT[R.TICKET]], [M.LOCK_SELLER_TAX_ID], '車票 → 賣方統編清空鎖住');
+  assert.strictEqual(t.NO_RECEIPT_TYPES, undefined, '舊設定已移到 LOCK_BY_RECEIPT');
+  assert.strictEqual(t.PLAIN_RECEIPT_TYPES, undefined);
 });
 
 check('DIRECTOR_BY_COST_CENTER：部長的單位部長依費用歸屬帶入，只在填單／草稿／駁回時重算', () => {

@@ -15,7 +15,7 @@ const { createEnv, createRunner, rootDir } = require('./lib/pr_env.cjs');
 
 const { check, done } = createRunner('traffic_rule_master.test.cjs');
 
-const snapshot = JSON.parse(fs.readFileSync(path.join(rootDir, 'form_snapshots', '752_rev9_records.json'), 'utf8'));
+const snapshot = JSON.parse(fs.readFileSync(path.join(rootDir, 'form_snapshots', '752_rev12_records.json'), 'utf8'));
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const snapshotRecords = () => clone(snapshot.records || snapshot);
 
@@ -251,7 +251,7 @@ check('「車票（高鐵外）」加上「要算稅」→ 車票也算稅；高
   assert.strictEqual(ev.record[T.CODE].value[1].value[COLS.TAX].value, '0');
 });
 
-check('主檔替「收據」加上「要算稅」→ 收據仍寫 0 並鎖住（config 的 PLAIN_RECEIPT_TYPES 優先）', async () => {
+check('主檔替「收據」加上「要算稅」→ 收據仍寫 0 並鎖住（鎖住欄位的稅額寫0 優先）', async () => {
   const { env } = await withMaster((recs) => {
     find(recs, '收據')[M.RECEIPT_FLAGS].value = [M.FLAG_TAX];
   });
@@ -260,6 +260,32 @@ check('主檔替「收據」加上「要算稅」→ 收據仍寫 0 並鎖住（
   const v = ev.record[T.CODE].value[0].value;
   assert.strictEqual(v[COLS.TAX].value, '0');
   assert.strictEqual(v[COLS.TAX].disabled, true);
+});
+
+check('「鎖住欄位」由主檔決定：車票取消 → 不鎖；發票勾格式清空 → 格式清空鎖住、賣方統編不鎖', async () => {
+  const { env } = await withMaster((recs) => {
+    find(recs, '車票（高鐵外）')[M.LOCK_COLS].value = [];
+    find(recs, '發票')[M.LOCK_COLS].value = [M.LOCK_FORMAT];
+  });
+  const r = record([
+    row({ [COLS.VEHICLE]: '火車', [COLS.RECEIPT_TYPE]: '車票（高鐵外）', [COLS.SELLER_TAX_ID]: '12345678' }),
+    row({ [COLS.VEHICLE]: '計程車', [COLS.RECEIPT_TYPE]: '發票', [COLS.SELLER_TAX_ID]: '12345678', [COLS.FORMAT]: '21' }),
+  ]);
+  const ev = await env.fire(`app.record.create.change.${COLS.RECEIPT_TYPE}`, { record: r });
+  const [a, b] = ev.record[T.CODE].value.map((x) => x.value);
+  assert.strictEqual(a[COLS.SELLER_TAX_ID].value, '12345678');
+  assert.notStrictEqual(a[COLS.SELLER_TAX_ID].disabled, true);
+  assert.strictEqual(b[COLS.SELLER_TAX_ID].value, '12345678');
+  assert.strictEqual(b[COLS.FORMAT].value, '');
+  assert.strictEqual(b[COLS.FORMAT].disabled, true);
+});
+
+check('「鎖住欄位」稅額清空與稅額寫0 同時勾 → 資料不合法', () => {
+  const { R } = setup();
+  const recs = snapshotRecords();
+  find(recs, '無')[M.LOCK_COLS].value = [M.LOCK_TAX_EMPTY, M.LOCK_TAX_ZERO];
+  const result = R.rulesFromMaster(recs);
+  assert.ok(result.errors && result.errors.some((e) => e.includes('只能擇一') && e.includes('無')), JSON.stringify(result));
 });
 
 check('「開放發票號碼」由主檔決定：收據開放後存檔要填發票號碼；發票拿掉後不再要求', async () => {

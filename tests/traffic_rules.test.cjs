@@ -451,10 +451,38 @@ check('從「無」改收據 → 仍鎖住、稅額 0；收據改發票 → 解�
   assert.strictEqual(v[COLS.TAX].value, '50');
 });
 
-check('isPlainReceipt：只有「收據」算', () => {
+check('lockedColsOf：收據＝賣方統編、格式、稅額寫 0；車票＝只有賣方統編；發票、高鐵票、空白＝不鎖', () => {
   const { R } = setup();
-  assert.strictEqual(R.isPlainReceipt(row({ [COLS.RECEIPT_TYPE]: '收據' })), true);
-  ['無', '發票', '車票（高鐵外）', ''].forEach((t) => assert.strictEqual(R.isPlainReceipt(row({ [COLS.RECEIPT_TYPE]: t })), false, t));
+  const of = (t) => JSON.parse(JSON.stringify(R.lockedColsOf(row({ [COLS.RECEIPT_TYPE]: t }))));
+  assert.deepStrictEqual(of('收據'), { sellerTaxId: true, format: true, tax: '0' });
+  assert.deepStrictEqual(of('車票（高鐵外）'), { sellerTaxId: true, format: false, tax: null });
+  ['發票', '高鐵票', ''].forEach((t) => assert.deepStrictEqual(of(t), { sellerTaxId: false, format: false, tax: null }, t));
+});
+
+check('憑證種類＝車票 → 賣方統編清空並鎖住；格式、稅額不鎖（稅額照舊寫 0）；改成收據以外解鎖', async () => {
+  const { env, R } = setup();
+  const r = record([row({ [COLS.VEHICLE]: '火車', [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '車票（高鐵外）', [COLS.SELLER_TAX_ID]: '12345678', [COLS.FORMAT]: '21' })]);
+  let ev = await fireRowChange(env, `app.record.edit.change.${COLS.RECEIPT_TYPE}`, r, 0);
+  let v = ev.record[T.CODE].value[0].value;
+  assert.strictEqual(v[COLS.SELLER_TAX_ID].value, '');
+  assert.strictEqual(v[COLS.SELLER_TAX_ID].disabled, true);
+  assert.strictEqual(v[COLS.FORMAT].value, '21', '格式不動');
+  assert.notStrictEqual(v[COLS.FORMAT].disabled, true);
+  assert.strictEqual(v[COLS.TAX].value, '0');
+  assert.notStrictEqual(v[COLS.TAX].disabled, true);
+  ev.record[T.CODE].value[0].value[COLS.VEHICLE].value = '計程車';
+  ev.record[T.CODE].value[0].value[COLS.RECEIPT_TYPE].value = '發票';
+  ev = await fireRowChange(env, `app.record.edit.change.${COLS.RECEIPT_TYPE}`, ev.record, 0);
+  assert.strictEqual(ev.record[T.CODE].value[0].value[COLS.SELLER_TAX_ID].disabled, false, '改發票解鎖');
+  // 開畫面與存檔前也清空鎖住
+  const r2 = record([row({ [COLS.VEHICLE]: '火車', [COLS.RECEIPT_TYPE]: '車票（高鐵外）', [COLS.SELLER_TAX_ID]: '99999999' })]);
+  ev = await env.fire('app.record.create.show', { record: r2 });
+  v = ev.record[T.CODE].value[0].value;
+  assert.strictEqual(v[COLS.SELLER_TAX_ID].value, '');
+  assert.strictEqual(v[COLS.SELLER_TAX_ID].disabled, true);
+  const r3 = record([row({ [COLS.RECEIPT_TYPE]: '車票（高鐵外）', [COLS.SELLER_TAX_ID]: '99999999' })]);
+  R.normalize(r3);
+  assert.strictEqual(r3[T.CODE].value[0].value[COLS.SELLER_TAX_ID].value, '');
 });
 
 check('改回別的種類時只回到開畫面的權限狀態：帳號權限設定鎖住的稅額不會被打開', async () => {
@@ -482,10 +510,9 @@ check('改交通工具（變更事件）時「無」的列一樣清空並鎖住�
   NO_COLS.forEach((code) => assert.strictEqual(r2[T.CODE].value[0].value[code].value, '', code));
 });
 
-check('isNoReceipt：只有「無」算', () => {
+check('lockedColsOf：無＝賣方統編、格式、稅額全部清空', () => {
   const { R } = setup();
-  assert.strictEqual(R.isNoReceipt(row({ [COLS.RECEIPT_TYPE]: '無' })), true);
-  ['收據', '發票', ''].forEach((t) => assert.strictEqual(R.isNoReceipt(row({ [COLS.RECEIPT_TYPE]: t })), false, t));
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(R.lockedColsOf(row({ [COLS.RECEIPT_TYPE]: '無' })))), { sellerTaxId: true, format: true, tax: '' });
 });
 
 // ── 7. 是否有紙本憑證＝否 → 會計課承辦註記是否收到單據紙本＝不適用 ─────────────

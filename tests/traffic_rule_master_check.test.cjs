@@ -16,7 +16,7 @@ const { createRunner, readSrc, rootDir } = require('./lib/pr_env.cjs');
 const { check, done } = createRunner('traffic_rule_master_check.test.cjs');
 
 const FILE = '交通費明細規則主檔檢查_20261104.js';
-const snapshot = JSON.parse(fs.readFileSync(path.join(rootDir, 'form_snapshots', '752_rev9_records.json'), 'utf8'));
+const snapshot = JSON.parse(fs.readFileSync(path.join(rootDir, 'form_snapshots', '752_rev12_records.json'), 'utf8'));
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const snapshotRecords = () => clone(snapshot.records || snapshot);
 
@@ -175,6 +175,18 @@ check('憑證種類記錄填了交通工具用欄位 → 逐欄報錯；交通�
   const e2 = V(rec({ [M.RECEIPT_FLAGS]: [M.FLAG_TAX] }), options);
   assert.strictEqual(e2.length, 1);
   assert.ok(e2[0].includes(`「${M.RECEIPT_FLAGS}」`));
+  const e3 = V(rec({ [M.LOCK_COLS]: [M.LOCK_SELLER_TAX_ID] }), options);
+  assert.strictEqual(e3.length, 1, '交通工具不可填鎖住欄位');
+  assert.ok(e3[0].includes(`「${M.LOCK_COLS}」`));
+});
+
+check('憑證種類的「鎖住欄位」：稅額清空與稅額寫0 只能擇一；其他組合可以', () => {
+  const receipt = (locks) => rec({ [M.TYPE]: M.TYPE_RECEIPT, [M.NAME]: OPT.RECEIPT_TYPE.NONE, [M.LOCK_COLS]: locks });
+  const e = V(receipt([M.LOCK_SELLER_TAX_ID, M.LOCK_TAX_EMPTY, M.LOCK_TAX_ZERO]), options);
+  assert.strictEqual(e.length, 1);
+  assert.ok(e[0].includes('只能擇一'), e[0]);
+  assert.deepStrictEqual(V(receipt([M.LOCK_SELLER_TAX_ID, M.LOCK_FORMAT, M.LOCK_TAX_EMPTY]), options), []);
+  assert.deepStrictEqual(V(receipt([M.LOCK_SELLER_TAX_ID]), options), []);
 });
 
 check('停用的記錄也檢查名稱；列表直接編輯沒帶名稱欄位時不誤報', () => {
