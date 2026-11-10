@@ -874,14 +874,21 @@
   display: none !important;
 }
 
-/* 交通費明細表頭的說明文件連結（表頭查詢連結_20261105.js）：沿用表頭文字顏色，只靠底線表示可點 */
+/* 交通費明細表頭的說明文件連結（表頭查詢連結_20261105.js）：深色表頭上用亮黃色＋底線＋粗體，一眼看出可點。
+   kintone 自己的 a 樣式（藍字、無底線）優先權較高，所以用 !important 蓋掉 */
 .pr-header-link,
-.pr-header-link:visited {
-  color: inherit;
-  text-decoration: underline;
+.pr-header-link:visited,
+.pr-header-link:active {
+  color: #ffe066 !important;
+  font-weight: bold !important;
+  text-decoration: underline !important;
+  text-underline-offset: 3px;
+  cursor: pointer;
 }
-.pr-header-link:hover {
-  opacity: 0.75;
+.pr-header-link:hover,
+.pr-header-link:focus-visible {
+  color: #ffffff !important;
+  text-decoration-thickness: 2px;
 }
 
 /* ── 欄位標籤說明圖示（欄位標籤說明圖示_20261104.js，只上傳到 App 752） ──

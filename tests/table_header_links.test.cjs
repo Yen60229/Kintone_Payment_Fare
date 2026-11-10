@@ -195,6 +195,15 @@ check('列印頁不綁；簽核記錄這類標籤對不上的子表格不動', (
   assert.strictEqual(linksOf(sign).length, 0);
 });
 
+check('CSS：連結用亮色＋底線＋粗體，且 !important 蓋過 kintone 自己的 a 樣式；hover 換白色', () => {
+  const css = readSrc('payment_request.css');
+  const base = /\.pr-header-link,[^{]*\{([^}]*)\}/.exec(css)?.[1] || '';
+  assert.ok(/color:\s*#ffe066\s*!important/i.test(base), base);
+  assert.ok(/text-decoration:\s*underline\s*!important/.test(base), base);
+  assert.ok(/font-weight:\s*bold\s*!important/.test(base), base);
+  assert.ok(/\.pr-header-link:hover[^{]*\{[^}]*color:\s*#ffffff\s*!important/i.test(css));
+});
+
 check('只進桌面版入口；CSS 有 .pr-header-link；模組不寫 inline 樣式', () => {
   assert.ok(readSrc('src/index.js').includes(FILE));
   assert.ok(!readSrc('src/mobile.js').includes(FILE));
