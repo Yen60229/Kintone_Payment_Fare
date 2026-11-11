@@ -16,7 +16,7 @@ const { createRunner, readSrc, rootDir } = require('./lib/pr_env.cjs');
 const { check, done } = createRunner('traffic_rule_master_check.test.cjs');
 
 const FILE = '交通費明細規則主檔檢查_20261104.js';
-const snapshot = JSON.parse(fs.readFileSync(path.join(rootDir, 'form_snapshots', '752_rev12_records.json'), 'utf8'));
+const snapshot = JSON.parse(fs.readFileSync(path.join(rootDir, 'form_snapshots', '752_rev14_records.json'), 'utf8'));
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const snapshotRecords = () => clone(snapshot.records || snapshot);
 

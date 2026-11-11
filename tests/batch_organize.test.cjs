@@ -262,6 +262,14 @@ check('算式：加減、數字常數、空白、連續正負號、小數去除�
   assert.strictEqual(parseTemplate('  = 2 + 3', ctx()), '5', '樣板前後空白可有');
 });
 
+check('算式：={金額}-{稅額}+{手續費}＝未稅票價＋手續費（金額 1490、稅額 71、手續費 20 → 1439）；手續費空白當 0', () => {
+  const expr = `=${tcol(T.COLS.AMOUNT)}-${tcol(T.COLS.TAX)}+${tcol(T.COLS.FEE)}`;
+  const withFee = mkRecord(1, 1, OWNER, [D(1490, 71, { [T.COLS.FEE]: '20' })]);
+  assert.strictEqual(parseTemplate(expr, ctx({ record: withFee, detailRow: withFee[T.CODE].value[0] })), '1439');
+  const noFee = mkRecord(1, 1, OWNER, [D(1490, 71, { [T.COLS.FEE]: '' })]);
+  assert.strictEqual(parseTemplate(expr, ctx({ record: noFee, detailRow: noFee[T.CODE].value[0] })), '1419');
+});
+
 check('算式：空白運算元當 0、逗號千分位可算', () => {
   const expr = `=${tcol(T.COLS.AMOUNT)}-${tcol(T.COLS.TAX)}`;
   assert.strictEqual(parseTemplate(expr, ctx({ record: mkRecord(1, 1, OWNER, [D('', 166)]) })), '-166');

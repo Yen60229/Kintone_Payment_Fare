@@ -1,5 +1,5 @@
 {
-  "_note": "App 752 交通費明細規則主檔記錄（2026-11-10 用 kintone MCP 讀取，表單 rev 12：新增「鎖住欄位」）。與 config TRAFFIC_RULES 等價，測試用。",
+  "_note": "App 752 交通費明細規則主檔記錄（2026-11-11 用 kintone MCP 讀取，表單 rev 14：交通工具規則新增「可填手續費」，高鐵勾選）。與 config TRAFFIC_RULES 等價，測試用。",
   "records": [
     {
       "$id": {
@@ -34,7 +34,9 @@
       },
       "交通工具規則": {
         "type": "CHECK_BOX",
-        "value": []
+        "value": [
+          "可填手續費"
+        ]
       },
       "憑證種類規則": {
         "type": "CHECK_BOX",

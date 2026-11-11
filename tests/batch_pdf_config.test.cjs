@@ -51,10 +51,10 @@ check('表格設定只有交通費一種：子表格代碼＝F.TRAFFIC_TABLE.COD
   assert.ok(!('一般請款單' in B.TABLE_CONFIG) && !('交通費請款單' in B.TABLE_CONFIG), '不應再有以類型為鍵的對照表');
 });
 
-check('欄位清單：11 欄，順序與顯示名稱照規格', () => {
+check('欄位清單：12 欄，順序與顯示名稱照規格', () => {
   assert.deepStrictEqual(
     B.TABLE_CONFIG.fields.map((f) => f[0]),
-    ['憑證日期', '交通工具', '拜訪客戶', '起訖點', '金額', '費用歸屬', '憑證種類', '發票號碼', '賣方統編', '格式', '稅額'],
+    ['憑證日期', '交通工具', '拜訪客戶', '起訖點', '金額', '手續費', '費用歸屬', '憑證種類', '發票號碼', '賣方統編', '格式', '稅額'],
   );
 });
 
@@ -86,7 +86,7 @@ const trafficRow = (over = {}) => ({
 check('getTableData：讀交通費子表格，欄位依顯示名稱對應，未填的給空字串', () => {
   const data = B.getTableData({ [T.CODE]: { value: [trafficRow(), trafficRow({ [T.COLS.AMOUNT]: { value: '50' } })] } });
   assert.strictEqual(data.rows.length, 2);
-  assert.strictEqual(data.displayNames.length, 11);
+  assert.strictEqual(data.displayNames.length, 12);
   assert.strictEqual(data.rows[0]['起訖點'], '台北→桃園');
   assert.strictEqual(data.rows[0]['金額'], '1234');
   assert.ok(!('備註' in data.rows[0]), '備註欄已從 749 移除');
@@ -99,8 +99,8 @@ check('getTableData：只認交通費子表格，別的子表格或沒有明細 
   assert.strictEqual(B.getTableData({}), null);
 });
 
-check('數字欄位名單（靠右＋千分位）＝金額、稅額，且都是明細欄位', () => {
-  assert.deepStrictEqual([...B.NUMERIC_COLUMNS], ['金額', '稅額']);
+check('數字欄位名單（靠右＋千分位）＝金額、手續費、稅額，且都是明細欄位', () => {
+  assert.deepStrictEqual([...B.NUMERIC_COLUMNS], ['金額', '手續費', '稅額']);
   const names = B.TABLE_CONFIG.fields.map((f) => f[0]);
   B.NUMERIC_COLUMNS.forEach((n) => assert.ok(names.includes(n), n));
 });

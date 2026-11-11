@@ -156,6 +156,7 @@
         VEHICLE_FLAGS: '交通工具規則', // CHECK_BOX
         FLAG_PAPER_RECEIPT: '需紙本憑證', // 有搭乘 → 是否有紙本憑證選「是」
         FLAG_REASON_REQUIRED: '理由必填', // 有搭乘 → 理由必填
+        FLAG_FEE: '可填手續費', // 有搭乘的列才可填手續費；其他交通工具清空並鎖住
         RECEIPT_FLAGS: '憑證種類規則', // CHECK_BOX
         FLAG_TAX: '要算稅',
         FLAG_INVOICE_NO: '開放發票號碼',
@@ -229,7 +230,7 @@
       PAPER_RECEIVED: '會計課承辦註記是否收到單據紙本',
       REASON: '理由', // 主表 MULTI_LINE_TEXT；標籤「理由（計程車）」
       RECORD_NO: '交通費請款單號', // RECORD_NUMBER；批次下載／PDF 產生時用來標示記錄
-      TOTAL_AMOUNT: '總金額', // CALC；＝交通費請款單.金額 合計（交通費轉出 Excel 的 {總金額}）
+      TOTAL_AMOUNT: '總金額', // CALC；＝交通費請款單.金額 合計＋手續費 合計（交通費轉出 Excel 的 {總金額}）
       TOTAL_TAX: '總稅額', // CALC；＝交通費請款單.稅額 合計（交通費轉出 Excel 的 {總稅額}；為 0 就不轉出稅額列）
       DEV_ONLY_DATA: '帶入的資料_開發人員用', // 僅 ADMIN_USERS 可見的除錯用群組欄位
       SIGN_FLOW_GROUP: '簽核流程', // 簽核流程群組欄位
@@ -247,6 +248,7 @@
           VISIT_CUSTOMER: '拜訪客戶',
           ROUTE: '起訖點',
           AMOUNT: '金額',
+          FEE: '手續費', // NUMBER；高鐵 ibon 手續費，金額只填票價，稅額只看金額
           EXPENSE: '費用歸屬',
           RECEIPT_TYPE: '憑證種類',
           INVOICE_NO: '發票號碼', // 標籤「發票號碼／高鐵票號」
@@ -266,7 +268,7 @@
     });
 
     // ── 交通費明細子表格的版面（詳細頁／列印頁的欄寬用，payment_request_main 的 layoutTrafficTable）────
-    //   來源：kintone MCP 讀 749 表單 rev 1880（form_snapshots/749_rev1880_traffic_table.json，測試會比對）。
+    //   來源：kintone MCP 讀 749 表單 rev 1887（form_snapshots/749_rev1887_traffic_table.json，測試會比對）。
     //   COLUMNS 依畫面上的欄位順序；label＝表頭文字（用來找出畫面上是哪一欄），type／unit 決定顯示文字怎麼算。
     //   表單改了子表格欄位（順序、標籤、型別）→ 用 MCP 重讀、更新快照與這裡。
     const TRAFFIC_TABLE_LAYOUT = Object.freeze({
@@ -300,6 +302,12 @@
           {
             code: FIELDS.TRAFFIC_TABLE.COLS.AMOUNT,
             label: '金額（含稅）',
+            type: 'NUMBER',
+            unit: '元',
+          },
+          {
+            code: FIELDS.TRAFFIC_TABLE.COLS.FEE,
+            label: '手續費',
             type: 'NUMBER',
             unit: '元',
           },
@@ -475,6 +483,8 @@
         [OPTIONS.VEHICLE.PARKING]: Object.freeze([OPTIONS.RECEIPT_TYPE.INVOICE, OPTIONS.RECEIPT_TYPE.RECEIPT]),
         [OPTIONS.VEHICLE.RENTAL]: Object.freeze([OPTIONS.RECEIPT_TYPE.INVOICE, OPTIONS.RECEIPT_TYPE.RECEIPT]),
       }),
+      // 這些交通工具才可填「手續費」（現在是高鐵 ibon）；其他交通工具清空並鎖住。金額只填票價，稅額只看金額
+      FEE_VEHICLES: Object.freeze([OPTIONS.VEHICLE.HSR]),
       // 有計程車時「理由」動態必填：畫面上找標籤文字以此開頭的欄位加紅色 *
       REASON_LABEL_PREFIX: '理由',
     });
@@ -3941,6 +3951,10 @@
     //   7. 是否有紙本憑證＝否 → 「會計課承辦註記是否收到單據紙本」寫「不適用」（show、變更事件含是否有紙本憑證、存檔前）；
     //      變更事件改回「是」且還是「不適用」→ 回到「未收到」
     //
+    //   8. 交通工具有「可填手續費」旗標（主檔「交通工具規則」；現在是高鐵）→ 手續費可填；其他交通工具（含空白）清空並鎖住
+    //      （show、變更事件、存檔前都套用；改成可填的交通工具只解回權限狀態）。金額只填票價、稅額只看金額（手續費不進稅額）；
+    //      總金額＝金額＋手續費 是 kintone 的 CALC，這裡不算。存檔時手續費不可為負數
+    //
     //   存檔驗證的錯誤由 payment_request_submit 統一顯示（呼叫 normalize／validate），這裡不另跳視窗。
     // =============================================================================
 
@@ -3965,6 +3979,7 @@
     //     fixedByVehicle: { [交通工具]: { sellerTaxId, format } },
     //     paperReceiptVehicles: string[],               // 需紙本憑證（排序）
     //     reasonRequiredVehicles: string[],             // 理由必填（排序）
+    //     feeVehicles: string[],                        // 可填手續費（排序）
     //     lockByReceipt: { [憑證種類]: string[] },       // 鎖住欄位（主檔選項值，排序）；只放有勾的憑證種類
     //   }
 
@@ -4001,6 +4016,7 @@
         fixedByVehicle: { [options.VEHICLE.HSR]: { sellerTaxId: rules.HSR_SELLER_TAX_ID, format: rules.HSR_FORMAT } },
         paperReceiptVehicles: [options.VEHICLE.TAXI],
         reasonRequiredVehicles: [options.VEHICLE.TAXI],
+        feeVehicles: sortedUnique(rules.FEE_VEHICLES),
         lockByReceipt: lockMap(Object.keys(rules.LOCK_BY_RECEIPT).map((name) => ({ name, locks: rules.LOCK_BY_RECEIPT[name] }))),
       };
     };
@@ -4069,6 +4085,7 @@
         fixedByVehicle,
         paperReceiptVehicles: vehiclesWith(M.FLAG_PAPER_RECEIPT),
         reasonRequiredVehicles: vehiclesWith(M.FLAG_REASON_REQUIRED),
+        feeVehicles: vehiclesWith(M.FLAG_FEE),
         lockByReceipt: lockMap(receipts.map(({ rec, name }) => ({ name, locks: list(rec, M.LOCK_COLS) }))),
       };
     };
@@ -4161,7 +4178,7 @@
 
     // 開畫面時（帳號權限設定已套用、本模組還沒鎖）各欄的鎖定狀態。
     //   變更事件「解鎖」只回到這個狀態，不會把帳號權限設定鎖住的欄位打開。
-    const LOCK_COLS = [COLS.SELLER_TAX_ID, COLS.FORMAT, COLS.TAX, COLS.INVOICE_NO];
+    const LOCK_COLS = [COLS.SELLER_TAX_ID, COLS.FORMAT, COLS.TAX, COLS.INVOICE_NO, COLS.FEE];
     let baseLocked = {};
     const captureBaseLocks = (record) => {
       const rows = getRowsOf(record);
@@ -4189,6 +4206,11 @@
     };
     const isFixedSellerTaxId = (taxId) => !!taxId && Object.values(active.fixedByVehicle).some((fixed) => fixed.sellerTaxId === taxId);
     const getRows = (record) => getRowsOf(record);
+    /** 8. 這一列的交通工具可不可以填手續費（交通工具空白＝不可） */
+    const isFeeAllowed = (row) => {
+      const vehicle = row?.value?.[COLS.VEHICLE]?.value;
+      return !!vehicle && active.feeVehicles.includes(vehicle);
+    };
 
     /** 這張單裡命中名單的交通工具名稱（不重複，依列順序） */
     const vehiclesHit = (record, names) => Array.from(new Set(getRows(record).map((row) => row.value[COLS.VEHICLE]?.value).filter((v) => v && names.includes(v))));
@@ -4246,6 +4268,10 @@
       setLock(COLS.SELLER_TAX_ID, lock.sellerTaxId || !!fixed);
       setLock(COLS.FORMAT, lock.format || !!fixed);
       setLock(COLS.TAX, lock.tax !== null);
+
+      // 8. 手續費：只有「可填手續費」的交通工具能填，其他清空並鎖住
+      if (!isFeeAllowed(row) && v[COLS.FEE]) v[COLS.FEE].value = '';
+      setLock(COLS.FEE, !isFeeAllowed(row));
     };
 
     /**
@@ -4352,6 +4378,15 @@
         .forEach((no) => {
           errors.push(`「${COLS.INVOICE_NO}」**${no}** 在本單重複填寫（第 ${seen[no].join('、')} 行）\n※ 同一張發票只能填一次`);
         });
+
+      // 手續費：不可為負數；不可填的交通工具（normalize 會先清空，這裡是保險）不能有值
+      rows.forEach((row, i) => {
+        const raw = row.value[COLS.FEE]?.value;
+        if (raw === '' || raw === null || raw === undefined) return;
+        const fee = Number(raw);
+        if (Number.isFinite(fee) && fee < 0) errors.push(`第 ${i + 1} 行「${COLS.FEE}」**不能是負數**`);
+        else if (!isFeeAllowed(row)) errors.push(`第 ${i + 1} 行交通工具是「${row.value[COLS.VEHICLE]?.value || '空白'}」，**不能填「${COLS.FEE}」**`);
+      });
 
       // 需紙本憑證的交通工具（現在是計程車）：是否有紙本憑證要選「是」；理由必填的交通工具：理由必填
       const paper = paperVehicles(record);
@@ -4481,7 +4516,7 @@
       return event;
     });
 
-    const changeEvents = [TRAFFIC.CODE, COLS.VEHICLE, COLS.AMOUNT, COLS.RECEIPT_TYPE, F.PAPER_RECEIPT].flatMap((code) => [
+    const changeEvents = [TRAFFIC.CODE, COLS.VEHICLE, COLS.AMOUNT, COLS.FEE, COLS.RECEIPT_TYPE, F.PAPER_RECEIPT].flatMap((code) => [
       `app.record.create.change.${code}`,
       `app.record.edit.change.${code}`,
     ]);
@@ -4500,7 +4535,7 @@
       return event;
     });
 
-    window.PR_TRAFFIC_RULES = Object.freeze({ calcTax, recalcRowTax, changedRow, hasTaxi, rulesFromConfig, rulesFromMaster, loadRules, getActiveRules, _resetForTest, allowedReceiptTypes, lockedColsOf, filterMenuItems, menuContext, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
+    window.PR_TRAFFIC_RULES = Object.freeze({ calcTax, recalcRowTax, changedRow, hasTaxi, rulesFromConfig, rulesFromMaster, loadRules, getActiveRules, _resetForTest, allowedReceiptTypes, lockedColsOf, isFeeAllowed, filterMenuItems, menuContext, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
   })();
 
   (() => {

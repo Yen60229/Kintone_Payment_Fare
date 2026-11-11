@@ -68,6 +68,7 @@
       ['拜訪客戶', F.TRAFFIC_TABLE.COLS.VISIT_CUSTOMER],
       ['起訖點', F.TRAFFIC_TABLE.COLS.ROUTE],
       ['金額', F.TRAFFIC_TABLE.COLS.AMOUNT],
+      ['手續費', F.TRAFFIC_TABLE.COLS.FEE],
       ['費用歸屬', F.TRAFFIC_TABLE.COLS.EXPENSE],
       ['憑證種類', F.TRAFFIC_TABLE.COLS.RECEIPT_TYPE],
       ['發票號碼', F.TRAFFIC_TABLE.COLS.INVOICE_NO],
@@ -78,7 +79,7 @@
   };
 
   // 數字欄位（靠右、加千分位）的顯示名稱
-  const NUMERIC_COLUMNS = ['金額', '稅額'];
+  const NUMERIC_COLUMNS = ['金額', '手續費', '稅額'];
 
   // ======================== 通用工具 ========================
   const sleep = (ms) => new Promise((res) => setTimeout(res, ms));

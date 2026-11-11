@@ -60,7 +60,7 @@ check('已刪除的 723 設定鍵全部不存在（頂層）', () => {
 
 // ── 子表格版面（MCP 快照）───────────────────────────────────────────────────
 check('TRAFFIC_TABLE_LAYOUT.COLUMNS 和 MCP 讀出的 749 表單快照一致（順序、代碼、標籤、型別、單位），且涵蓋子表格全部欄位', () => {
-  const snap = JSON.parse(fs.readFileSync(path.join(rootDir, 'form_snapshots', '749_rev1880_traffic_table.json'), 'utf8'));
+  const snap = JSON.parse(fs.readFileSync(path.join(rootDir, 'form_snapshots', '749_rev1887_traffic_table.json'), 'utf8'));
   assert.strictEqual(snap.subtable, c.FIELDS.TRAFFIC_TABLE.CODE);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(c.TRAFFIC_TABLE_LAYOUT.COLUMNS)), snap.columns);
   assert.deepStrictEqual(c.TRAFFIC_TABLE_LAYOUT.COLUMNS.map((col) => col.code).sort(), Object.values(c.FIELDS.TRAFFIC_TABLE.COLS).sort());
@@ -193,7 +193,7 @@ check('FIELDS 主表欄位代碼正確', () => {
   );
 });
 
-check('FIELDS 子表格：交通費請款單 11 欄、簽核記錄 3 欄，欄位代碼正確', () => {
+check('FIELDS 子表格：交通費請款單 12 欄、簽核記錄 3 欄，欄位代碼正確', () => {
   assert.strictEqual(F.TRAFFIC_TABLE.CODE, '交通費請款單');
   assert.deepStrictEqual(
     { ...F.TRAFFIC_TABLE.COLS },
@@ -203,6 +203,7 @@ check('FIELDS 子表格：交通費請款單 11 欄、簽核記錄 3 欄，欄�
       VISIT_CUSTOMER: '拜訪客戶',
       ROUTE: '起訖點',
       AMOUNT: '金額',
+      FEE: '手續費',
       EXPENSE: '費用歸屬',
       RECEIPT_TYPE: '憑證種類',
       INVOICE_NO: '發票號碼',
@@ -314,6 +315,12 @@ check('TRAFFIC_RULES：高鐵賣方統編 00000000、格式 22、稅率 5%、高
   assert.deepStrictEqual([...t.LOCK_BY_RECEIPT[R.TICKET]], [M.LOCK_SELLER_TAX_ID], '車票 → 賣方統編清空鎖住');
   assert.strictEqual(t.NO_RECEIPT_TYPES, undefined, '舊設定已移到 LOCK_BY_RECEIPT');
   assert.strictEqual(t.PLAIN_RECEIPT_TYPES, undefined);
+});
+
+check('手續費：COLS.FEE＝手續費、TRAFFIC_RULES.FEE_VEHICLES＝[高鐵]、主檔旗標「可填手續費」', () => {
+  assert.strictEqual(F.TRAFFIC_TABLE.COLS.FEE, '手續費');
+  assert.deepStrictEqual([...c.TRAFFIC_RULES.FEE_VEHICLES], [c.OPTIONS.VEHICLE.HSR]);
+  assert.strictEqual(c.REF_FIELDS.TRAFFIC_RULE_MASTER.FLAG_FEE, '可填手續費');
 });
 
 check('DIRECTOR_BY_COST_CENTER：部長的單位部長依費用歸屬帶入，只在填單／草稿／駁回時重算', () => {

@@ -15,7 +15,7 @@ const { createEnv, createRunner, rootDir } = require('./lib/pr_env.cjs');
 
 const { check, done } = createRunner('traffic_rule_master.test.cjs');
 
-const snapshot = JSON.parse(fs.readFileSync(path.join(rootDir, 'form_snapshots', '752_rev12_records.json'), 'utf8'));
+const snapshot = JSON.parse(fs.readFileSync(path.join(rootDir, 'form_snapshots', '752_rev14_records.json'), 'utf8'));
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const snapshotRecords = () => clone(snapshot.records || snapshot);
 
@@ -189,6 +189,28 @@ check('只留「理由必填」→ 紙本憑證不自動選，但理由要填；
   const errs = R.validate(ev.record);
   assert.strictEqual(errs.length, 1);
   assert.ok(errs[0].includes('有搭乘Uber、計程車，**請填寫「理由」**'), errs[0]);
+});
+
+check('主檔：高鐵「可填手續費」、其他沒有；快照轉出 feeVehicles＝[高鐵]', () => {
+  const { R } = setup();
+  const rules = R.rulesFromMaster(snapshotRecords());
+  assert.deepStrictEqual(clone(rules.feeVehicles), ['高鐵']);
+  assert.deepStrictEqual(clone(find(snapshotRecords(), '高鐵')[M.VEHICLE_FLAGS].value), [M.FLAG_FEE]);
+});
+
+check('主檔改「可填手續費」：計程車有、高鐵沒有 → 行為反過來（計程車可填、高鐵清空並鎖住）', async () => {
+  const { env } = await withMaster((recs) => {
+    find(recs, '高鐵')[M.VEHICLE_FLAGS].value = [];
+    find(recs, '計程車')[M.VEHICLE_FLAGS].value = [M.FLAG_FEE];
+  });
+  const ev = await env.fire(`app.record.edit.change.${COLS.VEHICLE}`, {
+    record: record([row({ [COLS.VEHICLE]: '計程車', [COLS.FEE]: '20' }), row({ [COLS.VEHICLE]: '高鐵', [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.FEE]: '20' })]),
+  });
+  const cells = ev.record[T.CODE].value.map((r) => r.value[COLS.FEE]);
+  assert.strictEqual(cells[0].value, '20');
+  assert.notStrictEqual(cells[0].disabled, true);
+  assert.strictEqual(cells[1].value, '');
+  assert.strictEqual(cells[1].disabled, true);
 });
 
 check('新增交通工具「自行車」只能選「收據」→ 選發票被清空、選了就自動帶入收據、存檔擋下不能用的組合', async () => {

@@ -150,6 +150,7 @@
       VEHICLE_FLAGS: '交通工具規則', // CHECK_BOX
       FLAG_PAPER_RECEIPT: '需紙本憑證', // 有搭乘 → 是否有紙本憑證選「是」
       FLAG_REASON_REQUIRED: '理由必填', // 有搭乘 → 理由必填
+      FLAG_FEE: '可填手續費', // 有搭乘的列才可填手續費；其他交通工具清空並鎖住
       RECEIPT_FLAGS: '憑證種類規則', // CHECK_BOX
       FLAG_TAX: '要算稅',
       FLAG_INVOICE_NO: '開放發票號碼',
@@ -223,7 +224,7 @@
     PAPER_RECEIVED: '會計課承辦註記是否收到單據紙本',
     REASON: '理由', // 主表 MULTI_LINE_TEXT；標籤「理由（計程車）」
     RECORD_NO: '交通費請款單號', // RECORD_NUMBER；批次下載／PDF 產生時用來標示記錄
-    TOTAL_AMOUNT: '總金額', // CALC；＝交通費請款單.金額 合計（交通費轉出 Excel 的 {總金額}）
+    TOTAL_AMOUNT: '總金額', // CALC；＝交通費請款單.金額 合計＋手續費 合計（交通費轉出 Excel 的 {總金額}）
     TOTAL_TAX: '總稅額', // CALC；＝交通費請款單.稅額 合計（交通費轉出 Excel 的 {總稅額}；為 0 就不轉出稅額列）
     DEV_ONLY_DATA: '帶入的資料_開發人員用', // 僅 ADMIN_USERS 可見的除錯用群組欄位
     SIGN_FLOW_GROUP: '簽核流程', // 簽核流程群組欄位
@@ -241,6 +242,7 @@
         VISIT_CUSTOMER: '拜訪客戶',
         ROUTE: '起訖點',
         AMOUNT: '金額',
+        FEE: '手續費', // NUMBER；高鐵 ibon 手續費，金額只填票價，稅額只看金額
         EXPENSE: '費用歸屬',
         RECEIPT_TYPE: '憑證種類',
         INVOICE_NO: '發票號碼', // 標籤「發票號碼／高鐵票號」
@@ -260,7 +262,7 @@
   });
 
   // ── 交通費明細子表格的版面（詳細頁／列印頁的欄寬用，payment_request_main 的 layoutTrafficTable）────
-  //   來源：kintone MCP 讀 749 表單 rev 1880（form_snapshots/749_rev1880_traffic_table.json，測試會比對）。
+  //   來源：kintone MCP 讀 749 表單 rev 1887（form_snapshots/749_rev1887_traffic_table.json，測試會比對）。
   //   COLUMNS 依畫面上的欄位順序；label＝表頭文字（用來找出畫面上是哪一欄），type／unit 決定顯示文字怎麼算。
   //   表單改了子表格欄位（順序、標籤、型別）→ 用 MCP 重讀、更新快照與這裡。
   const TRAFFIC_TABLE_LAYOUT = Object.freeze({
@@ -294,6 +296,12 @@
         {
           code: FIELDS.TRAFFIC_TABLE.COLS.AMOUNT,
           label: '金額（含稅）',
+          type: 'NUMBER',
+          unit: '元',
+        },
+        {
+          code: FIELDS.TRAFFIC_TABLE.COLS.FEE,
+          label: '手續費',
           type: 'NUMBER',
           unit: '元',
         },
@@ -469,6 +477,8 @@
       [OPTIONS.VEHICLE.PARKING]: Object.freeze([OPTIONS.RECEIPT_TYPE.INVOICE, OPTIONS.RECEIPT_TYPE.RECEIPT]),
       [OPTIONS.VEHICLE.RENTAL]: Object.freeze([OPTIONS.RECEIPT_TYPE.INVOICE, OPTIONS.RECEIPT_TYPE.RECEIPT]),
     }),
+    // 這些交通工具才可填「手續費」（現在是高鐵 ibon）；其他交通工具清空並鎖住。金額只填票價，稅額只看金額
+    FEE_VEHICLES: Object.freeze([OPTIONS.VEHICLE.HSR]),
     // 有計程車時「理由」動態必填：畫面上找標籤文字以此開頭的欄位加紅色 *
     REASON_LABEL_PREFIX: '理由',
   });

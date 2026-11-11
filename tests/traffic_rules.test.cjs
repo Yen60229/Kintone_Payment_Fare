@@ -8,6 +8,7 @@
 //   5. 交通工具限制憑證種類：變更事件清掉不能用的、只有一種就帶入；存檔擋；桌面版選單藏起不能選的項目
 //   6. 憑證種類＝無 → 賣方統編、格式、稅額清空並鎖住（show／變更事件／存檔前）；改回別的只回到權限給的鎖定狀態
 //   7. 是否有紙本憑證＝否 → 會計課承辦註記是否收到單據紙本 寫「不適用」；變更事件改回「是」→ 未收到
+//   8. 手續費：只有「可填手續費」的交通工具（高鐵）能填，其他清空並鎖住；稅額只看金額；不可為負數
 // 單獨執行：node tests/traffic_rules.test.cjs
 
 const assert = require('assert');
@@ -624,6 +625,89 @@ check('filterMenuItems：藏起不能選的憑證種類、不碰「-----」；al
   assert.deepStrictEqual(items.filter((i) => i.classes.has('pr-option-hidden')).map((i) => i.textContent), ['高鐵票', '車票（高鐵外）', '無']);
   assert.strictEqual(R.filterMenuItems(menu, null), 0);
   assert.ok(items.every((i) => !i.classes.has('pr-option-hidden')));
+});
+
+// ── 8. 手續費 ───────────────────────────────────────────────────────────────
+const feeCell = (r, i = 0) => r[T.CODE].value[i].value[COLS.FEE];
+
+check('手續費：高鐵列可填、值保留、不鎖；稅額只看金額（金額 1490、手續費 20 → 稅額 71）', async () => {
+  const { env, R } = setup();
+  const r = record([row({ [COLS.VEHICLE]: '高鐵', [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.AMOUNT]: '1490', [COLS.FEE]: '20' })]);
+  const ev = await fireRowChange(env, `app.record.create.change.${COLS.FEE}`, r, 0);
+  assert.strictEqual(feeCell(ev.record).value, '20');
+  assert.notStrictEqual(feeCell(ev.record).disabled, true);
+  assert.strictEqual(taxOf(ev.record, 0), '71');
+  assert.strictEqual(R.isFeeAllowed(ev.record[T.CODE].value[0]), true);
+});
+
+check('手續費：非高鐵（計程車）有值 → 變更事件清空並鎖住；空交通工具也一樣', async () => {
+  const { env, R } = setup();
+  const r = record([row({ [COLS.VEHICLE]: '計程車', [COLS.FEE]: '20' }), row({ [COLS.FEE]: '5' })]);
+  const ev = await env.fire(`app.record.edit.change.${COLS.VEHICLE}`, { record: r });
+  [0, 1].forEach((i) => {
+    assert.strictEqual(feeCell(ev.record, i).value, '');
+    assert.strictEqual(feeCell(ev.record, i).disabled, true);
+  });
+  assert.strictEqual(R.isFeeAllowed(ev.record[T.CODE].value[0]), false);
+});
+
+check('手續費：create.show 清空並鎖住不可填的列；高鐵列不鎖；normalize 也清空', async () => {
+  const { env, R } = setup();
+  const r = record([row({ [COLS.VEHICLE]: '計程車', [COLS.FEE]: '20' }), row({ [COLS.VEHICLE]: '高鐵', [COLS.FEE]: '20' })]);
+  const ev = await env.fire('app.record.create.show', { record: r });
+  assert.strictEqual(feeCell(ev.record, 0).value, '');
+  assert.strictEqual(feeCell(ev.record, 0).disabled, true);
+  assert.strictEqual(feeCell(ev.record, 1).value, '20');
+  assert.notStrictEqual(feeCell(ev.record, 1).disabled, true);
+  const r2 = record([row({ [COLS.VEHICLE]: '火車', [COLS.FEE]: '9' })]);
+  R.normalize(r2);
+  assert.strictEqual(feeCell(r2).value, '');
+  assert.strictEqual(R.validate(r2).length, 0);
+});
+
+check('手續費：高鐵 → 火車 清空並鎖住；火車 → 高鐵 解鎖（回到基礎狀態）', async () => {
+  const { env } = setup();
+  const r = record([row({ [COLS.VEHICLE]: '高鐵', [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.FEE]: '20' })]);
+  r[T.CODE].value[0].value[COLS.VEHICLE].value = '火車';
+  let ev = await env.fire(`app.record.edit.change.${COLS.VEHICLE}`, { record: r });
+  assert.strictEqual(feeCell(ev.record).value, '');
+  assert.strictEqual(feeCell(ev.record).disabled, true);
+  ev.record[T.CODE].value[0].value[COLS.VEHICLE].value = '高鐵';
+  ev = await env.fire(`app.record.edit.change.${COLS.VEHICLE}`, { record: ev.record });
+  assert.notStrictEqual(feeCell(ev.record).disabled, true);
+});
+
+check('手續費：權限模組先鎖（show 前 disabled＝true）→ 切到高鐵仍維持鎖住', async () => {
+  const { env } = setup();
+  const r = record([row({ [COLS.VEHICLE]: '火車' })]);
+  feeCell(r).disabled = true;
+  let ev = await env.fire('app.record.edit.show', { record: r });
+  ev.record[T.CODE].value[0].value[COLS.VEHICLE].value = '高鐵';
+  ev = await env.fire(`app.record.edit.change.${COLS.VEHICLE}`, { record: ev.record });
+  assert.strictEqual(feeCell(ev.record).disabled, true);
+});
+
+check('手續費：validate 負數 → 錯誤；0 與正數可；舊資料沒有手續費欄不報錯', () => {
+  const { R } = setup();
+  const bad = record([row({ [COLS.VEHICLE]: '高鐵', [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.INVOICE_NO]: 'A1', [COLS.FEE]: '-5' })]);
+  assert.ok(R.validate(bad).some((e) => e.includes('第 1 行「手續費」') && e.includes('不能是負數')));
+  const ok = record([row({ [COLS.VEHICLE]: '高鐵', [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.INVOICE_NO]: 'A1', [COLS.FEE]: '0' })]);
+  assert.strictEqual(R.validate(ok).length, 0);
+  const old = row({ [COLS.VEHICLE]: '計程車', [COLS.RECEIPT_TYPE]: '收據' });
+  delete old.value[COLS.FEE];
+  const r = record([old], { [F.REASON]: { value: '客戶拜訪' } });
+  R.normalize(r);
+  assert.strictEqual(R.validate(r).length, 0);
+  // 不可填的交通工具直接驗證（沒先 normalize）→ 擋下
+  const direct = record([row({ [COLS.VEHICLE]: '計程車', [COLS.FEE]: '3' })]);
+  assert.ok(R.validate(direct).some((e) => e.includes('不能填「手續費」')));
+});
+
+check('事件註冊：手續費的 create／edit change', () => {
+  const { env } = setup();
+  const types = env.registeredTypes();
+  assert.ok(types.includes(`app.record.create.change.${COLS.FEE}`));
+  assert.ok(types.includes(`app.record.edit.change.${COLS.FEE}`));
 });
 
 done();
