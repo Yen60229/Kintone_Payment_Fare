@@ -1,0 +1,25 @@
+/* =============================================================================
+   kintone 詳細頁欄位寬度自動（通用版，2026-11-12）
+   任何 App 都可直接上傳到「JavaScript／CSS 自訂 → CSS（PC）」，不需要搭配 JS。
+
+   用途：kintone 依表單設計時拉的寬度，在每個欄位外框（.control-gaia）用 inline style 寫死寬度，
+         詳細頁只顯示文字，選項按鈕、核取方塊、短文字常留一大段空白；拉太窄的又把長文字擠成好幾行。
+         這支讓詳細頁的欄位外框依內容縮放（標籤和值，取較寬的那個）。
+
+   範圍：只有詳細頁（.record-detail-gaia 底下）；新增／編輯頁不動（輸入框保留設計寬度）。
+   不動：子表格（含表格裡的每一格）、群組、關聯記錄清單（自己有版面）。
+
+   為什麼要 !important：
+     - width：kintone 把設計寬度寫在外框的 style 屬性，一般規則蓋不過。
+     - min-width：人員選擇、組織選擇等欄位，kintone 另外把 min-width 設成設計寬度，不蓋掉就縮不下去。
+     - min-width 80px：免得空白欄位縮成一條線。
+
+   注意：.record-detail-gaia、.control-gaia、.subtable-gaia 都是 kintone 內部 class，不是公開 API，
+         kintone 改版可能失效（失效時只是寬度回到原本設計值，不會壞掉）。
+   ============================================================================= */
+
+.record-detail-gaia .control-gaia:not([class*='subtable']):not([class*='group']):not([class*='reference_table']):not(.subtable-gaia .control-gaia) {
+  width: auto !important;
+  min-width: 80px !important;
+  max-width: 100%;
+}
