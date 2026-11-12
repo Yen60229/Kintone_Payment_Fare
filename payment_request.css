@@ -894,10 +894,11 @@
 }
 
 /* ── 詳細頁：主表欄位外框依內容縮放（詳細頁欄位寬度自動）──
-   kintone 把設計時的寬度寫在外框的 style 屬性，要 !important 才蓋得過；min-width 避免空白欄位縮成一條線 */
+   kintone 把設計時的寬度寫在外框的 style 屬性，要 !important 才蓋得過；
+   人員／組織選擇欄位 kintone 另外把 min-width 設成設計寬度，min-width 也要 !important（80px 避免空白欄位縮成一條線） */
 .pr-fit-width {
   width: auto !important;
-  min-width: 80px;
+  min-width: 80px !important;
   max-width: 100%;
 }
 

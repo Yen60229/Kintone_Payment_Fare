@@ -98,7 +98,9 @@ check('入口：只進桌面版；CSS 的 .pr-fit-width 是 width: auto !importa
   assert.ok(!readSrc('src/mobile.js').includes(FILE));
   const rule = /\.pr-fit-width\s*\{([^}]*)\}/.exec(readSrc('payment_request.css'));
   assert.ok(rule, '.pr-fit-width 要定義');
-  assert.ok(/width:\s*auto\s*!important/.test(rule[1]));
+  assert.ok(/(^|[^-])width:\s*auto\s*!important/.test(rule[1]));
+  // 人員／組織選擇欄位 kintone 把 min-width 設成設計寬度，不加 !important 縮不下去
+  assert.ok(/min-width:\s*\d+px\s*!important/.test(rule[1]));
 });
 
 done();
