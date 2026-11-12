@@ -123,6 +123,58 @@
   100% { opacity: 0; }
 }
 
+/* 「選擇員工」按鈕（在「同申請人」右邊）與選人視窗（受款人填寫設定）*/
+.pr-pick-employee-btn {
+  background-color: #ffffff;
+  color: #2980b9;
+  border: 1px solid #2980b9;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-top: 30px;
+  margin-left: 8px;
+}
+.pr-pick-employee-btn:hover {
+  background-color: #eaf4fb;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+}
+.pr-emp-picker { width: min(560px, 95vw) !important; }
+.pr-emp-picker .swal2-html-container { margin: 8px 0 0 !important; text-align: left !important; }
+.pr-emp-search {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px;
+  padding: 8px 10px;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+}
+.pr-emp-list { margin-top: 10px; max-height: 50vh; overflow-y: auto; }
+.pr-emp-item {
+  display: flex;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  margin: 0 0 4px;
+  font-size: 16px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.pr-emp-item:hover,
+.pr-emp-item:focus { background: #e3f2fd; border-color: #1e88e5; }
+.pr-emp-code { flex: 0 0 80px; color: #555; font-family: monospace; }
+.pr-emp-name { flex: 1; font-weight: 700; }
+.pr-emp-empty,
+.pr-emp-more,
+.pr-emp-msg { color: #666; margin: 8px 2px; }
+.pr-emp-error { color: #c62828; margin: 8px 2px; line-height: 1.6; }
+
 /* ── 「理由」動態必填的紅色 *（交通費明細規則）──────────────────────────────── */
 .pr-required-mark {
   color: #e74c3c;
