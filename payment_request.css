@@ -893,16 +893,12 @@
   margin-left: 30px;
 }
 
-/* ── 依內容自動調整寬度的欄位（SetFieldWidth；寬度本身由 JS 依內容算） ── */
-.pr-auto-width {
-  min-width: auto;
-  transition: width 0.3s ease;
-}
-.pr-auto-width input,
-.pr-auto-width select,
-.pr-auto-width textarea {
-  width: 100%;
-  box-sizing: border-box;
+/* ── 詳細頁：主表欄位外框依內容縮放（詳細頁欄位寬度自動）──
+   kintone 把設計時的寬度寫在外框的 style 屬性，要 !important 才蓋得過；min-width 避免空白欄位縮成一條線 */
+.pr-fit-width {
+  width: auto !important;
+  min-width: 80px;
+  max-width: 100%;
 }
 
 /* ── 已作廢單據的「表單作廢」欄位（請款單作廢_style） ── */

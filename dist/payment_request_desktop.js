@@ -8527,6 +8527,62 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
 
   (() => {
 
+    // =============================================================================
+    // 詳細頁欄位寬度自動（2026-11-12，只進桌面版；取代原本的 SetFieldWidth_4_20251206.js）
+    //
+    //   kintone 依表單設計時拉的寬度，在每個欄位的外框（.control-gaia）用 inline style 寫死寬度（px）。
+    //   詳細頁只顯示文字，選項按鈕、核取方塊、短文字常常留一大段空白；拉太窄的又會把長文字擠成好幾行。
+    //   進詳細頁時，把主表每個欄位的外框加上 pr-fit-width，由 payment_request.css 改成 width: auto（依內容縮放）。
+    //
+    //   不動：子表格、群組、關聯記錄清單、狀態（自己有版面）；標籤、空白欄位（不在 record 裡）。
+    //   新增／編輯頁不動（輸入框保留設計時的寬度）；kintone 換畫面會重畫 DOM，class 不會帶過去。
+    //   找不到欄位元素（欄位隱藏、沒放在版面上、kintone 改版）就略過，不丟錯。
+    // =============================================================================
+
+    const KT = window.PR_KT;
+
+    const FIT_CLASS = 'pr-fit-width';
+    const CONTAINER_SELECTOR = '.control-gaia';
+    // 這些型別有自己的版面，不改寬度
+    const SKIP_TYPES = Object.freeze(['SUBTABLE', 'GROUP', 'REFERENCE_TABLE', 'CATEGORY', 'STATUS', 'STATUS_ASSIGNEE', '__ID__', '__REVISION__']);
+
+    /** 要調整的欄位代碼（純函式）：record 裡型別不在 SKIP_TYPES 的欄位 */
+    const targetFieldCodes = (record) =>
+      Object.keys(record || {}).filter((code) => {
+        const type = record[code]?.type;
+        return Boolean(type) && !SKIP_TYPES.includes(type);
+      });
+
+    /**
+     * 把每個欄位的外框加上 pr-fit-width。
+     * @returns {number} 加了幾個
+     */
+    const applyFitWidth = (record) => {
+      let count = 0;
+      targetFieldCodes(record).forEach((code) => {
+        try {
+          const el = KT.record().getFieldElement(code);
+          const box = el && typeof el.closest === 'function' ? el.closest(CONTAINER_SELECTOR) : null;
+          if (!box) return;
+          box.classList.add(FIT_CLASS);
+          count += 1;
+        } catch (err) {
+          console.error(`[詳細頁欄位寬度自動] 欄位 ${code} 調整失敗:`, err);
+        }
+      });
+      return count;
+    };
+
+    KT.on('app.record.detail.show', (event) => {
+      applyFitWidth(event.record);
+      return event;
+    });
+
+    window.PR_DETAIL_FIT_WIDTH = Object.freeze({ targetFieldCodes, applyFitWidth, FIT_CLASS, SKIP_TYPES });
+  })();
+
+  (() => {
+
     // 詳細頁面顯示事件
     kintone.events.on('app.record.detail.show', (event) => {
       const record = event.record;
@@ -8548,6 +8604,83 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
           }
         }, 100);
       }
+
+      return event;
+    });
+  })();
+
+  (function () {
+
+    // 列表頁「JS 自定義設定」「流程管理」按鈕（只進桌面版 bundle；2026-11-12 起打包，不再單獨上傳）
+    const KT = window.PR_KT;
+
+    KT.on('app.record.index.show', (event) => {
+      // 檢查按鈕是否已存在
+      if (document.getElementById('btn-workflow-settings') || document.getElementById('btn-js-settings')) {
+        return event;
+      }
+
+      // 流程管理按鈕，檢查用戶是否為特定用戶
+      if (!window.PR_CONFIG.ADMIN_USERS.includes(kintone.getLoginUser().code)) {
+        return event;
+      }
+
+      // 使用 setTimeout 確保 batch-download-container 已經載入
+      setTimeout(() => {
+        // 創建流程管理按鈕
+        const workflowButton = document.createElement('button');
+        workflowButton.id = 'btn-workflow-settings';
+        workflowButton.innerHTML = '流程管理';
+        workflowButton.className = 'workflow-button';
+
+        // 設定流程管理按鈕點擊事件
+        workflowButton.onclick = () => {
+          const appId = KT.app().getId();
+          window.location.href = `/k/admin/app/status?app=${appId}`;
+        };
+
+        // JS自定義設定按鈕，限我自己使用
+        if (kintone.getLoginUser().code !== window.PR_CONFIG.SUPER_ADMIN) {
+          return;
+        }
+
+        // 創建JS自定義設定按鈕
+        const settingsButton = document.createElement('button');
+        settingsButton.id = 'btn-js-settings';
+        settingsButton.innerHTML = 'JS自定義設定';
+        settingsButton.className = 'settings-button';
+
+        // 設定JS自定義設定按鈕點擊事件
+        settingsButton.onclick = () => {
+          const appId = KT.app().getId();
+          window.location.href = `/k/admin/app/customize?app=${appId}#/`;
+        };
+
+        // 檢查是否存在 batch-download-button
+        const headerMenuSpace = KT.app().getHeaderMenuSpaceElement();
+        const batchDownloadButton = document.querySelector('.batch-download-button');
+
+        if (batchDownloadButton) {
+          // 找到 batch-download-button 的父容器
+          const parentContainer = batchDownloadButton.parentElement;
+
+          // 創建按鈕容器
+          const buttonContainer = document.createElement('div');
+          buttonContainer.className = 'pr-tool-buttons'; // 樣式在 payment_request.css
+
+          buttonContainer.appendChild(settingsButton);
+          buttonContainer.appendChild(workflowButton);
+
+          // 將按鈕容器添加到 batch-download-button 的父容器中
+          parentContainer.appendChild(buttonContainer);
+        } else {
+          // 如果不存在下載按鈕，就正常加入到選單列
+          headerMenuSpace.appendChild(settingsButton);
+          headerMenuSpace.appendChild(workflowButton);
+        }
+      }, 100); // 延遲 100ms 確保下載容器已載入
+
+      // 樣式在 payment_request.css（.workflow-button／.settings-button）
 
       return event;
     });

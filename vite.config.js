@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 // 一次打包兩套（package.json 的 build：先 desktop 再 mobile）：
 //   vite build --mode desktop → dist/payment_request_desktop.js（入口 src/index.js）
 //   vite build --mode mobile  → dist/payment_request_mobile.js （入口 src/mobile.js）
-// 只打包 JS。樣式（payment_request.css）與 coding_tools.js、SetFieldWidth_4_20251206.js 放在專案最外層，
+// 只打包 JS。樣式（payment_request.css）放在專案最外層，
 // 不經過打包、直接上傳（見 README 的上傳清單）。
 const TARGETS = {
   desktop: { input: 'src/index.js', name: 'payment_request_desktop' },

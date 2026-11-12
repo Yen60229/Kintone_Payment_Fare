@@ -7,7 +7,6 @@
 // 不經過打包、放在專案最外層直接上傳的檔（上傳清單見 README）：
 //   payment_request.css            全部樣式（PC、手機都上傳同一個檔）
 //   coding_tools.js                列表頁「JS 自定義設定」「流程管理」按鈕（排在 bundle 後面）
-//   SetFieldWidth_4_20251206.js    欄位依內容自動調寬（排在 bundle 後面）
 //
 // 依賴順序說明：
 //   ①  Config 常數檔必須排最前（其他模組在執行時會存取 window.PR_CONFIG、window.PR_KT）
@@ -44,7 +43,11 @@ import '../print.show顯示單據編號_請款單據編號.js';
 import '../發票號碼寫入獨立欄位檢查.js';
 import '../開發人員用群組欄位.js';
 import '../表頭查詢連結_20261105.js';
+// 詳細頁主表欄位外框寬度改 auto（取代 SetFieldWidth）；只有桌面版
+import '../詳細頁欄位寬度自動_20261112.js';
 import '../請款單作廢_style_20260506.js';
+// 列表頁「JS 自定義設定」「流程管理」按鈕（2026-11-12 起打包；排在檔案批次後面，要找它的下載按鈕）
+import '../coding_tools.js';
 
 // ③ 無 Config 依賴的獨立工具檔（順序不影響）──────────────────────────────
 import '../file_reader.js';

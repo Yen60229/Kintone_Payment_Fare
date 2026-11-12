@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：作廢防呆_20260506.js、SetFieldWidth_4_20251206.js 與其餘小模組的清理結果
+// 測試：作廢防呆_20260506.js 與其餘小模組的清理結果
 //   ① 作廢防呆的動作名稱接 C.ACTIONS.VOID：作廢動作要二次確認、其他動作直接放行
 //   ② 自動寬度欄位＝付款方式、申請人、申請人部門、費用所屬人、費用所屬人部門；左移（leftShift）整段刪除
 //   ③ 其餘小模組沒有 723 其他類型的殘留
@@ -31,8 +31,6 @@ global.kintone = {
 eval(readSrc('payment_request_config.js'));
 // eslint-disable-next-line no-eval
 eval(readSrc('作廢防呆_20260506.js'));
-// eslint-disable-next-line no-eval
-eval(readSrc('SetFieldWidth_4_20251206.js'));
 
 const C = global.window.PR_CONFIG;
 const F = C.FIELDS;
@@ -81,20 +79,6 @@ check('作廢防呆：只看下一狀態是作廢也算作廢動作', () => {
   global.window.__promptAnswer = '';
   assert.strictEqual(voidHandler(proceedEvent('別的動作名', C.STATUS.VOID)), false);
   assert.strictEqual(prompts.length, 1);
-});
-
-// ── SetFieldWidth ──────────────────────────────────────────────────────────
-
-check('自動寬度欄位：付款方式、申請人、申請人部門、費用所屬人、費用所屬人部門', () => {
-  assert.deepStrictEqual([...global.window.PR_FIELD_WIDTH.autoResizeFields()], [F.PAY_METHOD, F.APPLICANT, F.APPLICANT_ORG, F.EXPENSE_OWNER, F.EXPENSE_OWNER_ORG]);
-  assert.deepStrictEqual([...global.window.PR_FIELD_WIDTH.autoResizeFields()], ['付款方式', '申請人', '申請人部門', '費用所屬人', '費用所屬人部門']);
-});
-
-check('SetFieldWidth：左移（leftShift）整段刪除', () => {
-  const src = readSrc('SetFieldWidth_4_20251206.js');
-  ['leftShift', 'LeftShift', 'applyLeftShift', 'EXPENSE_FILL_MODE', 'RECEIPT_ORIGINAL', 'ENT_TOTAL', 'AMOUNT_CHANGE', 'APPLY_UNIT', 'EMPLOYEE_NAME', 'F.ADVANCE'].forEach((s) =>
-    assert.ok(!src.includes(s), s),
-  );
 });
 
 // ── 其餘小模組 ─────────────────────────────────────────────────────────────

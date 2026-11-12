@@ -1,7 +1,10 @@
 (function () {
   'use strict';
 
-  kintone.events.on('app.record.index.show', (event) => {
+  // 列表頁「JS 自定義設定」「流程管理」按鈕（只進桌面版 bundle；2026-11-12 起打包，不再單獨上傳）
+  const KT = window.PR_KT;
+
+  KT.on('app.record.index.show', (event) => {
     // 檢查按鈕是否已存在
     if (document.getElementById('btn-workflow-settings') || document.getElementById('btn-js-settings')) {
       return event;
@@ -22,7 +25,7 @@
 
       // 設定流程管理按鈕點擊事件
       workflowButton.onclick = () => {
-        const appId = kintone.app.getId();
+        const appId = KT.app().getId();
         window.location.href = `/k/admin/app/status?app=${appId}`;
       };
 
@@ -39,12 +42,12 @@
 
       // 設定JS自定義設定按鈕點擊事件
       settingsButton.onclick = () => {
-        const appId = kintone.app.getId();
+        const appId = KT.app().getId();
         window.location.href = `/k/admin/app/customize?app=${appId}#/`;
       };
 
       // 檢查是否存在 batch-download-button
-      const headerMenuSpace = kintone.app.getHeaderMenuSpaceElement();
+      const headerMenuSpace = KT.app().getHeaderMenuSpaceElement();
       const batchDownloadButton = document.querySelector('.batch-download-button');
 
       if (batchDownloadButton) {

@@ -56,7 +56,7 @@ npm run build
 
 | 檔案 | 入口 | 內容 |
 |---|---|---|
-| `payment_request_desktop.js` | [`src/index.js`](src/index.js) | 桌面版模組（coding_tools、SetFieldWidth 除外） |
+| `payment_request_desktop.js` | [`src/index.js`](src/index.js) | 桌面版全部模組（含 coding_tools、詳細頁欄位寬度自動） |
 | `payment_request_mobile.js` | [`src/mobile.js`](src/mobile.js) | 新增／編輯／詳細畫面的表單行為（桌面版的子集） |
 
 以下放在**專案最外層、不經過打包**，直接上傳原始檔：
@@ -64,8 +64,6 @@ npm run build
 | 檔案 | 內容 |
 |---|---|
 | [`payment_request.css`](payment_request.css) | **全部樣式只有這一個檔**，PC 和手機都上傳同一份 |
-| [`coding_tools.js`](coding_tools.js) | 列表頁「JS 自定義設定」「流程管理」按鈕（只有 PC） |
-| [`SetFieldWidth_4_20251206.js`](SetFieldWidth_4_20251206.js) | 欄位依內容自動調寬（只有 PC） |
 | [`交通費明細規則主檔檢查_20261104.js`](交通費明細規則主檔檢查_20261104.js) | **上傳到 App 752（規則主檔），不是請款單**：存檔時檢查名稱與請款單下拉選項一字不差等（只有 PC） |
 
 - 只打一套：`npm run build:desktop`、`npm run build:mobile`（`build:mobile` 不會清空 `dist/`）。
@@ -81,12 +79,12 @@ npm run build
 
 | 區塊 | 依序上傳 |
 |---|---|
-| JavaScript（PC） | ① SweetAlert2 ② PDFLib ③ fontkit ④ JSZip ⑤ SheetJS（`XLSX`）⑥ `dist/payment_request_desktop.js` ⑦ `coding_tools.js` ⑧ `SetFieldWidth_4_20251206.js` |
+| JavaScript（PC） | ① SweetAlert2 ② PDFLib ③ fontkit ④ JSZip ⑤ SheetJS（`XLSX`）⑥ `dist/payment_request_desktop.js` |
 | CSS（PC） | ① SweetAlert2 的 CSS（若用的是 `sweetalert2.all.min.js` 已內含，可省略）② `payment_request.css` |
 | JavaScript（手機） | ① SweetAlert2 ② `dist/payment_request_mobile.js` |
 | CSS（手機） | ① SweetAlert2 的 CSS（同上）② `payment_request.css`（和 PC 同一個檔） |
 
-- ⑦⑧ 要排在 ⑥ 後面：這兩支用到 bundle 裡的 `window.PR_CONFIG`。
+- `coding_tools.js`、`SetFieldWidth_4_20251206.js` 已不單獨上傳（2026-11-12 起 coding_tools 打包進桌面版，SetFieldWidth 刪除）：後台這兩支要移除。
 
 #### App 752（交通費明細規則主檔）
 
