@@ -412,4 +412,45 @@ check('main／submit 沒有引用已刪的 config 鍵', () => {
   });
 });
 
-console.log(`\n${passed} assertions passed.`);
+// ── PR_KT.whenIdle：別的處理程式還在跑時 get() 被擋 → 重試 ─────────────────
+(async () => {
+  const KT = global.window.PR_KT;
+  const busy = () => new Error('You cannot call kintone.app.record.get() in handler or during processing a handler.');
+
+  let calls = 0;
+  const syncResult = KT.whenIdle(() => {
+    calls += 1;
+    return 'ok';
+  });
+  check('whenIdle：可以呼叫時 fn 同步執行一次（不延後）', () => assert.strictEqual(calls, 1));
+  assert.strictEqual(await syncResult, 'ok');
+
+  let left = 2;
+  const retried = await KT.whenIdle(() => {
+    if (left-- > 0) throw busy();
+    return 'done';
+  });
+  check('whenIdle：被「in handler」擋下 → 每 100ms 重跑，直到成功', () => {
+    assert.strictEqual(retried, 'done');
+    assert.strictEqual(left, -1);
+  });
+
+  const other = await KT.whenIdle(() => {
+    throw new Error('別的錯');
+  }).catch((e) => e.message);
+  check('whenIdle：其他錯誤不重試、直接 reject', () => assert.strictEqual(other, '別的錯'));
+
+  const timedOut = await KT.whenIdle(() => {
+    throw busy();
+  }, 150).catch((e) => e.message);
+  check('whenIdle：一直被擋 → 超過時限就 reject（不會無限等）', () => assert.ok(/in handler/.test(timedOut)));
+
+  global.kintone.app.record = { get: () => ({ record: { a: 1 } }) };
+  const got = await KT.whenIdle();
+  check('whenIdle：不給 fn ＝ 回傳 record().get()', () => assert.deepStrictEqual(got, { record: { a: 1 } }));
+
+  console.log(`\n${passed} assertions passed.`);
+})().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

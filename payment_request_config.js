@@ -63,6 +63,28 @@
     record: () => (IS_MOBILE ? kintone.mobile.app.record : kintone.app.record),
     /** kintone.app（手機版 kintone.mobile.app） */
     app: () => (IS_MOBILE ? kintone.mobile.app : kintone.app),
+    /**
+     * 非同步查詢回來後要 record().get()／set() 時用：fn 先「同步」執行一次；
+     * 若別的模組的處理程式還在跑（例如 show 事件在等主檔），kintone 會丟
+     * 「cannot call kintone.app.record.get() in handler」，就每 100ms 重跑 fn，最多等 timeoutMs。
+     * fn 要在呼叫 get() 之前沒有副作用（重跑才安全）。
+     * @param {Function} [fn] 預設＝回傳 record().get()
+     * @returns {Promise<*>} fn 的回傳值
+     */
+    whenIdle: (fn = () => (IS_MOBILE ? kintone.mobile.app.record : kintone.app.record).get(), timeoutMs = 15000) => {
+      const deadline = Date.now() + timeoutMs;
+      return new Promise((resolve, reject) => {
+        const attempt = () => {
+          try {
+            resolve(fn());
+          } catch (err) {
+            if (/in handler|processing a handler/.test(String(err?.message)) && Date.now() < deadline) setTimeout(attempt, 100);
+            else reject(err);
+          }
+        };
+        attempt();
+      });
+    },
   });
   window.PR_KT = PR_KT;
 

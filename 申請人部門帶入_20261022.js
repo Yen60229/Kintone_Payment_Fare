@@ -48,7 +48,8 @@
           picker.warnNoOrg('申請人');
           return;
         }
-        const currentCode = KT.record().get().record[F.APPLICANT_ORG]?.value?.[0]?.code;
+        const currentCode = (await KT.whenIdle()).record[F.APPLICANT_ORG]?.value?.[0]?.code;
+        if (seq !== applicantSeq) return;
         const currentValid = orgs.some((o) => o.organization.code === currentCode);
         if (keepIfValid && currentValid) return;
 
@@ -59,7 +60,8 @@
         });
         if (!picked || seq !== applicantSeq) return;
 
-        const current = KT.record().get();
+        const current = await KT.whenIdle();
+        if (seq !== applicantSeq) return;
         current.record[F.APPLICANT_ORG].value = [{ code: picked.organization.code, name: picked.organization.name }];
         current.record[F.APPLICANT_ORG].disabled = true;
         KT.record().set(current);

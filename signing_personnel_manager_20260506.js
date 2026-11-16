@@ -505,7 +505,8 @@
       kintone.api.url('/k/v1/records', true),
       'GET',
       params_acc,
-      function (resp) {
+      // 別的處理程式還在跑時 get() 會被擋，KT.whenIdle 等它跑完再寫
+      (resp) => KT.whenIdle(() => {
         if (!resp.records || resp.records.length === 0) {
           notify('warning', '找不到對應的會計單位', '請確認費用所屬人部門是否正確；仍有問題請洽系統管理員。');
           return;
@@ -565,7 +566,7 @@
         KT.record().setFieldShown(F.ACCOUNTING_UNIT, has_account && !isManual);
         KT.record().set(updateRecord);
         if (offerManualStaff) window.PR_MANUAL_SIGNERS?.offerAccounting?.(staff);
-      },
+      }).catch((err) => console.error('[簽核人員] 帶入會計單位失敗:', err)),
       function (error) {
         console.error('API錯誤:', error);
         notify('error', '取得會計單位資料時發生錯誤', '請稍後再試，或重新選一次費用所屬人。');
@@ -657,7 +658,8 @@
         kintone.api.url('/k/v1/records', true),
         'GET',
         params,
-        function (resp) {
+        // 別的處理程式還在跑時 get() 會被擋，KT.whenIdle 等它跑完再寫
+        (resp) => KT.whenIdle(() => {
           const updateRecord = KT.record().get();
 
           // API 回來前使用者可能已勾選手動設定簽核流程，那就不蓋掉他自選的人
@@ -715,7 +717,7 @@
 
           // 費用所屬人職位設定 - 單職位與雙職位過濾重複簽核的人員
           clearSigningFieldsByTitle(updateRecord, title, ownerCode);
-        },
+        }).catch((err) => console.error('[簽核人員] 帶入簽核主管失敗:', err)),
         function (error) {
           console.error('API錯誤:', error);
           notify('error', '取得主管資料時發生錯誤', '請稍後再試，或重新選一次費用所屬人。');
@@ -995,7 +997,8 @@
           warnNoOrg('費用所屬人');
           return;
         }
-        const currentCode = KT.record().get().record[F.EXPENSE_OWNER_ORG]?.value?.[0]?.code;
+        const currentCode = (await KT.whenIdle()).record[F.EXPENSE_OWNER_ORG]?.value?.[0]?.code;
+        if (seq !== expenseOwnerChangeSeq) return;
         const currentValid = orgs.some((o) => o.organization.code === currentCode);
         if (keepIfValid && currentValid) return;
 
@@ -1007,7 +1010,8 @@
         });
         if (!picked || seq !== expenseOwnerChangeSeq) return;
 
-        const current = KT.record().get();
+        const current = await KT.whenIdle();
+        if (seq !== expenseOwnerChangeSeq) return;
         current.record[F.EXPENSE_OWNER_ORG].value = [{ code: picked.organization.code, name: picked.organization.name }];
         current.record[F.EXPENSE_OWNER_ORG].disabled = true;
         // 程式寫入部門不會觸發 change 事件，公司名稱要在這裡跟著重算（推導規則在 main）
@@ -1065,11 +1069,13 @@
         scope.ensureExempt(scope.applicantCodeOf(record)).then((exempt) => {
           if (!exempt) {
             warnManualNotAllowed();
-            return;
+            return undefined;
           }
-          const current = KT.record().get();
-          enterManualModeForExempt(current.record);
-          KT.record().set(current);
+          return KT.whenIdle(() => {
+            const current = KT.record().get();
+            enterManualModeForExempt(current.record);
+            KT.record().set(current);
+          });
         });
         return event;
       }
