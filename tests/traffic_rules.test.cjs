@@ -220,7 +220,7 @@ check('validate：同一張發票在本單填兩次 → 錯誤列出重複的行
   const { R } = setup();
   const r = record([
     row({ [COLS.RECEIPT_TYPE]: '發票', [COLS.INVOICE_NO]: 'AB12345678' }),
-    row({ [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.INVOICE_NO]: 'T1' }),
+    row({ [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.INVOICE_NO]: '12345678' }),
     row({ [COLS.RECEIPT_TYPE]: '發票', [COLS.INVOICE_NO]: ' AB12345678 ' }),
   ]);
   const errs = R.validate(r);
@@ -689,9 +689,9 @@ check('手續費：權限模組先鎖（show 前 disabled＝true）→ 切到高
 
 check('手續費：validate 負數 → 錯誤；0 與正數可；舊資料沒有手續費欄不報錯', () => {
   const { R } = setup();
-  const bad = record([row({ [COLS.VEHICLE]: '高鐵', [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.INVOICE_NO]: 'A1', [COLS.FEE]: '-5' })]);
+  const bad = record([row({ [COLS.VEHICLE]: '高鐵', [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.INVOICE_NO]: '12345678', [COLS.FEE]: '-5' })]);
   assert.ok(R.validate(bad).some((e) => e.includes('第 1 行「手續費」') && e.includes('不能是負數')));
-  const ok = record([row({ [COLS.VEHICLE]: '高鐵', [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.INVOICE_NO]: 'A1', [COLS.FEE]: '0' })]);
+  const ok = record([row({ [COLS.VEHICLE]: '高鐵', [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.INVOICE_NO]: '12345678', [COLS.FEE]: '0' })]);
   assert.strictEqual(R.validate(ok).length, 0);
   const old = row({ [COLS.VEHICLE]: '計程車', [COLS.RECEIPT_TYPE]: '收據' });
   delete old.value[COLS.FEE];
@@ -708,6 +708,51 @@ check('事件註冊：手續費的 create／edit change', () => {
   const types = env.registeredTypes();
   assert.ok(types.includes(`app.record.create.change.${COLS.FEE}`));
   assert.ok(types.includes(`app.record.edit.change.${COLS.FEE}`));
+});
+
+check('發票號碼／賣方統編 change：只留英文數字（全形轉半形），高鐵票號不是 8 碼數字 → 欄位標錯', async () => {
+  const { env } = setup();
+  const r = record([
+    row({ [COLS.RECEIPT_TYPE]: '發票', [COLS.INVOICE_NO]: 'ab-1234_5678 ', [COLS.SELLER_TAX_ID]: '1234-５６７８' }),
+    row({ [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.INVOICE_NO]: '1234-567' }),
+  ]);
+  let ev = await fireRowChange(env, `app.record.create.change.${COLS.INVOICE_NO}`, r, 0);
+  let rows = ev.record[T.CODE].value;
+  assert.strictEqual(rows[0].value[COLS.INVOICE_NO].value, 'ab12345678');
+  assert.strictEqual(rows[0].value[COLS.SELLER_TAX_ID].value, '12345678');
+  assert.strictEqual(rows[0].value[COLS.INVOICE_NO].error, null);
+  assert.ok(ev.record[F.INVOICE_AGG].value.startsWith(`${SEP}ab12345678${SEP}`));
+  ev = await fireRowChange(env, `app.record.edit.change.${COLS.INVOICE_NO}`, ev.record, 1);
+  rows = ev.record[T.CODE].value;
+  assert.strictEqual(rows[1].value[COLS.INVOICE_NO].value, '1234567');
+  assert.ok(String(rows[1].value[COLS.INVOICE_NO].error).includes('8 碼'));
+  rows[1].value[COLS.INVOICE_NO].value = '1234-5678';
+  ev = await fireRowChange(env, `app.record.edit.change.${COLS.INVOICE_NO}`, ev.record, 1);
+  assert.strictEqual(ev.record[T.CODE].value[1].value[COLS.INVOICE_NO].error, null);
+});
+
+check('validate：高鐵票號不是 8 碼數字 → 擋存檔；發票不受 8 碼限制', () => {
+  const { R } = setup();
+  const r = record([
+    row({ [COLS.RECEIPT_TYPE]: '高鐵票', [COLS.INVOICE_NO]: 'A1234567' }),
+    row({ [COLS.RECEIPT_TYPE]: '發票', [COLS.INVOICE_NO]: 'AB12345678' }),
+  ]);
+  const errs = R.validate(r);
+  assert.strictEqual(errs.length, 1);
+  assert.ok(errs[0].includes('第 1 行') && errs[0].includes('8 碼'), errs[0]);
+  r[T.CODE].value[0].value[COLS.INVOICE_NO].value = '12345678';
+  assert.deepStrictEqual([...R.validate(r)], []);
+});
+
+check('validate：發票號碼不是 10 碼（2 碼英文＋8 碼數字）→ 擋存檔', () => {
+  const { R } = setup();
+  const r = record([row({ [COLS.RECEIPT_TYPE]: '發票', [COLS.INVOICE_NO]: '1234567890' }), row({ [COLS.RECEIPT_TYPE]: '發票', [COLS.INVOICE_NO]: 'AB1234567' })]);
+  const errs = R.validate(r);
+  assert.strictEqual(errs.length, 2);
+  assert.ok(errs.every((e) => e.includes('10 碼')), errs.join('|'));
+  r[T.CODE].value[0].value[COLS.INVOICE_NO].value = 'AB12345678';
+  r[T.CODE].value[1].value[COLS.INVOICE_NO].value = 'cd87654321';
+  assert.deepStrictEqual([...R.validate(r)], []);
 });
 
 done();

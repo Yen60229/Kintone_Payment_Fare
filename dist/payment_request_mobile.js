@@ -4210,6 +4210,24 @@
     };
 
     const isInvoiceReceipt = (row) => active.invoiceReceiptTypes.includes(row.value[COLS.RECEIPT_TYPE]?.value);
+    // 發票號碼／賣方統編只留英文、數字（全形先轉半形，其餘 _ - 空白等符號刪除）
+    const CLEAN_COLS = [COLS.INVOICE_NO, COLS.SELLER_TAX_ID];
+    const cleanCode = (v) => String(v ?? '').normalize('NFKC').replace(/[^A-Za-z0-9]/g, '');
+    const cleanRow = (row) =>
+      CLEAN_COLS.forEach((code) => {
+        const cell = row.value[code];
+        if (cell && typeof cell.value === 'string' && cell.value) cell.value = cleanCode(cell.value);
+      });
+    // 號碼格式：高鐵票＝8 碼數字；發票＝10 碼（2 碼英文＋8 碼數字）
+    const INVOICE_NO_FORMATS = {
+      [OPT.RECEIPT_TYPE.HSR_TICKET]: { pattern: /^\d{8}$/, message: `${OPT.RECEIPT_TYPE.HSR_TICKET}票號必須是 8 碼數字` },
+      [OPT.RECEIPT_TYPE.INVOICE]: { pattern: /^[A-Za-z]{2}\d{8}$/, message: `${OPT.RECEIPT_TYPE.INVOICE}號碼必須是 10 碼（2 碼英文＋8 碼數字）` },
+    };
+    const invoiceNoError = (row) => {
+      const format = INVOICE_NO_FORMATS[row.value[COLS.RECEIPT_TYPE]?.value];
+      const no = (row.value[COLS.INVOICE_NO]?.value || '').trim();
+      return format && no && !format.pattern.test(no) ? format.message : '';
+    };
     const isTaxReceipt = (row) => active.taxReceiptTypes.includes(row.value[COLS.RECEIPT_TYPE]?.value);
     /**
      * 6. 這一列憑證種類的「鎖住欄位」→ 各欄要不要清空鎖住。
@@ -4386,7 +4404,7 @@
     const normalize = (record) => {
       applyRecordRules(record, false);
       getRows(record).forEach((row) => {
-        if (row.value[COLS.INVOICE_NO]?.value) row.value[COLS.INVOICE_NO].value = row.value[COLS.INVOICE_NO].value.trim();
+        cleanRow(row);
       });
       const agg = window.PR_INVOICE_AGG;
       if (record[F.INVOICE_AGG] && typeof agg?.buildInvoiceAgg === 'function') record[F.INVOICE_AGG].value = agg.buildInvoiceAgg(record);
@@ -4420,6 +4438,8 @@
           errors.push(`第 ${i + 1} 行憑證種類是「${row.value[COLS.RECEIPT_TYPE].value}」，**請填寫「${COLS.INVOICE_NO}」**`);
           return;
         }
+        const fmtErr = invoiceNoError(row);
+        if (fmtErr) errors.push(`第 ${i + 1} 行「${COLS.INVOICE_NO}」**${no}**：**${fmtErr}**`);
         (seen[no] = seen[no] || []).push(i + 1);
       });
       Object.keys(seen)
@@ -4575,6 +4595,8 @@
       // 稅額只重算被改的那一列（憑證種類可能剛被上面的規則清空或帶入，所以排在後面）
       const row = changedRow(event);
       if (row) recalcRowTax(row);
+      // 憑證種類改了，號碼格式的錯誤標示跟著更新
+      if (row?.value[COLS.INVOICE_NO]) row.value[COLS.INVOICE_NO].error = invoiceNoError(row) || null;
       // 憑證種類改掉會清空發票號碼，發票號碼記錄要跟著重算（程式寫入不會觸發發票號碼的 change）
       const agg = window.PR_INVOICE_AGG;
       if (event.record[F.INVOICE_AGG] && typeof agg?.buildInvoiceAgg === 'function') {
@@ -4584,7 +4606,22 @@
       return event;
     });
 
-    window.PR_TRAFFIC_RULES = Object.freeze({ calcTax, recalcRowTax, changedRow, hasTaxi, rulesFromConfig, rulesFromMaster, loadRules, getActiveRules, _resetForTest, allowedReceiptTypes, lockedColsOf, isFeeAllowed, filterMenuItems, menuContext, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
+    // 發票號碼／賣方統編：只留英文、數字；號碼格式不對（高鐵 8 碼數字、發票 10 碼）就在欄位上標錯（存檔時 validate 再擋）
+    const cleanEvents = CLEAN_COLS.flatMap((code) => [`app.record.create.change.${code}`, `app.record.edit.change.${code}`]);
+    KT.on(cleanEvents, (event) => {
+      const row = changedRow(event);
+      if (!row) return event;
+      cleanRow(row);
+      const noCell = row.value[COLS.INVOICE_NO];
+      if (noCell) noCell.error = invoiceNoError(row) || null;
+      const agg = window.PR_INVOICE_AGG;
+      if (event.record[F.INVOICE_AGG] && typeof agg?.buildInvoiceAgg === 'function') {
+        event.record[F.INVOICE_AGG].value = agg.buildInvoiceAgg(event.record);
+      }
+      return event;
+    });
+
+    window.PR_TRAFFIC_RULES = Object.freeze({ cleanCode, invoiceNoError, calcTax, recalcRowTax, changedRow, hasTaxi, rulesFromConfig, rulesFromMaster, loadRules, getActiveRules, _resetForTest, allowedReceiptTypes, lockedColsOf, isFeeAllowed, filterMenuItems, menuContext, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
   })();
 
   (() => {
