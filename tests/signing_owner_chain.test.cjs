@@ -343,7 +343,7 @@ const NAME = '航空貨物部-台北營業課';
       await run({ orgName, title, queryName: orgName === '台中營業部' ? orgName : '安全品質推動部長/營業戰略部長/總務部長/事業本部長', master: masterOf(FULL) });
       assert.deepStrictEqual(filledSlots(), [], `${orgName}/${title} 不該排人`);
       SLOTS.forEach((f) => assert.strictEqual(env.shown[f], false, `${orgName}/${title}：${f} 應隱藏`));
-      assert.deepStrictEqual(counts(), ['', ''], '人數欄位不動');
+      assert.deepStrictEqual(counts(), ['0人', '0人'], '人數依各格重算為 0人（不沿用上一位，2026-11-16）');
     }
   });
 

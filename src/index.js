@@ -24,11 +24,13 @@ import '../存檔等待提示_20260923.js';
 // ② 依賴 Config 的模組（帳號權限設定排最前）────────────────────────────────
 import '../帳號權限設定_20260722.js';
 import '../payment_request_main_20260521.js';
+// 公司卡支付／受款人明細：存檔錯誤交給 PR_SAVE_ERRORS，要排在 submit 前面才會併進同一個錯誤視窗
+import '../公司卡付款來源_20261116.js';
 import '../payment_request_submit_20260506.js';
 import '../費用歸屬部門限制_20261022.js';
 import '../signing_personnel_manager_20260506.js';
-// 費用所屬人是部長時依費用歸屬帶單位部長：用 PR_COST_SCOPE／PR_COST_CENTER，由 submit 與簽核人員程式呼叫
-import '../部長簽核帶入_20261029.js';
+// 費用所屬人是對照表裡的部長：上一階主管群組帶進單位主管3（C.DIRECTOR_UPLINE），由 submit 與簽核人員程式呼叫
+import '../部長上一階主管_20261116.js';
 import '../手動簽核人設定_20261102.js';
 // 申請人部門依申請人帶入：用簽核人員程式提供的 PR_ORG_PICKER，排在它後面
 import '../申請人部門帶入_20261022.js';

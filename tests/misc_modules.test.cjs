@@ -47,7 +47,13 @@ console.log('misc_modules.test.cjs');
 // ── 作廢防呆 ───────────────────────────────────────────────────────────────
 
 const voidHandler = registered.find((r) => r.types.includes('app.record.detail.process.proceed')).handler;
-const proceedEvent = (action, nextStatus) => ({ action: { value: action }, nextStatus: { value: nextStatus }, status: { value: '草稿（未送出）' }, record: { $id: { value: '15' } } });
+const FILE = [{ fileKey: 'k', name: 'a.pdf' }];
+const proceedEvent = (action, nextStatus, { status = '草稿（未送出）', files = FILE } = {}) => ({
+  action: { value: action },
+  nextStatus: { value: nextStatus },
+  status: { value: status },
+  record: { $id: { value: '15' }, [F.ATTACHMENT]: { type: 'FILE', value: files } },
+});
 
 check('作廢防呆：動作名稱取自 C.ACTIONS.VOID（原始碼不再寫死 \'作廢\' 當動作名稱）', () => {
   const src = readSrc('作廢防呆_20260506.js');
@@ -72,6 +78,54 @@ check('作廢防呆：作廢動作要輸入「作廢」確認（沒有 Swal 時�
   assert.ok(prompts[0].includes('記錄號碼：15'));
   global.window.__promptAnswer = '亂打';
   assert.strictEqual(voidHandler(event), false);
+});
+
+check('附件防呆：草稿（未送出）按流程按鈕送出、附件沒檔案 → 擋下，用存檔防呆同一個錯誤視窗（說明改成按流程按鈕）', () => {
+  const shown = [];
+  global.window.PR_SHOW_VALIDATION = (title, errors, lead) => shown.push({ title, errors, lead });
+  global.Swal = {};
+  try {
+    assert.strictEqual(voidHandler(proceedEvent('提交單位主管3確認', '申請單位主管3確認中', { files: [] })), false);
+    assert.strictEqual(shown.length, 1);
+    assert.strictEqual(shown[0].title, '無法送出');
+    assert.ok(shown[0].errors[0].includes('「發票/憑證」') && shown[0].errors[0].includes('\n※ '));
+    assert.ok(shown[0].lead.includes('流程按鈕'));
+    // 有檔案 → 放行
+    const ok = proceedEvent('提交單位主管3確認', '申請單位主管3確認中');
+    assert.strictEqual(voidHandler(ok), ok);
+    // 不是草稿（例如主管確認中按核准）→ 不檢查附件
+    const approve = proceedEvent('核准', '單位會計處理中', { status: '申請單位主管3確認中', files: [] });
+    assert.strictEqual(voidHandler(approve), approve);
+    // 報銷人填單 → 點擊流程開始（還沒送出簽核）→ 不檢查
+    const start = proceedEvent('點擊流程開始', C.STATUS.APPLY_START, { status: C.STATUS.REIMBURSEMENT_FILL, files: [] });
+    assert.strictEqual(voidHandler(start), start);
+    assert.strictEqual(shown.length, 1);
+  } finally {
+    delete global.window.PR_SHOW_VALIDATION;
+    delete global.Swal;
+  }
+});
+
+check('附件防呆：草稿沒附件但按的是作廢 → 走作廢確認，不擋附件', () => {
+  prompts.length = 0;
+  global.window.__promptAnswer = '作廢';
+  const event = proceedEvent(C.ACTIONS.VOID, C.STATUS.VOID, { files: [] });
+  assert.strictEqual(voidHandler(event), event);
+  assert.strictEqual(prompts.length, 1);
+});
+
+check('附件防呆：沒有 Swal 時退回 alert', () => {
+  const alerts = [];
+  global.window.alert = (m) => alerts.push(m);
+  assert.strictEqual(voidHandler(proceedEvent('提交單位會計入帳', '單位會計處理中', { files: [] })), false);
+  assert.strictEqual(alerts.length, 1);
+  delete global.window.alert;
+});
+
+check('submit 對外提供 PR_SHOW_VALIDATION，視窗上方說明可換', () => {
+  const src = readSrc('payment_request_submit_20260506.js');
+  assert.ok(src.includes('window.PR_SHOW_VALIDATION = showValidationErrors'));
+  assert.ok(/const showValidationErrors = \(title, errors, lead\)/.test(src));
 });
 
 check('作廢防呆：只看下一狀態是作廢也算作廢動作', () => {

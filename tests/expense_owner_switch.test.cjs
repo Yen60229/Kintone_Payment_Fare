@@ -334,17 +334,15 @@ const check = async (label, fn) => {
     assert.deepStrictEqual(orgValue(), [U('A', '物流部-業務企劃課')]);
   });
 
-  await check('多個單位按取消（原部門也是他的單位）：費用所屬人部門保留原值、不寫回、不重排', async () => {
+  await check('多個單位按取消（原部門也是他的單位）：費用所屬人部門保留原值，但人換了 → 依新的人重排一次（2026-11-16）', async () => {
     reset({ pick: 'cancel' });
     env.orgs.u2 = [...ORGS, org('OLD', '原部門', '課員')];
     handler(changeEvent('u2'));
     await flush();
     assert.strictEqual(env.dialogs.length, 1);
     assert.strictEqual(env.dialogs[0].removed, true);
-    assert.strictEqual(env.setCount, 0);
     assert.deepStrictEqual(orgValue(), [U('OLD', '原部門')]);
-    assert.strictEqual(approvalQueries().length, 0);
-    assert.strictEqual(env.apiCalls.filter((c) => c.params.app === C.APPS.ACCOUNTING_MAP).length, 0);
+    assert.deepStrictEqual(approvalQueries(), [orgQuery('OLD')], '用原部門、新的人重排');
   });
 
   await check('連續改兩次費用所屬人（先改的查得慢）：只採用最後一次的結果寫回', async () => {

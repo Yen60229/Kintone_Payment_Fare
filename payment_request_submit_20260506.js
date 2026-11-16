@@ -275,26 +275,35 @@
    * @param {string[]} errors
    * @returns {string} HTML
    */
-  const buildValidationHtml = (errors) => {
+  const buildValidationHtml = (errors, lead = `請修正以下 ${errors.length} 個問題後，再按一次儲存：`) => {
     const items = errors
       .map(
         (err, i) =>
           `<li class="pr-validation-item"><span class="pr-validation-no">${i + 1}</span><div class="pr-validation-text">${renderValidationError(err)}</div></li>`,
       )
       .join('');
-    return `<p class="pr-validation-lead">請修正以下 ${errors.length} 個問題後，再按一次儲存：</p><ol class="pr-validation-list">${items}</ol>`;
+    return `<p class="pr-validation-lead">${escapeLead(lead)}</p><ol class="pr-validation-list">${items}</ol>`;
   };
 
-  const showValidationErrors = (title, errors) => {
+  /** 視窗上方那句說明（純文字，跳脫後放進 HTML） */
+  const escapeLead = (text) => String(text ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  /**
+   * 錯誤視窗。lead：上方說明（預設「…再按一次儲存」；流程按鈕的防呆改成「…再按一次流程按鈕」）
+   */
+  const showValidationErrors = (title, errors, lead) => {
     Swal.fire({
       icon: 'error',
       title,
-      html: buildValidationHtml(errors),
+      html: buildValidationHtml(errors, lead),
       confirmButtonText: '我知道了',
       confirmButtonColor: '#d33',
       customClass: { popup: 'pr-validation-popup' },
     });
   };
+
+  // 對外：流程按鈕（process.proceed）的防呆沿用同一個錯誤視窗（作廢防呆_20260506.js 的附件檢查）
+  window.PR_SHOW_VALIDATION = showValidationErrors;
 
   KT.on(['app.record.create.submit', 'app.record.edit.submit'], async (event) => {
     // 比本程式早跑的存檔檢查（帳號權限設定的必填）留下的訊息，和這裡的檢查結果合成同一個視窗
@@ -334,8 +343,8 @@
             return ['掛帳單位檢查失敗：請稍後再試或聯絡系統管理員'];
           })
         : Promise.resolve([]);
-      // 費用所屬人是部長：依費用歸屬帶入單位部長_支店長（直接寫進 record；查不到資料回錯誤）
-      const director = window.PR_DIRECTOR_BY_CC;
+      // 費用所屬人是對照表裡的部長：上一階主管群組成員寫進單位主管3（直接寫進 record；沒人可簽或查不到回錯誤）
+      const director = window.PR_DIRECTOR_UPLINE;
       const directorTask = director ? director.apply(record) : Promise.resolve([]);
       // 手動設定簽核流程：檢查指定的簽核人（1～3 位、依序、不重複、不是申請人），並寫入手動簽核人數
       const manualSigners = window.PR_MANUAL_SIGNERS;
@@ -362,7 +371,7 @@
       // 4. 掛帳單位限費用所屬人部內、不可跨部門（排除群組的申請人不檢查）
       allErrors.push(...scopeErrors);
 
-      // 5. 費用所屬人是部長時的單位部長
+      // 5. 費用所屬人是對照表裡的部長時的上一階主管（單位主管3）
       allErrors.push(...directorErrors);
 
       // 6. 手動設定簽核流程的簽核人

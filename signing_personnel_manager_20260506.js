@@ -128,6 +128,35 @@
   }
 
   /**
+   * 依各格目前有沒有人重算主管／次長人數（2026-11-16）。
+   * 費用所屬人或部門一變就重算，不沿用上一位的人數（流程管理靠人數決定從哪一關開始）。
+   */
+  function recountSigning(record) {
+    const filled = (fields) => fields.filter((field) => record[field]?.value?.length > 0).length;
+    if (record[COUNT_FIELDS.manager]) updateSigningCount(record, COUNT_FIELDS.manager, filled(MANAGER_FIELDS));
+    if (record[COUNT_FIELDS.deputy]) updateSigningCount(record, COUNT_FIELDS.deputy, filled(DEPUTY_FIELDS));
+  }
+
+  /** 簽核格全部清空隱藏、人數歸 0人（排不出人、查詢失敗、換費用所屬人時用） */
+  function resetSigningSlots(record) {
+    getEnabledFields().forEach((field) => {
+      if (record[field]) record[field].value = [];
+      KT.record().setFieldShown(field, false);
+    });
+    recountSigning(record);
+  }
+
+  /** 非同步回來後清空畫面上的簽核格（手動模式不動） */
+  function resetSigningOnScreen() {
+    return KT.whenIdle(() => {
+      const current = KT.record().get();
+      if (isManualSigningMode(current.record)) return;
+      resetSigningSlots(current.record);
+      KT.record().set(current);
+    }).catch((err) => console.error('[簽核人員] 清空簽核欄位失敗:', err));
+  }
+
+  /**
    * 找出選擇的組織在 orgs 中的索引
    * @param {Array} orgs - 組織陣列
    * @param {string} selectedOrgName - 選擇的組織名稱
@@ -453,6 +482,8 @@
         break;
     }
 
+    // 人數一律依清完後各格實際有沒有人重算（職稱沒對到上面任何一種、或格子本來就空著，也不會留錯的人數）
+    recountSigning(updateRecord.record);
     KT.record().set(updateRecord);
   }
 
@@ -578,6 +609,42 @@
   // 主要處理函數
   // =========================
 
+  // 連續改費用所屬人／部門時，只讓最後一次的查詢結果寫回畫面
+  let ownerOrgChangeSeq = 0;
+
+  /**
+   * 對照表裡的部長：讀上一階主管群組 → 單位主管3＝成員（扣掉本人），其餘格清空，人數 1人／0人。
+   * 群組沒人或讀不到：格子清空並提醒（存檔時 PR_DIRECTOR_UPLINE.apply 會再查一次並擋下）。
+   */
+  function applyUplineToScreen({ group, ownerCode, orgName, isLatest }) {
+    const upline = window.PR_DIRECTOR_UPLINE;
+    return upline
+      .loadMembers(group)
+      .then((members) =>
+        KT.whenIdle(() => {
+          if (!isLatest()) return;
+          const current = KT.record().get();
+          if (isManualSigningMode(current.record)) return;
+          const users = upline.membersExcept(members, ownerCode);
+          upline.writeSlots(current.record, users);
+          getEnabledFields().forEach((field) => {
+            if (current.record[field]) current.record[field].disabled = true;
+            KT.record().setFieldShown(field, current.record[field]?.value?.length > 0);
+          });
+          recountSigning(current.record);
+          KT.record().set(current);
+          console.log(`[簽核人員] ${orgName} 部長 → 上一階主管群組 ${group}：`, users.map((u) => u.code));
+          if (users.length === 0) notify('warning', '上一階主管群組沒有人', `${upline.emptyMessage(orgName, group)}，存檔會被擋下，請聯絡系統管理員。`);
+        }),
+      )
+      .catch((err) => {
+        console.error('[簽核人員] 讀取上一階主管群組失敗:', err);
+        if (!isLatest()) return;
+        resetSigningOnScreen();
+        notify('error', '讀不到上一階主管', `群組「${group}」的成員讀取失敗，請稍後再試；存檔時會再查一次。`);
+      });
+  }
+
   /**
    * 處理費用所屬人部門變更時的簽核人員設定
    * @param {Object} event - Kintone event 物件
@@ -600,9 +667,7 @@
 
     // 如果沒有選擇費用所屬人部門，清空所有簽核欄位
     if (!selectedOrg || selectedOrg.length === 0) {
-      getEnabledFields().forEach((field) => {
-        record[field].value = [];
-      });
+      resetSigningSlots(record);
       record[F.ACCOUNTING_UNIT].value = [];
 
       return event;
@@ -618,12 +683,21 @@
     setAccountingUnit(orgName);
 
     const ownerCode = record[F.EXPENSE_OWNER]?.value?.[0]?.code;
-    if (!ownerCode) return event;
+    if (!ownerCode) {
+      resetSigningSlots(record);
+      return event;
+    }
+
+    // 連續觸發時只讓最後一次的查詢結果寫回畫面
+    const seq = ++ownerOrgChangeSeq;
+    const isLatest = () => seq === ownerOrgChangeSeq;
 
     // 取得費用所屬人在各部門的職位資料
     fetchTitleData(USER_API, { code: ownerCode }, (error, result) => {
+      if (!isLatest()) return;
       if (error) {
         console.error('Error:', error);
+        resetSigningOnScreen();
         return;
       }
 
@@ -641,6 +715,15 @@
       // 使用匹配到的索引取得正確的組織和職位資料
       const owner = classifyOwner(orgName, orgs, matchedIndex);
       const { title, approvalQuery, isSpecialDepartment, isSpecificDirector } = owner;
+
+      // 對照表裡的部長（C.DIRECTOR_UPLINE）：上一階主管由群組決定，不查簽核流程主檔
+      const upline = window.PR_DIRECTOR_UPLINE;
+      const ownerOrgName = orgs[matchedIndex].organization.name;
+      const uplineGroup = upline?.groupOf(ownerOrgName, title);
+      if (uplineGroup) {
+        applyUplineToScreen({ group: uplineGroup, ownerCode, orgName: ownerOrgName, isLatest });
+        return;
+      }
       console.log(`簽核流程查詢：${approvalQuery}`);
 
       // 動態建立欄位陣列
@@ -660,6 +743,7 @@
         params,
         // 別的處理程式還在跑時 get() 會被擋，KT.whenIdle 等它跑完再寫
         (resp) => KT.whenIdle(() => {
+          if (!isLatest()) return;
           const updateRecord = KT.record().get();
 
           // API 回來前使用者可能已勾選手動設定簽核流程，那就不蓋掉他自選的人
@@ -667,12 +751,10 @@
 
           console.log('title為', title);
 
-          // 費用所屬人是部長：簽核人員排完後，單位部長_支店長改依費用歸屬帶入（部長簽核帶入_20261029.js）
-          if (title === C.DIRECTOR_BY_COST_CENTER.OWNER_TITLE) Promise.resolve().then(() => window.PR_DIRECTOR_BY_CC?.refresh());
-
           // 如果是台中支店長/營業戰略部長/總務部長/事業本部長，不用後續的設定
           if (isSpecificDirector) {
-            // 隱藏其餘欄位
+            // 清掉上一位費用所屬人留下的人與人數，欄位全部隱藏
+            resetSigningSlots(updateRecord.record);
             SIGNING_FIELDS_TO_HIDE.forEach((field) => {
               KT.record().setFieldShown(field, false);
             });
@@ -683,6 +765,9 @@
 
           if (!resp.records || resp.records.length === 0) {
             console.log('此費用所屬人部門沒有設定簽核流程');
+            // 不沿用上一位費用所屬人的簽核人員與人數
+            resetSigningSlots(updateRecord.record);
+            KT.record().set(updateRecord);
             return;
           }
 
@@ -720,6 +805,8 @@
         }).catch((err) => console.error('[簽核人員] 帶入簽核主管失敗:', err)),
         function (error) {
           console.error('API錯誤:', error);
+          if (!isLatest()) return;
+          resetSigningOnScreen();
           notify('error', '取得主管資料時發生錯誤', '請稍後再試，或重新選一次費用所屬人。');
         },
       );
@@ -944,6 +1031,40 @@
     return picked;
   };
 
+  /**
+   * 使用者在 kintone 後台設定的「優先組織」id（2026-11-16，做法同出差申請單的簽核流程）。
+   *   路線 A：kintone.user.getOrganizations()（一般使用者可呼叫，有 primary 旗標；有所屬組織但沒有 primary＝沒設定）
+   *   路線 B：/v1/users.json 的 primaryOrganization（需要共通管理權限）
+   * 都拿不到回 null，呼叫端退回原本的選部門視窗。
+   */
+  const fetchPrimaryOrgId = async (userCode) => {
+    if (typeof kintone.user?.getOrganizations === 'function') {
+      try {
+        const list = (await kintone.user.getOrganizations(userCode)) || [];
+        const hit = list.find((item) => item?.organization?.primary === true);
+        if (hit) return String(hit.organization.id);
+        if (list.length > 0) return null;
+      } catch (err) {
+        console.warn('[簽核人員] kintone.user.getOrganizations 失敗，改查 /v1/users.json:', err);
+      }
+    }
+    try {
+      const resp = await kintone.api(kintone.api.url('/v1/users.json', true), 'GET', { codes: [userCode] });
+      const id = resp?.users?.[0]?.primaryOrganization;
+      return id ? String(id) : null;
+    } catch (err) {
+      console.warn('[簽核人員] 讀不到優先組織（可能沒有權限），改用選部門視窗:', err);
+      return null;
+    }
+  };
+
+  /** 有多個所屬單位時，優先組織那一筆；沒設定、讀不到或不在清單裡回 null */
+  const primaryOrgOf = async (orgs, userCode) => {
+    if (!orgs || orgs.length < 2) return null;
+    const id = await fetchPrimaryOrgId(userCode);
+    return id ? orgs.find((o) => String(o.organization?.id) === id) || null : null;
+  };
+
   /** 查使用者的所屬單位（organizationTitles） */
   const fetchUserOrgs = (userCode) => kintone.api(kintone.api.url(USER_API, true), 'GET', { code: userCode }).then((resp) => resp.organizationTitles || []);
 
@@ -955,7 +1076,7 @@
   };
 
   // 申請人部門（申請人部門帶入_20261022.js）共用同一套查單位與選單位視窗
-  window.PR_ORG_PICKER = Object.freeze({ fetchUserOrgs, pickOrg, warnNoOrg });
+  window.PR_ORG_PICKER = Object.freeze({ fetchUserOrgs, pickOrg, warnNoOrg, fetchPrimaryOrgId, primaryOrgOf });
 
   /**
    * 「指定簽核人」視窗按取消、一位簽核人都沒指定（PR_MANUAL_SIGNERS 呼叫）：
@@ -1004,18 +1125,28 @@
           warnNoOrg('費用所屬人');
           return;
         }
+        // 有設定優先組織 → 直接用，不跳選部門視窗（新增畫面也一樣，蓋過原本的部門）
+        const primary = await primaryOrgOf(orgs, owner.code);
+        if (seq !== expenseOwnerChangeSeq) return;
         const currentCode = (await KT.whenIdle()).record[F.EXPENSE_OWNER_ORG]?.value?.[0]?.code;
         if (seq !== expenseOwnerChangeSeq) return;
         const currentValid = orgs.some((o) => o.organization.code === currentCode);
-        if (keepIfValid && currentValid) return;
+        if (keepIfValid && (primary ? primary.organization.code === currentCode : currentValid)) return;
 
-        const picked = await pickOrg(orgs, owner.name || owner.code, {
-          subject: '費用所屬人',
-          hint: '簽核人員會依選的部門排。',
-          keepable: currentValid,
-          isCurrent: () => seq === expenseOwnerChangeSeq,
-        });
-        if (!picked || seq !== expenseOwnerChangeSeq) return;
+        const picked =
+          primary ||
+          (await pickOrg(orgs, owner.name || owner.code, {
+            subject: '費用所屬人',
+            hint: '簽核人員會依選的部門排。',
+            keepable: currentValid,
+            isCurrent: () => seq === expenseOwnerChangeSeq,
+          }));
+        if (seq !== expenseOwnerChangeSeq) return;
+        if (!picked) {
+          // 視窗按「維持原部門」：部門沒變，但人換了，簽核人員還是要依新的人重排
+          if (currentValid) handleExpenseOwnerOrgChange({ record: (await KT.whenIdle()).record });
+          return;
+        }
 
         const current = await KT.whenIdle();
         if (seq !== expenseOwnerChangeSeq) return;
@@ -1030,7 +1161,11 @@
     return event;
   }
 
-  KT.on([`app.record.create.change.${F.EXPENSE_OWNER}`, `app.record.edit.change.${F.EXPENSE_OWNER}`], handleExpenseOwnerChange);
+  // 改費用所屬人：先把上一位的簽核人員與人數清掉（主管、次長人數一律重算），查完單位再依新的人重排
+  KT.on([`app.record.create.change.${F.EXPENSE_OWNER}`, `app.record.edit.change.${F.EXPENSE_OWNER}`], (event) => {
+    if (!isManualSigningMode(event.record)) resetSigningSlots(event.record);
+    return handleExpenseOwnerChange(event);
+  });
 
   // 表單編輯時，有顯示的繼續顯示，隱藏的繼續隱藏
   KT.on(['app.record.edit.show', 'app.record.detail.show'], (event) => {

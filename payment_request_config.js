@@ -150,9 +150,9 @@
       IN_USE: '使用狀況', // 值 '使用中'；query 篩選用
       // ORGANIZATION_SELECT（單選），值一律為「部」層級。掛帳單位限部內（COST_SCOPE）靠它判斷代碼屬於哪個部門
       DEPT: '所屬部門',
-      // GROUP_SELECT：這個代碼／部門的部長群組。費用所屬人是部長時用來帶單位部長（DIRECTOR_BY_COST_CENTER）
+      // GROUP_SELECT：這個代碼／部門的部長群組（舊的「依費用歸屬帶部長」用，2026-11-16 起程式不再讀）
       DIRECTOR_GROUP: '部門部長',
-      // CHECK_BOX：同一代碼有好幾筆時，哪一筆是主要管理部門（值 MAIN_DEPT_ON）。部長所在的部已是最上層時用它找 HQ_CODE 的部長
+      // CHECK_BOX：同一代碼有好幾筆時，哪一筆是主要管理部門（值 MAIN_DEPT_ON）；2026-11-16 起程式不再讀
       MAIN_DEPT: '主要管理部門',
       MAIN_DEPT_ON: '是',
       BUSINESS_AREA: 'BusinessArea', // SINGLE_LINE_TEXT：Cost Center 對應的 Business Area（交通費轉出 J 欄）
@@ -520,21 +520,58 @@
     }),
   });
 
-  // ── 費用所屬人是部長時的單位部長（部長簽核帶入_20261029.js 用）──────────────
-  //   費用所屬人在費用所屬人部門的職稱是 OWNER_TITLE → 依明細第一個費用歸屬代碼查費用歸屬主檔（APPS.COST_CENTER）：
-  //     代碼的所屬部門（往上爬）是 HQ_CODE 的所屬部門之一 → 用該代碼那筆的「部門部長」群組（沒設就用 HQ_CODE 同部門那筆的）
-  //     其他 → 用 DEFAULT_CODE 的「部門部長」群組
-  //   部長所在的部已是最上層（上面沒有別的部）→ 只用 HQ_CODE 主要管理部門（REF_FIELDS.COST_CENTER.MAIN_DEPT）那筆的部長群組（不看代碼自己那筆）。
-  //   群組成員（去掉費用所屬人本人）寫入 TARGET_FIELD。
-  //   只在新增、EDITABLE_STATUSES 與駁回狀態（名稱以 REJECT_SUFFIX 結尾）重算，且值沒變不寫
-  //   （送出後沒有該欄位編輯權限的人存檔會被 kintone 退回）。
-  const DIRECTOR_BY_COST_CENTER = Object.freeze({
-    OWNER_TITLE: '部長',
-    HQ_CODE: 'AJ30', // 總公司：營業戰略部／安全品質推動部／總務部共用
-    DEFAULT_CODE: 'AJ36', // 事業本部
-    TARGET_FIELD: '單位部長_支店長',
+  // ── 部長的上一階主管（部長上一階主管_20261116.js 用，2026-11-16 取代依費用歸屬帶部長）──────
+  //   費用所屬人在「費用所屬人部門」的職稱＋該部門名稱對到 RULES 其中一筆 → 讀那個群組的成員（扣掉本人）放進 SLOT，
+  //   其餘簽核格清空，部門主管簽核人數＝1人、部門次長簽核人數＝0人（流程管理：主管 1 人＝從單位主管3 開始）。
+  //   對不到的人照原本簽核流程主檔（APPS.APPROVAL_FLOW）的排法。群組扣掉本人後沒人／查不到 → 擋存檔。
+  //   只在新增、EDITABLE_STATUSES 與駁回狀態（REJECT_SUFFIX 結尾）重算；手動設定簽核流程、表單作廢不處理。
+  //   對照表與請款單（請購_庶務_轉請款單）的 DIRECTOR_UPLINE 相同，改一邊要同步另一邊。
+  const DIRECTOR_UPLINE = Object.freeze({
+    SLOT: '單位主管3',
+    CLEAR_FIELDS: Object.freeze(['單位主管1', '單位主管2', '單位次長', '單位次長1', '單位部長_支店長']),
+    COUNT_FIELDS: Object.freeze({ MANAGER: '部門主管簽核人數', DEPUTY: '部門次長簽核人數' }),
+    RULES: Object.freeze(
+      [
+        { org: '台中營業部', title: '部長', group: 'HQ_部長' },
+        { org: '航空貨物部', title: '部長', group: 'BH_FF_部長' },
+        { org: '海運貨物部', title: '部長', group: 'BH_FF_部長' },
+        { org: '汽車貨運部', title: '部長', group: 'BH_LT_部長' },
+        { org: '安全品質推動部', title: '部長', group: 'HQ_部長' },
+        { org: '事業本部', title: '部長', group: 'HQ_部長' },
+        { org: '總務部', title: '部長', group: 'HQ_ACC_課長' },
+        { org: '物流運輸事業部', title: '部長', group: 'BH_部長' },
+      ].map((r) => Object.freeze(r)),
+    ),
     EDITABLE_STATUSES: Object.freeze([STATUS.REIMBURSEMENT_FILL, STATUS.APPLY_START]),
     REJECT_SUFFIX: '駁回',
+    GROUP_PAGE_SIZE: 100, // /v1/group/users.json 一次最多 100 筆
+    GROUP_MAX_PAGES: 20,
+  });
+
+  /** 部門名稱＋職稱 → 上一階主管群組代碼；對不到回 null */
+  const directorUplineGroupOf = (orgName, title) =>
+    DIRECTOR_UPLINE.RULES.find((r) => r.org === String(orgName ?? '').trim() && r.title === String(title ?? '').trim())?.group || null;
+
+  // ── 公司卡支付／受款人明細（公司卡付款來源_20261116.js 用，從請款單的交際費搬來；員工選人視窗共用 PR_PAYEE）─────────────
+  //   是否為公司卡支付＝是 → 選公司卡支付方式：
+  //     全額支付 → 主表受款人＝TEXT.FULL_PAYEE，受款人明細不用填（清成一列空白）
+  //     部分支付 → 主表受款人＝TEXT.PARTIAL_PAYEE，受款人明細逐列填付款來源／受款人／金額：
+  //       至少一列公司信用卡、一列員工代墊；員工代墊只能一位（5 碼員工編號＋中文姓名）；公司信用卡列受款人＝TEXT.CARD_PAYEE；
+  //       明細金額合計＝FIELDS.TOTAL_AMOUNT
+  //   749 表單還沒有這幾個欄位時整支程式不動作。
+  const CARD_PAY = Object.freeze({
+    FLAG: '是否為公司卡支付', // CHECK_BOX（唯一選項 是；與請款單交際費相同）
+    MODE: '公司卡支付方式', // CHECK_BOX（全額支付／部分支付，程式保留一個）
+    TABLE: Object.freeze({
+      CODE: '受款人明細',
+      COLS: Object.freeze({ PAY_SOURCE: '付款來源_受款人明細', PAYEE: '受款人_受款人明細', AMOUNT: '金額_受款人明細' }),
+    }),
+    OPTIONS: Object.freeze({
+      FLAG: Object.freeze({ YES: '是' }),
+      MODE: Object.freeze({ FULL: '全額支付', PARTIAL: '部分支付' }),
+      SOURCE: Object.freeze({ EMPLOYEE: '員工代墊', CARD: '公司信用卡' }),
+    }),
+    TEXT: Object.freeze({ CARD_PAYEE: '公司信用卡', PARTIAL_PAYEE: '公司卡部分支付', FULL_PAYEE: '公司卡全額支付' }),
   });
 
   // ── 手動簽核人（手動簽核人設定_20261102.js 用）────────────────────────────
@@ -572,8 +609,10 @@
     OPTIONS,
     TRAFFIC_RULES,
     COST_SCOPE,
-    DIRECTOR_BY_COST_CENTER,
+    DIRECTOR_UPLINE,
+    CARD_PAY,
     MANUAL_SIGNERS,
+    directorUplineGroupOf,
     isAdmin,
   });
 })();

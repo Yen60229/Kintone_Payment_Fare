@@ -35,16 +35,16 @@ const isDeepFrozen = (obj) =>
 console.log('config.test.cjs');
 
 // ── 整體結構 ────────────────────────────────────────────────────────────────
-check('PR_CONFIG 的頂層鍵恰為這 21 個（多了或少了都要有意識地改這裡）', () => {
+check('PR_CONFIG 的頂層鍵恰為這 23 個（多了或少了都要有意識地改這裡）', () => {
   assert.deepStrictEqual(
     Object.keys(c).sort(),
-    ['ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'COST_SCOPE', 'DIRECTOR_BY_COST_CENTER', 'EXPECTED_PAY_DATE', 'FIELDS', 'INLINE_EDIT', 'MANUAL_SIGNERS', 'OPTIONS', 'REF_FIELDS', 'SEP', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'TRAFFIC_RULES', 'TRAFFIC_TABLE_LAYOUT', 'VOID_FIELD', 'isAdmin'].sort(),
+    ['ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'CARD_PAY', 'COST_SCOPE', 'DIRECTOR_UPLINE', 'EXPECTED_PAY_DATE', 'FIELDS', 'INLINE_EDIT', 'MANUAL_SIGNERS', 'OPTIONS', 'REF_FIELDS', 'SEP', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'TRAFFIC_RULES', 'TRAFFIC_TABLE_LAYOUT', 'VOID_FIELD', 'directorUplineGroupOf', 'isAdmin'].sort(),
   );
 });
 
 check('PR_CONFIG 與各註冊表皆為凍結物件（不會被其他模組意外改寫）', () => {
   assert.ok(Object.isFrozen(c));
-  ['APPS', 'ACCOUNTING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'TRAFFIC_TABLE_LAYOUT', 'INLINE_EDIT', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'OPTIONS', 'TRAFFIC_RULES', 'COST_SCOPE', 'DIRECTOR_BY_COST_CENTER', 'MANUAL_SIGNERS'].forEach((key) => {
+  ['APPS', 'ACCOUNTING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'TRAFFIC_TABLE_LAYOUT', 'INLINE_EDIT', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'OPTIONS', 'TRAFFIC_RULES', 'COST_SCOPE', 'DIRECTOR_UPLINE', 'CARD_PAY', 'MANUAL_SIGNERS'].forEach((key) => {
     assert.ok(isDeepFrozen(c[key]), `${key} 應為深層凍結`);
   });
 });
@@ -324,11 +324,46 @@ check('手續費：COLS.FEE＝手續費、TRAFFIC_RULES.FEE_VEHICLES＝[高鐵]�
   assert.strictEqual(c.REF_FIELDS.TRAFFIC_RULE_MASTER.FLAG_FEE, '可填手續費');
 });
 
-check('DIRECTOR_BY_COST_CENTER：部長的單位部長依費用歸屬帶入，只在填單／草稿／駁回時重算', () => {
-  const d = c.DIRECTOR_BY_COST_CENTER;
+check('DIRECTOR_UPLINE（2026-11-16 取代依費用歸屬帶部長）：8 筆部長對照、放單位主管3、只在填單／草稿／駁回時重算', () => {
+  const d = c.DIRECTOR_UPLINE;
+  assert.ok(!('DIRECTOR_BY_COST_CENTER' in c), '舊的依費用歸屬帶部長設定已刪');
+  assert.strictEqual(d.SLOT, '單位主管3');
+  assert.deepStrictEqual([...d.CLEAR_FIELDS], ['單位主管1', '單位主管2', '單位次長', '單位次長1', '單位部長_支店長']);
+  assert.deepStrictEqual({ ...d.COUNT_FIELDS }, { MANAGER: '部門主管簽核人數', DEPUTY: '部門次長簽核人數' });
+  assert.deepStrictEqual(d.RULES.map((r) => [r.org, r.title, r.group]), [
+    ['台中營業部', '部長', 'HQ_部長'],
+    ['航空貨物部', '部長', 'BH_FF_部長'],
+    ['海運貨物部', '部長', 'BH_FF_部長'],
+    ['汽車貨運部', '部長', 'BH_LT_部長'],
+    ['安全品質推動部', '部長', 'HQ_部長'],
+    ['事業本部', '部長', 'HQ_部長'],
+    ['總務部', '部長', 'HQ_ACC_課長'],
+    ['物流運輸事業部', '部長', 'BH_部長'],
+  ]);
   assert.deepStrictEqual([...d.EDITABLE_STATUSES], [c.STATUS.REIMBURSEMENT_FILL, c.STATUS.APPLY_START]);
   assert.strictEqual(d.REJECT_SUFFIX, '駁回');
-  assert.strictEqual(d.TARGET_FIELD, '單位部長_支店長');
+  assert.ok(d.GROUP_PAGE_SIZE <= 100, '/v1/group/users.json 一次最多 100 筆');
+  d.RULES.forEach((r) => assert.strictEqual(c.directorUplineGroupOf(r.org, r.title), r.group));
+  assert.strictEqual(c.directorUplineGroupOf(' 總務部 ', '部長'), 'HQ_ACC_課長', '前後空白不影響');
+  assert.strictEqual(c.directorUplineGroupOf('總務部', '次長'), null, '同部門不同職稱 → 不套用');
+  assert.strictEqual(c.directorUplineGroupOf('營業戰略部', '部長'), null, '不在對照表 → 照原本排法');
+  assert.strictEqual(c.directorUplineGroupOf('', ''), null);
+});
+
+check('CARD_PAY：公司卡支付／受款人明細的欄位代碼、選項、自動帶入文字（與請款單交際費同名）', () => {
+  const p = c.CARD_PAY;
+  assert.strictEqual(p.FLAG, '是否為公司卡支付');
+  assert.strictEqual(p.MODE, '公司卡支付方式');
+  assert.strictEqual(p.TABLE.CODE, '受款人明細');
+  assert.deepStrictEqual({ ...p.TABLE.COLS }, { PAY_SOURCE: '付款來源_受款人明細', PAYEE: '受款人_受款人明細', AMOUNT: '金額_受款人明細' });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(p.OPTIONS)), {
+    FLAG: { YES: '是' },
+    MODE: { FULL: '全額支付', PARTIAL: '部分支付' },
+    SOURCE: { EMPLOYEE: '員工代墊', CARD: '公司信用卡' },
+  });
+  assert.deepStrictEqual({ ...p.TEXT }, { CARD_PAYEE: '公司信用卡', PARTIAL_PAYEE: '公司卡部分支付', FULL_PAYEE: '公司卡全額支付' });
+  const allFieldCodes = Object.values(F).flatMap((v) => (typeof v === 'string' ? [v] : [v.CODE, ...Object.values(v.COLS || {})]));
+  [p.FLAG, p.MODE, p.TABLE.CODE, ...Object.values(p.TABLE.COLS)].forEach((code) => assert.ok(!allFieldCodes.includes(code), `${code} 不可和 FIELDS 撞名`));
 });
 
 check('MANUAL_SIGNERS：手動簽核人三格依序、人數欄位、可改簽核人的狀態與 749 的欄位代碼一致', () => {
