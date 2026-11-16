@@ -613,7 +613,7 @@
   let ownerOrgChangeSeq = 0;
 
   /**
-   * 對照表裡的部長：讀上一階主管群組 → 單位主管3＝成員（扣掉本人），其餘格清空，人數 1人／0人。
+   * 對照表裡的部長：讀上一階主管群組 → 單位部長_支店長＝成員（扣掉本人），其餘格清空，人數 0人／0人。
    * 群組沒人或讀不到：格子清空並提醒（存檔時 PR_DIRECTOR_UPLINE.apply 會再查一次並擋下）。
    */
   function applyUplineToScreen({ group, ownerCode, orgName, isLatest }) {

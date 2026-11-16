@@ -324,11 +324,11 @@ check('手續費：COLS.FEE＝手續費、TRAFFIC_RULES.FEE_VEHICLES＝[高鐵]�
   assert.strictEqual(c.REF_FIELDS.TRAFFIC_RULE_MASTER.FLAG_FEE, '可填手續費');
 });
 
-check('DIRECTOR_UPLINE（2026-11-16 取代依費用歸屬帶部長）：8 筆部長對照、放單位主管3、只在填單／草稿／駁回時重算', () => {
+check('DIRECTOR_UPLINE（2026-11-16 取代依費用歸屬帶部長）：8 筆部長對照、放單位部長_支店長、只在填單／草稿／駁回時重算', () => {
   const d = c.DIRECTOR_UPLINE;
   assert.ok(!('DIRECTOR_BY_COST_CENTER' in c), '舊的依費用歸屬帶部長設定已刪');
-  assert.strictEqual(d.SLOT, '單位主管3');
-  assert.deepStrictEqual([...d.CLEAR_FIELDS], ['單位主管1', '單位主管2', '單位次長', '單位次長1', '單位部長_支店長']);
+  assert.strictEqual(d.SLOT, '單位部長_支店長');
+  assert.deepStrictEqual([...d.CLEAR_FIELDS], ['單位主管1', '單位主管2', '單位主管3', '單位次長', '單位次長1']);
   assert.deepStrictEqual({ ...d.COUNT_FIELDS }, { MANAGER: '部門主管簽核人數', DEPUTY: '部門次長簽核人數' });
   assert.deepStrictEqual(d.RULES.map((r) => [r.org, r.title, r.group]), [
     ['台中營業部', '部長', 'HQ_部長'],

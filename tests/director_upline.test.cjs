@@ -1,7 +1,7 @@
 'use strict';
 
 // 測試：部長上一階主管_20261116.js（取代 部長簽核帶入_20261029.js）＋簽核人員程式的接法
-//   - 費用所屬人部門＋職稱對到 C.DIRECTOR_UPLINE.RULES → 群組成員（扣掉本人）進單位主管3，其他格清空，人數 1人／0人
+//   - 費用所屬人部門＋職稱對到 C.DIRECTOR_UPLINE.RULES → 群組成員（扣掉本人）進單位部長_支店長，其他格清空，人數 0人／0人
 //   - 存檔 apply()：不在對照表不打 API；群組沒人／查不到 → 擋存檔；手動、作廢、送出後不處理
 //   - 畫面：改費用所屬人部門 → 對照表裡的部長不查簽核流程主檔，改讀群組
 //   - 主管／次長人數一律依各格重算：換費用所屬人先清空歸 0人；主檔查不到流程、特定部長也不留上一位的人數
@@ -163,26 +163,26 @@ const check = async (label, fn) => {
     assert.strictEqual(D.groupOf('營業戰略部', '部長'), null);
   });
 
-  await check('membersExcept：扣掉本人、去重；writeSlots：主管3＝成員，其他 5 格清空，人數 1人／0人；沒人 → 0人／0人', () => {
+  await check('membersExcept：扣掉本人、去重；writeSlots：部長格＝成員，其他 5 格清空，人數 0人／0人；沒人 → 0人／0人', () => {
     assert.deepStrictEqual(D.membersExcept([U('OWN'), U('B'), U('B'), U('C')], 'OWN').map((u) => u.code), ['B', 'C']);
     const r = makeRecord({ orgName: '事業本部', slots: FULL, counts: ['3人', '2人'] });
     assert.strictEqual(D.writeSlots(r, [U('B'), U('C')]), true);
-    assert.deepStrictEqual(signers(r), { 單位主管1: [], 單位主管2: [], 單位主管3: ['B', 'C'], 單位次長: [], 單位次長1: [], 單位部長_支店長: [] });
-    assert.deepStrictEqual(counts(r), ['1人', '0人']);
+    assert.deepStrictEqual(signers(r), { 單位主管1: [], 單位主管2: [], 單位主管3: [], 單位次長: [], 單位次長1: [], 單位部長_支店長: ['B', 'C'] });
+    assert.deepStrictEqual(counts(r), ['0人', '0人']);
     assert.strictEqual(D.writeSlots(r, [U('C'), U('B')]), false, '值沒變（順序不同）不算改到');
     D.writeSlots(r, []);
     assert.deepStrictEqual(counts(r), ['0人', '0人']);
   });
 
   // ── 存檔 apply() ──────────────────────────────────────────────────────────
-  await check('apply：事業本部部長 → 主管3＝HQ_部長成員（扣掉本人），人數 1人／0人', async () => {
+  await check('apply：事業本部部長 → 部長格＝HQ_部長成員（扣掉本人），人數 0人／0人', async () => {
     setOwner('OWN', '事業本部', '部長');
     env.groups.HQ_部長 = ['OWN', 'BOSS'];
     const r = makeRecord({ orgName: '事業本部', slots: FULL, counts: ['3人', '2人'] });
     assert.deepStrictEqual(await D.apply(r), []);
-    assert.deepStrictEqual(signers(r)['單位主管3'], ['BOSS']);
-    assert.deepStrictEqual(SLOTS.filter((f) => signers(r)[f].length), ['單位主管3']);
-    assert.deepStrictEqual(counts(r), ['1人', '0人']);
+    assert.deepStrictEqual(signers(r)['單位部長_支店長'], ['BOSS']);
+    assert.deepStrictEqual(SLOTS.filter((f) => signers(r)[f].length), ['單位部長_支店長']);
+    assert.deepStrictEqual(counts(r), ['0人', '0人']);
     assert.deepStrictEqual(callsTo('/v1/group/users.json').map((c) => c.params.code), ['HQ_部長']);
   });
 
@@ -191,7 +191,7 @@ const check = async (label, fn) => {
     env.groups.HQ_ACC_課長 = Array.from({ length: 150 }, (_, i) => `M${i}`);
     const r = makeRecord({ orgName: '總務部' });
     assert.deepStrictEqual(await D.apply(r), []);
-    assert.strictEqual(signers(r)['單位主管3'].length, 150);
+    assert.strictEqual(signers(r)['單位部長_支店長'].length, 150);
     assert.deepStrictEqual(callsTo('/v1/group/users.json').map((c) => c.params.offset), [0, 100]);
   });
 
@@ -235,28 +235,28 @@ const check = async (label, fn) => {
     env.groups.HQ_部長 = ['BOSS'];
     for (const r of [makeRecord({ orgName: '事業本部', manual: true }), makeRecord({ orgName: '事業本部', voided: true }), makeRecord({ orgName: '事業本部', status: '申請單位主管3確認中' })]) {
       assert.deepStrictEqual(await D.apply(r), []);
-      assert.deepStrictEqual(signers(r)['單位主管3'], []);
+      assert.deepStrictEqual(signers(r)['單位部長_支店長'], []);
     }
     assert.strictEqual(env.apiCalls.length, 0);
     const rejected = makeRecord({ orgName: '事業本部', status: '申請單位主管3駁回' });
     assert.deepStrictEqual(await D.apply(rejected), []);
-    assert.deepStrictEqual(signers(rejected)['單位主管3'], ['BOSS']);
+    assert.deepStrictEqual(signers(rejected)['單位部長_支店長'], ['BOSS']);
   });
 
   // ── 畫面：簽核人員程式 ──────────────────────────────────────────────────────
-  await check('畫面：改費用所屬人部門（事業本部部長）→ 不查簽核流程主檔，主管3＝群組成員、人數 1人／0人、只顯示主管3', async () => {
+  await check('畫面：改費用所屬人部門（事業本部部長）→ 不查簽核流程主檔，部長格＝群組成員、人數 0人／0人、只顯示部長格', async () => {
     setOwner('OWN', '事業本部', '部長');
     env.groups.HQ_部長 = ['OWN', 'BOSS'];
     env.live = makeRecord({ orgName: '事業本部', slots: FULL, counts: ['3人', '2人'] });
     fire(ORG_EVENT);
     await settle();
     assert.strictEqual(approvalCalls().length, 0);
-    assert.deepStrictEqual(SLOTS.filter((f) => signers()[f].length), ['單位主管3']);
-    assert.deepStrictEqual(signers()['單位主管3'], ['BOSS']);
-    assert.deepStrictEqual(counts(), ['1人', '0人']);
-    assert.strictEqual(env.shown['單位主管3'], true);
+    assert.deepStrictEqual(SLOTS.filter((f) => signers()[f].length), ['單位部長_支店長']);
+    assert.deepStrictEqual(signers()['單位部長_支店長'], ['BOSS']);
+    assert.deepStrictEqual(counts(), ['0人', '0人']);
+    assert.strictEqual(env.shown['單位部長_支店長'], true);
     assert.strictEqual(env.shown['單位主管1'], false);
-    assert.strictEqual(env.shown[COUNT_M], true);
+    assert.strictEqual(env.shown[COUNT_M], false);
     assert.strictEqual(env.shown[COUNT_D], false);
   });
 

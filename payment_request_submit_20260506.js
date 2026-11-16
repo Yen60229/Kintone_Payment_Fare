@@ -343,7 +343,7 @@
             return ['掛帳單位檢查失敗：請稍後再試或聯絡系統管理員'];
           })
         : Promise.resolve([]);
-      // 費用所屬人是對照表裡的部長：上一階主管群組成員寫進單位主管3（直接寫進 record；沒人可簽或查不到回錯誤）
+      // 費用所屬人是對照表裡的部長：上一階主管群組成員寫進單位部長_支店長（直接寫進 record；沒人可簽或查不到回錯誤）
       const director = window.PR_DIRECTOR_UPLINE;
       const directorTask = director ? director.apply(record) : Promise.resolve([]);
       // 手動設定簽核流程：檢查指定的簽核人（1～3 位、依序、不重複、不是申請人），並寫入手動簽核人數
@@ -371,7 +371,7 @@
       // 4. 掛帳單位限費用所屬人部內、不可跨部門（排除群組的申請人不檢查）
       allErrors.push(...scopeErrors);
 
-      // 5. 費用所屬人是對照表裡的部長時的上一階主管（單位主管3）
+      // 5. 費用所屬人是對照表裡的部長時的上一階主管（單位部長_支店長）
       allErrors.push(...directorErrors);
 
       // 6. 手動設定簽核流程的簽核人

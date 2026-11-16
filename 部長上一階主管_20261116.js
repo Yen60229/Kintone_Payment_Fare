@@ -5,8 +5,8 @@
   // 部長的上一階主管改由群組決定（2026-11-16，取代 部長簽核帶入_20261029.js）
   //
   //   費用所屬人在「費用所屬人部門」的職稱＋部門名稱對到 C.DIRECTOR_UPLINE.RULES →
-  //   讀那個群組的成員（扣掉費用所屬人本人）放進單位主管3，其餘簽核格清空，
-  //   部門主管簽核人數＝1人、部門次長簽核人數＝0人（流程管理：主管 1 人＝從單位主管3 開始）。
+  //   讀那個群組的成員（扣掉費用所屬人本人）放進單位部長_支店長，其餘簽核格清空，
+  //   部門主管簽核人數＝0人、部門次長簽核人數＝0人（流程管理：主管、次長都 0 人且部長格有人＝直接到部長確認）。
   //   對不到的人照原本簽核流程主檔（APPS.APPROVAL_FLOW）的排法，本程式不動。
   //
   //   畫面：簽核人員程式（signing_personnel_manager）排人時先問 groupOf()，對到就呼叫 loadMembers()／writeSlots()，不查簽核流程主檔。
@@ -42,7 +42,7 @@
   };
 
   /**
-   * 把上一階主管寫進 record：SLOT＝users、CLEAR_FIELDS 清空、人數 1人／0人（沒人＝0人）。
+   * 把上一階主管寫進 record：SLOT＝users、CLEAR_FIELDS 清空、主管與次長人數都 0人。
    * 只動 record 裡有的欄位；回傳有沒有改到值。
    */
   const writeSlots = (record, users) => {
@@ -62,7 +62,7 @@
     };
     setUsers(CFG.SLOT, users);
     CFG.CLEAR_FIELDS.forEach((code) => setUsers(code, []));
-    setCount(COUNT.MANAGER, users.length > 0 ? 1 : 0);
+    setCount(COUNT.MANAGER, 0);
     setCount(COUNT.DEPUTY, 0);
     return changed;
   };
