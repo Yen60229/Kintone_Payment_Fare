@@ -212,8 +212,8 @@ check('CSS：.pr-label-hint 圖標、::after tooltip（attr(data-pr-hint)）、:
   assert.ok(/max-width:\s*280px/.test(css));
 });
 
-check('只套 752：不在 src 入口（不進 749 bundle）、JS 沒有寫死樣式', () => {
-  assert.ok(!readSrc('src/index.js').includes('欄位標籤說明圖示'));
+check('2026-11-16 起請款單也用：進桌面版 bundle、不進手機版；JS 沒有寫死樣式', () => {
+  assert.ok(readSrc('src/index.js').includes("import '../欄位標籤說明圖示_20261104.js';"));
   assert.ok(!readSrc('src/mobile.js').includes('欄位標籤說明圖示'));
   const src = readSrc('欄位標籤說明圖示_20261104.js');
   assert.ok(!/\.style\b|cssText|style="|createElement\(['"]style/.test(src));

@@ -2,14 +2,15 @@
   'use strict';
 
   // =============================================================================
-  // 欄位標籤說明圖示 —— 上傳到 規則主檔 App（APPS.TRAFFIC_RULE_MASTER），不進請款單的 bundle
+  // 欄位標籤說明圖示 —— 請款單桌面版 bundle（src/index.js）＋單獨上傳到規則主檔 App（APPS.TRAFFIC_RULE_MASTER）
   //
-  // 規則主檔的欄位標籤帶括號說明，例如「固定賣方統編（交通工具用；有填就自動帶入並鎖住）」，
+  // 欄位標籤帶括號說明，例如「固定賣方統編（交通工具用；有填就自動帶入並鎖住）」，
   // 列表表頭、記錄畫面的欄名都很長。本檔把結尾括號裡的文字拿掉，欄名只留括號前的文字，
   // 旁邊放一個小問號，滑鼠移上去（或鍵盤 focus）才顯示括號裡的說明。
-  // 請款單的「金額（含稅）」等括號是正式標籤，不要把本檔上傳到請款單 App。
+  // 2026-11-16 起請款單也套用（使用者拍板）：「金額（含稅）」這類結尾括號的欄名也會變成「金額 ?」。
   //
-  // 【上傳順序】規則主檔的 JavaScript（PC）：config -> 交通費明細規則主檔檢查 -> 本檔；CSS（PC）：payment_request.css。
+  // 【上傳順序】請款單：打包進桌面版 bundle，不用另外上傳。
+  //   規則主檔的 JavaScript（PC）：config -> 交通費明細規則主檔檢查 -> 本檔；CSS（PC）：payment_request.css。
   //
   // 【tooltip 做法】問號的 data-pr-hint 屬性 + CSS ::after（content: attr(data-pr-hint)），
   //   樣式全在 payment_request.css（.pr-label-hint*）。不另設 title（會出現兩個 tooltip）。
