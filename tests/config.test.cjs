@@ -140,7 +140,7 @@ check('isAdmin：指定代碼／預設取目前登入者', () => {
   loadConfig(749);
 });
 
-check('SPACES 空白欄位 ID 正確（說明文字三格、受款人按鈕、預計付款日說明、設定簽核人按鈕；沒有已刪的使用須知／受款人統計）', () => {
+check('SPACES 空白欄位 ID 正確（說明文字三格、受款人按鈕、預計付款日說明、設定簽核人按鈕、詳細頁 PDF 按鈕；沒有已刪的使用須知／受款人統計）', () => {
   assert.deepStrictEqual(
     { ...c.SPACES },
     {
@@ -150,6 +150,7 @@ check('SPACES 空白欄位 ID 正確（說明文字三格、受款人按鈕、�
       APPLY_BUTTON: 'apply_button',
       EXPECTED_PAY_DATE_NOTE: 'Space_Expected_Pay_Date',
       MANUAL_SIGNERS: 'Space_Manual_Signers',
+      PDF_BUTTON: 'Purchase_button',
     },
   );
 });

@@ -67,7 +67,7 @@ check('Space_Noti_1 空白；Space_Noti_2 為付款方式／付款原則／交�
   assert.strictEqual(noti2.split('<br>').length, 3);
   assert.ok(text(C.SPACES.NOTI_2).includes('付款方式：皆以電匯為主，除特殊情況才可使用現金'));
   assert.ok(text(C.SPACES.NOTI_2).includes('付款原則：一般帳款２個月，特殊期限請標註日期'));
-  assert.ok(text(C.SPACES.NOTI_2).includes('交通費請款：搭乘計程車請說明理由'));
+  assert.ok(text(C.SPACES.NOTI_2).includes('交通費請款：課級以下，搭乘計程車請事先取得主管同意'));
   assert.ok(text(C.SPACES.NOTI_3).includes('受款人為員工 ➡︎ 員工編號＋中文姓名'));
 });
 

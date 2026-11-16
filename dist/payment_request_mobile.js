@@ -206,6 +206,7 @@
       APPLY_BUTTON: 'apply_button', // 「同申請人」受款人按鈕
       EXPECTED_PAY_DATE_NOTE: 'Space_Expected_Pay_Date', // 預計付款日旁的說明文字
       MANUAL_SIGNERS: 'Space_Manual_Signers', // 簽核流程群組裡的「設定簽核人」按鈕（手動簽核人設定）
+      PDF_BUTTON: 'Purchase_button', // 詳細頁「下載此筆交通費請款單PDF」按鈕（檔案批次）
     });
 
     // ── 欄位代碼註冊表：邏輯名 → kintone 欄位代碼（單一事實來源）───────────────
@@ -731,7 +732,7 @@
     const INSTRUCTIONS = {
       付款方式: `<span class="pr-noti">&ensp;※ 付款方式：</span><span class="pr-noti-red">皆以電匯為主，除特殊情況才可使用現金</span>`,
       付款原則: `<span class="pr-noti">&ensp;※ 付款原則：一般帳款２個月，特殊期限請標註日期</span>`,
-      交通費說明: `<span class="pr-noti">&ensp;※ 交通費請款：搭乘計程車請說明理由</span>`,
+      交通費說明: `<span class="pr-noti">&ensp;※ 交通費請款：課級以下，搭乘計程車請事先取得主管同意</span>`,
       受款人員工: `<span class="pr-noti pr-noti-payee">&ensp;※ 受款人為員工 ➡︎ 員工編號＋中文姓名</span>`,
     };
 

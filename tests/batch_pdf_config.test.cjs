@@ -15,13 +15,39 @@ const readSrc = (name) => fs.readFileSync(path.join(rootDir, name), 'utf8');
 const pdfSrc = readSrc(pdfFile);
 
 const registered = [];
-global.window = { location: { origin: 'https://example.cybozu.com' } };
+// 假 PDFLib：只記錄附件被怎麼接上（每個 PDF 附件有 2 頁）
+const pdfLoads = [];
+global.window = {
+  location: { origin: 'https://example.cybozu.com' },
+  PDFLib: {
+    rgb: () => ({}),
+    PDFDocument: {
+      load: async (bytes) => {
+        if (bytes.bad) throw new Error('壞檔');
+        pdfLoads.push(bytes);
+        return { getPageIndices: () => [0, 1], tag: bytes.tag };
+      },
+    },
+  },
+};
 global.location = global.window.location;
+const spaces = {};
 global.kintone = {
-  app: { getId: () => 749, record: {} },
+  app: { getId: () => 749, record: { getSpaceElement: (id) => spaces[id] || null, getHeaderMenuSpaceElement: () => spaces.__header || null } },
+  api: { url: (p) => p },
   getLoginUser: () => ({ code: 'x' }),
   events: { on: (types, handler) => registered.push({ types, handler }) },
 };
+// 假下載：fileKey 就是內容標記；'bad' 讓 PDF 解析失敗
+global.fetch = async (url) => {
+  const key = url.split('fileKey=')[1];
+  return { ok: true, blob: async () => ({ size: 10, arrayBuffer: async () => ({ tag: key, bad: key === 'bad' }) }) };
+};
+const fakeEl = (tag) => {
+  const el = { tagName: tag, children: [], appendChild: (c) => el.children.push(c), addEventListener: () => {} };
+  return el;
+};
+global.document = { getElementById: () => null, createElement: fakeEl };
 
 console.warn = () => {}; // 測試環境沒有 PDFLib，略過載入警告
 // eslint-disable-next-line no-eval
@@ -195,4 +221,110 @@ check('事件：列表頁與詳細頁各一個', () => {
   assert.deepStrictEqual(all.sort(), ['app.record.detail.show', 'app.record.index.show']);
 });
 
-console.log(`${passed} assertions passed.`);
+// ── 詳細頁按鈕位置 ─────────────────────────────────────────────────────────
+
+const detailHandler = registered.find((r) => [].concat(r.types).includes('app.record.detail.show')).handler;
+const detailEvent = { type: 'app.record.detail.show', record: { $id: { value: '7' } } };
+
+check('詳細頁 PDF 按鈕放在空白欄位 SPACES.PDF_BUTTON（Purchase_button）', () => {
+  assert.strictEqual(C.SPACES.PDF_BUTTON, 'Purchase_button');
+  spaces[C.SPACES.PDF_BUTTON] = fakeEl('div');
+  spaces.__header = fakeEl('div');
+  detailHandler(detailEvent);
+  assert.strictEqual(spaces[C.SPACES.PDF_BUTTON].children.length, 1);
+  assert.strictEqual(spaces[C.SPACES.PDF_BUTTON].children[0].id, 'detail-print-pdflib-btn');
+  assert.strictEqual(spaces.__header.children.length, 0, '不再放表頭');
+});
+
+check('表單上沒有那格空白欄位 → 退回放表頭', () => {
+  delete spaces[C.SPACES.PDF_BUTTON];
+  spaces.__header = fakeEl('div');
+  detailHandler(detailEvent);
+  assert.strictEqual(spaces.__header.children.length, 1);
+});
+
+// ── 附件接在 PDF 後面 ──────────────────────────────────────────────────────
+
+check('attachmentKind：PDF／JPG／PNG 依 contentType 或副檔名判斷，其他不支援', () => {
+  assert.strictEqual(B.attachmentKind({ name: 'a.PDF', contentType: '' }), 'pdf');
+  assert.strictEqual(B.attachmentKind({ name: 'a', contentType: 'application/pdf' }), 'pdf');
+  assert.strictEqual(B.attachmentKind({ name: 'a.jpeg' }), 'jpg');
+  assert.strictEqual(B.attachmentKind({ name: 'a.jpg', contentType: 'image/jpeg' }), 'jpg');
+  assert.strictEqual(B.attachmentKind({ name: 'a.png' }), 'png');
+  assert.strictEqual(B.attachmentKind({ name: 'a.xlsx', contentType: 'application/vnd.ms-excel' }), null);
+  assert.strictEqual(B.attachmentKind({ name: 'a.heic', contentType: 'image/heic' }), null);
+  assert.strictEqual(B.attachmentKind(null), null);
+});
+
+const fakeDoc = () => {
+  const doc = {
+    pages: [],
+    copyPages: async (src, idx) => idx.map((i) => ({ from: src.tag, i })),
+    addPage: (p) => {
+      const page = Array.isArray(p) ? { size: p, images: [], drawImage: (img, o) => page.images.push({ img, o }) } : p;
+      doc.pages.push(page);
+      return page;
+    },
+    embedJpg: async (b) => ({ kind: 'jpg', tag: b.tag, width: 4000, height: 3000 }),
+    embedPng: async (b) => ({ kind: 'png', tag: b.tag, width: 100, height: 200 }),
+  };
+  return doc;
+};
+
+(async () => {
+  const origError = console.error;
+  console.error = () => {};
+  const doc = fakeDoc();
+  const record = {
+    [F.ATTACHMENT]: {
+      value: [
+        { name: '發票.pdf', contentType: 'application/pdf', fileKey: 'p1' },
+        { name: '收據.jpg', contentType: 'image/jpeg', fileKey: 'j1' },
+        { name: '表.xlsx', contentType: 'application/vnd.ms-excel', fileKey: 'x1' },
+        { name: '壞.pdf', contentType: 'application/pdf', fileKey: 'bad' },
+        { name: '截圖.png', contentType: 'image/png', fileKey: 'g1' },
+      ],
+    },
+  };
+  const skipped = await B.appendAttachments(doc, record);
+  console.error = origError;
+
+  check('appendAttachments：依附件順序接上——PDF 全部頁、圖片一張一頁', () => {
+    assert.deepStrictEqual(
+      doc.pages.map((p) => p.from || p.images[0].img.tag),
+      ['p1', 'p1', 'j1', 'g1'],
+    );
+  });
+
+  check('appendAttachments：不支援的格式與讀取失敗的檔案回傳檔名、不中斷', () => {
+    assert.deepStrictEqual(skipped, ['表.xlsx', '壞.pdf']);
+  });
+
+  check('圖片頁：橫的圖用 A4 橫式、直的圖用 A4 直式，縮到邊界內（小圖不放大）並置中', () => {
+    const [jpgPage, pngPage] = doc.pages.slice(2);
+    assert.deepStrictEqual(jpgPage.size, [841.89, 595.28]);
+    const o = jpgPage.images[0].o;
+    assert.ok(o.width <= 841.89 - 48 + 1e-6 && o.height <= 595.28 - 48 + 1e-6);
+    assert.ok(Math.abs(o.x * 2 + o.width - 841.89) < 1e-6);
+    assert.deepStrictEqual(pngPage.size, [595.28, 841.89]);
+    assert.strictEqual(pngPage.images[0].o.width, 100);
+    assert.strictEqual(pngPage.images[0].o.height, 200);
+  });
+
+  const emptyDoc = fakeDoc();
+  const emptySkipped = await B.appendAttachments(emptyDoc, {});
+  check('沒有附件 → 什麼都不接', () => {
+    assert.deepStrictEqual(emptySkipped, []);
+    assert.strictEqual(emptyDoc.pages.length, 0);
+  });
+
+  check('批次列印合成一份 PDF（不再打包 ZIP）', () => {
+    assert.ok(pdfSrc.includes('merged.copyPages'));
+    assert.ok(!pdfSrc.includes('zip.file(fileName, pdfBlob)'));
+  });
+
+  console.log(`${passed} assertions passed.`);
+})().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

@@ -504,7 +504,60 @@
     ];
   };
 
+  // ======================== 附件接在 PDF 後面 ========================
+  /**
+   * 附件能不能放進 PDF：'pdf'＝整份頁面接上；'jpg'／'png'＝一張圖一頁；null＝不支援（Word、Excel…，略過）
+   * @param {{name?: string, contentType?: string}} file kintone 附件欄位的一個檔案
+   */
+  const attachmentKind = (file) => {
+    const type = String(file?.contentType || '').toLowerCase();
+    const ext = (String(file?.name || '').toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1] || '';
+    if (type === 'application/pdf' || ext === 'pdf') return 'pdf';
+    if (type === 'image/jpeg' || ext === 'jpg' || ext === 'jpeg') return 'jpg';
+    if (type === 'image/png' || ext === 'png') return 'png';
+    return null;
+  };
+
+  /**
+   * 把記錄「附件」欄位的檔案依序接在 pdfDoc 後面。
+   * @returns {Promise<string[]>} 沒接上的檔名（不支援的格式或讀取失敗）
+   */
+  const appendAttachments = async (pdfDoc, record) => {
+    const skipped = [];
+    const files = record[F.ATTACHMENT]?.value || [];
+    for (const file of files) {
+      const kind = attachmentKind(file);
+      if (!kind) {
+        skipped.push(file.name);
+        continue;
+      }
+      try {
+        const bytes = await (await secureFileDownload(file.fileKey)).arrayBuffer();
+        if (kind === 'pdf') {
+          const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+          const pages = await pdfDoc.copyPages(src, src.getPageIndices());
+          pages.forEach((p) => pdfDoc.addPage(p));
+        } else {
+          const img = kind === 'jpg' ? await pdfDoc.embedJpg(bytes) : await pdfDoc.embedPng(bytes);
+          // A4，依圖片方向選直式／橫式，等比例縮到邊界內、置中
+          const [w, h] = img.width > img.height ? [841.89, 595.28] : [595.28, 841.89];
+          const margin = 24;
+          const scale = Math.min((w - margin * 2) / img.width, (h - margin * 2) / img.height, 1);
+          const dw = img.width * scale;
+          const dh = img.height * scale;
+          const page = pdfDoc.addPage([w, h]);
+          page.drawImage(img, { x: (w - dw) / 2, y: (h - dh) / 2, width: dw, height: dh });
+        }
+      } catch (e) {
+        console.error(`[PDF] 附件接上失敗：${file.name}`, e);
+        skipped.push(file.name);
+      }
+    }
+    return skipped;
+  };
+
   // ======================== PDF 生成（PDFLib 向量）========================
+  // 回傳 { blob, skipped }：明細頁＋附件頁；skipped＝沒接上的附件檔名
   const generateRecordPDF = async (record, id) => {
     ensurePdfDeps();
 
@@ -646,8 +699,10 @@
       color: rgb(0.35, 0.35, 0.35),
     });
 
+    const skipped = await appendAttachments(pdfDoc, record);
+
     const bytes = await pdfDoc.save();
-    return new Blob([bytes], { type: 'application/pdf' });
+    return { blob: new Blob([bytes], { type: 'application/pdf' }), bytes, skipped };
   };
 
   // ======================== 取得單筆記錄 ========================
@@ -955,11 +1010,14 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
 
   async function performBatchPrintPDF(recordIds) {
     console.log('[PDF Batch] Starting performBatchPrintPDF with record IDs:', recordIds);
-    const overlay = createLoadingOverlay();
+    ensurePdfDeps();
+    createLoadingOverlay();
     const appId = kintone.app.getId();
-    const zip = new JSZip();
+    // 全部合成一份 PDF：明細＋附件＋明細＋附件…（依輸入的記錄順序）
+    const merged = await PDFDocument.create();
     let processed = 0;
     const failed = [];
+    const skippedAll = [];
 
     try {
       for (const recordId of recordIds) {
@@ -971,15 +1029,13 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
           const record = await fetchRecord(appId, recordId);
           console.log(`[PDF Batch] Fetched record ${recordId}:`, record);
           
-          const pdfBlob = await generateRecordPDF(record, recordId);
-          console.log(`[PDF Batch] Generated PDF Blob for record ${recordId}, size = ${pdfBlob.size} bytes`);
-          
-          const fileName = generatePDFFileName(record, recordId);
-          console.log(`[PDF Batch] Filename for record ${recordId}: ${fileName}`);
-          
-          zip.file(fileName, pdfBlob);
+          const { bytes, skipped } = await generateRecordPDF(record, recordId);
+          const src = await PDFDocument.load(bytes);
+          const pages = await merged.copyPages(src, src.getPageIndices());
+          pages.forEach((p) => merged.addPage(p));
+          skipped.forEach((name) => skippedAll.push(`記錄 ${recordId}：${name}`));
           processed++;
-          console.log(`[PDF Batch] Added record ${recordId} PDF to ZIP successfully.`);
+          console.log(`[PDF Batch] Added record ${recordId} (${pages.length} pages) to merged PDF.`);
         } catch (recordError) {
           console.error(`[PDF Batch] 記錄 ${recordId} 處理失敗:`, recordError);
           const errMsg = recordError.message || (typeof recordError === 'object' ? JSON.stringify(recordError) : String(recordError));
@@ -990,18 +1046,22 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       }
 
       console.log(`[PDF Batch] Loop completed. Success = ${processed}, Failed = ${failed.length}`);
-      updateResultMessage('正在打包 ZIP 檔案...', 'info');
+      if (!processed) throw new Error(`全部 ${failed.length} 筆都失敗：\n${failed.map((f) => `記錄 ${f.id}：${f.message}`).join('\n')}`);
+
+      updateResultMessage('正在合併 PDF 檔案...', 'info');
       updateProgress(95);
 
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      console.log('[PDF Batch] ZIP Blob generated, size =', zipBlob.size, 'bytes');
-      saveAs(zipBlob, `批次列印_${formatDateTime(new Date())}.zip`);
+      const mergedBytes = await merged.save();
+      saveAs(new Blob([mergedBytes], { type: 'application/pdf' }), `批次列印_${formatDateTime(new Date())}.pdf`);
 
       updateProgress(100);
+      const skipNote = skippedAll.length ? `\n\n以下附件不是 PDF／圖片或讀取失敗，沒有放進 PDF：\n${skippedAll.join('\n')}` : '';
       if (failed.length) {
         const failDetail = failed.map((f) => `記錄 ${f.id}：${f.message}`).join('\n');
         console.warn('[PDF Batch] Completed with failures:', failDetail);
-        updateResultMessage(`⚠️ 完成，但有 ${failed.length} 筆失敗（未包含在 ZIP 內）：\n${failDetail}\n\n成功 ${processed} 筆`, 'warning');
+        updateResultMessage(`⚠️ 完成，但有 ${failed.length} 筆失敗（未包含在 PDF 內）：\n${failDetail}\n\n成功 ${processed} 筆${skipNote}`, 'warning');
+      } else if (skippedAll.length) {
+        updateResultMessage(`⚠️ 列印完成，共 ${processed} 筆記錄${skipNote}`, 'warning');
       } else {
         console.log('[PDF Batch] All files printed and downloaded successfully.');
         updateResultMessage(`✅ 列印完成！共處理 ${processed} 筆記錄`, 'success');
@@ -1182,7 +1242,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
     }
   }
 
-  window.PR_BATCH_PDF = Object.freeze({ TABLE_CONFIG, NUMERIC_COLUMNS, getTableData, buildHeaderRows, generatePDFFileName });
+  window.PR_BATCH_PDF = Object.freeze({ TABLE_CONFIG, NUMERIC_COLUMNS, getTableData, buildHeaderRows, generatePDFFileName, attachmentKind, appendAttachments });
 
   // ======================== 事件註冊（依你的要求放最下方）========================
   kintone.events.on('app.record.index.show', function (event) {
@@ -1196,9 +1256,12 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
     return event;
   });
 
-  kintone.events.on('app.record.detail.show', function (event) {
+  window.PR_KT.on('app.record.detail.show', function (event) {
     try {
-      const headerSpace = kintone.app.record.getHeaderMenuSpaceElement();
+      // 放在空白欄位 SPACES.PDF_BUTTON；表單上找不到這格才退回放表頭
+      const headerSpace =
+        window.PR_KT.record().getSpaceElement?.(window.PR_CONFIG.SPACES.PDF_BUTTON) ||
+        window.PR_KT.record().getHeaderMenuSpaceElement?.();
       if (!headerSpace) return event;
 
       // 避免重複塞按鈕
@@ -1214,7 +1277,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
 
         Swal.fire({
           title: '確認下載',
-          html: '即將下載「此筆交通費請款單」的 PDF 檔案。<br>確認要開始下載嗎？<br><span class="pr-download-note">（不會修改或影響表單內容）</span>',
+          html: '即將下載「此筆交通費請款單」的 PDF 檔案（後面接上「附件」的 PDF／圖片）。<br>確認要開始下載嗎？<br><span class="pr-download-note">（不會修改或影響表單內容）</span>',
           icon: 'question',
           showCancelButton: true,
           confirmButtonText: '開始下載',
@@ -1227,10 +1290,14 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
           try {
             const appId = kintone.app.getId();
             const record = await fetchRecord(appId, recordId);
-            const pdfBlob = await generateRecordPDF(record, recordId);
+            const { blob, skipped } = await generateRecordPDF(record, recordId);
             const fileName = generatePDFFileName(record, recordId);
-            saveAs(pdfBlob, fileName);
-            Swal.fire('完成', 'PDF 已成功下載', 'success');
+            saveAs(blob, fileName);
+            if (skipped.length) {
+              Swal.fire({ icon: 'warning', title: 'PDF 已下載', text: `以下附件不是 PDF／圖片或讀取失敗，沒有放進 PDF：\n${skipped.join('\n')}`, width: 'auto', customClass: { htmlContainer: 'pr-notice-text' } });
+            } else {
+              Swal.fire('完成', 'PDF 已成功下載', 'success');
+            }
           } catch (error) {
             console.error('PDF 生成失敗:', error);
             Swal.fire('錯誤', 'PDF 生成失敗：' + error.message, 'error');

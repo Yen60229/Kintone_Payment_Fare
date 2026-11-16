@@ -200,6 +200,7 @@
     APPLY_BUTTON: 'apply_button', // 「同申請人」受款人按鈕
     EXPECTED_PAY_DATE_NOTE: 'Space_Expected_Pay_Date', // 預計付款日旁的說明文字
     MANUAL_SIGNERS: 'Space_Manual_Signers', // 簽核流程群組裡的「設定簽核人」按鈕（手動簽核人設定）
+    PDF_BUTTON: 'Purchase_button', // 詳細頁「下載此筆交通費請款單PDF」按鈕（檔案批次）
   });
 
   // ── 欄位代碼註冊表：邏輯名 → kintone 欄位代碼（單一事實來源）───────────────
