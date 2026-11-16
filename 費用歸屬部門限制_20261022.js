@@ -13,7 +13,8 @@
   //   (2) 不能跨部門：所有列的代碼要有共同的部
   //   (5) 申請人與費用所屬人要同部門：申請部門、費用所屬人部門各自往上爬到的部要相同（2026-10-29）
   //   (3) 申請人在 COST_SCOPE.EXEMPT_GROUP 群組內 → 不受 (1)(2)(5) 限制
-  //   (4) 同上的人新增單時，自動切成「手動設定簽核流程」，簽核人員自選（signing_personnel_manager 接手）
+  //   (4) 只有同上的人可以勾「手動設定簽核流程」自選簽核人員（不自動勾，signing_personnel_manager 接手）
+  //   (6) 不在群組卻勾著手動（例如複製別人手動設定的單）→ 存檔擋下；新增畫面開啟時就先取消勾選
   //
   //   create.show／edit.show 時先查申請人在不在排除群組，結果存在模組變數（isExempt() 直接讀）；
   //   存檔驗證由 payment_request_submit 呼叫 validate()，錯誤一起顯示。
@@ -203,6 +204,16 @@
   const validate = async (record) => {
     const exempt = await ensureExempt(applicantCodeOf(record));
     if (exempt) return [];
+    // (6) 手動設定簽核流程只開放排除群組（例如複製了別人手動設定的單）；管理員略過
+    const manualError =
+      record[F.MANUAL_FLOW]?.value?.length > 0 && !C.isAdmin()
+        ? [`「${F.MANUAL_FLOW}」只開放給「${SCOPE.EXEMPT_GROUP}」的同仁，**請取消勾選**，改由系統依費用所屬人自動安排簽核人員`]
+        : [];
+    return [...manualError, ...(await validateScope(record))];
+  };
+
+  /** 存檔驗證 (A)(B)：申請人不在排除群組時才呼叫 */
+  const validateScope = async (record) => {
 
     const ownerOrg = record[F.EXPENSE_OWNER_ORG]?.value?.[0];
     if (!ownerOrg?.code) return [];

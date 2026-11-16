@@ -136,13 +136,14 @@ const settle = async () => {
  * 設定費用所屬人（OWN）在 orgName 的職稱與簽核流程主檔，觸發費用所屬人部門變更。
  * @param {{orgName:string, title:string, queryName?:string, master?:Object|null}} o
  */
-const run = async ({ orgName, title, queryName = orgName, master = masterOf(FULL), owner = 'OWN', eventType = ORG_EVENT }) => {
+const run = async ({ orgName, title, queryName = orgName, master = masterOf(FULL), owner = 'OWN', eventType = ORG_EVENT, manual = false }) => {
   env.apiCalls.length = 0;
   env.alerts.length = 0;
   env.shown = {};
   env.master = master ? { [queryName]: master } : {};
   env.orgs = { [owner]: [{ organization: { code: orgName, name: orgName, primary: true }, title: { name: title } }] };
   env.live = makeLive({ orgName, owner });
+  if (manual) env.live[F.MANUAL_FLOW].value = [C.OPTIONS.MANUAL_FLOW.ON]; // 複製了手動設定的單
   await fire(eventType);
   await settle();
 };
@@ -180,48 +181,44 @@ const manualOn = () => env.live[F.MANUAL_FLOW].value.length > 0;
     assert.ok(env.apiCalls.some((c) => c.url === '/v1/user/groups.json' && c.params.code === 'APPLICANT'));
   });
 
-  await check('排除群組的申請人新增：自動勾手動設定簽核流程，原本的簽核欄位清空鎖住、不查簽核流程主檔', async () => {
+  await check('排除群組的申請人新增：不自動勾手動設定簽核流程，照簽核流程主檔排人（要用再自己勾）', async () => {
     env.groups = { APPLICANT: ['費用歸屬不限部門'] };
     global.window.PR_COST_SCOPE._reset(); // 模擬重新開頁（同一申請人的群組結果會快取）
     const enterCalls = [];
     global.window.PR_MANUAL_SIGNERS = { signersOf: () => [null, null, null], enter: (r, opts) => enterCalls.push(opts), leave: () => {} };
     await run({ orgName: NAME, title: '一般', eventType: CREATE });
     delete global.window.PR_MANUAL_SIGNERS;
-    assert.deepStrictEqual(enterCalls, [{ openNow: false }], '開新增畫面不直接跳「指定簽核人」視窗，要按「設定簽核人」');
-    assert.strictEqual(manualOn(), true);
-    assert.deepStrictEqual(filledSlots(), []);
-    assert.strictEqual(approvalCall(), undefined, '手動模式不排人');
-    assert.strictEqual(env.live[COUNT_M].value, '0人');
-    assert.strictEqual(env.live[COUNT_M].disabled, true, '手動模式不用人數欄位，鎖住');
-    assert.strictEqual(env.live['單位部長_支店長'].disabled, true, '原本的 6 格不用，鎖住');
-    assert.strictEqual(env.shown[F.ACCOUNTING_UNIT], false, '手動模式不顯示會計單位');
-    assert.deepStrictEqual(env.live[F.ACCOUNTING_UNIT].value, []);
-    assert.ok(env.apiCalls.some((c) => c.params?.app === C.APPS.ACCOUNTING_MAP), '仍帶入會計單位承辦人／權限開放人員');
+    assert.strictEqual(manualOn(), false);
+    assert.deepStrictEqual(enterCalls, []);
+    assert.deepStrictEqual(filledSlots(), SLOTS);
+    assert.ok(approvalCall(), '照簽核流程主檔排人');
   });
 
-  await check('排除群組的申請人新增：之後帶會計單位的 set() 觸發勾選 change（kintone 值沒變也會觸發），也不跳「指定簽核人」視窗', async () => {
+  await check('排除群組的申請人複製手動設定的單：維持手動、不排人、不提示', async () => {
     env.groups = { APPLICANT: ['費用歸屬不限部門'] };
     global.window.PR_COST_SCOPE._reset();
-    const enterCalls = [];
-    global.window.PR_MANUAL_SIGNERS = { signersOf: () => [null, null, null], enter: (r, opts) => enterCalls.push(opts), leave: () => {} };
-    const MANUAL_EVENT = `app.record.create.change.${F.MANUAL_FLOW}`;
-    const origSet = global.kintone.app.record.set;
-    global.kintone.app.record.set = (r) => {
-      origSet(r);
-      setTimeout(() => {
-        T.handlers[MANUAL_EVENT].forEach((fn) => {
-          const event = { type: MANUAL_EVENT, record: clone(env.live) };
-          env.live = clone((fn(event) || event).record);
-        });
-      }, 0);
-    };
-    await run({ orgName: NAME, title: '一般', eventType: CREATE });
-    await settle();
-    global.kintone.app.record.set = origSet;
+    const leaveCalls = [];
+    global.window.PR_MANUAL_SIGNERS = { signersOf: () => [null, null, null], enter: () => {}, leave: (r) => leaveCalls.push(r) };
+    await run({ orgName: NAME, title: '一般', eventType: CREATE, manual: true });
     delete global.window.PR_MANUAL_SIGNERS;
-    assert.ok(env.apiCalls.some((c) => c.params?.app === C.APPS.ACCOUNTING_MAP), '確實有帶會計單位（會 set()）');
-    assert.deepStrictEqual(enterCalls, [{ openNow: false }], 'set() 的回音不當成使用者勾選');
     assert.strictEqual(manualOn(), true);
+    assert.deepStrictEqual(leaveCalls, []);
+    assert.strictEqual(approvalCall(), undefined, '手動模式不排人');
+    assert.deepStrictEqual(env.alerts, []);
+  });
+
+  await check('不在群組的申請人複製手動設定的單：取消勾選、清掉手動簽核人、提示，改回照簽核流程主檔排人', async () => {
+    env.groups = {};
+    global.window.PR_COST_SCOPE._reset();
+    const leaveCalls = [];
+    global.window.PR_MANUAL_SIGNERS = { signersOf: () => [null, null, null], enter: () => {}, leave: (r) => leaveCalls.push(r) };
+    await run({ orgName: NAME, title: '一般', eventType: CREATE, manual: true });
+    delete global.window.PR_MANUAL_SIGNERS;
+    assert.strictEqual(manualOn(), false);
+    assert.strictEqual(leaveCalls.length, 1, '手動簽核人交給 leave 清掉');
+    assert.ok(env.alerts.some((m) => m.includes('已改回系統自動排簽核人員')));
+    assert.deepStrictEqual(filledSlots(), SLOTS);
+    assert.ok(approvalCall());
   });
 
   await check('手動模式下改費用所屬人部門：不重排、不清掉自選的簽核人員', async () => {

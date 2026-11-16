@@ -206,6 +206,17 @@ check('validate：排除群組的申請人不檢查（也不查組織樹）', as
   assert.ok(!calls.some((c) => c.url === '/v1/organizations.json'));
 });
 
+check('validate：不在排除群組卻勾著手動設定簽核流程（複製來的）→ 擋；排除群組與管理員不擋', async () => {
+  const manual = (applicant) => ({ ...record({ applicant, codes: ['AJ50'] }), [F.MANUAL_FLOW]: { value: [C.OPTIONS.MANUAL_FLOW.ON] } });
+  const { S } = setup({ groups: { BOSS: ['費用歸屬不限部門'] } });
+  const errs = await S.validate(manual('ME'));
+  assert.strictEqual(errs.length, 1);
+  assert.ok(errs[0].includes('手動設定簽核流程') && errs[0].includes('費用歸屬不限部門'), errs[0]);
+  assert.strictEqual((await S.validate(manual('BOSS'))).length, 0);
+  assert.strictEqual((await setup({ loginCode: '24136' }).S.validate(manual('ME'))).length, 0, '管理員略過');
+  assert.strictEqual((await S.validate(record({ applicant: 'ME', codes: ['AJ50'] }))).length, 0, '沒勾不擋');
+});
+
 check('validate：沒填費用所屬人部門或沒有任何費用歸屬 → 略過', async () => {
   const { S } = setup();
   assert.strictEqual((await S.validate(record({ ownerOrg: null, codes: ['AJ30'] }))).length, 0);

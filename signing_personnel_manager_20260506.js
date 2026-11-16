@@ -822,14 +822,21 @@
   }
 
   /**
-   * 新增畫面：先確認申請人是否在排除群組（PR_COST_SCOPE），在的話切手動模式，再帶入費用所屬人部門與簽核人員／會計單位。
+   * 新增畫面：手動設定簽核流程不自動勾（排除群組的人要用再自己勾）。
+   * 勾著（複製了手動設定的單）但申請人不在排除群組（PR_COST_SCOPE）→ 取消勾選、清掉手動簽核人並提示；
+   * 再帶入費用所屬人部門與簽核人員／會計單位（改回自動排人）。
    */
   function handleCreateShow(event) {
     manualShown = Boolean(isManualSigningMode(event.record));
     const scope = window.PR_COST_SCOPE;
-    if (!scope) return syncOwnerOrgOnCreate(event);
+    if (!scope || !manualShown) return syncOwnerOrgOnCreate(event);
     return scope.ensureExempt(scope.applicantCodeOf(event.record)).then((exempt) => {
-      if (exempt && !isManualSigningMode(event.record)) enterManualModeForExempt(event.record, { openNow: false });
+      if (!exempt && !C.isAdmin()) {
+        event.record[MANUAL_MODE_CONFIG.checkbox].value = [];
+        manualShown = false;
+        window.PR_MANUAL_SIGNERS?.leave(event.record);
+        notify('info', '已改回系統自動排簽核人員', `這張單複製自手動設定簽核流程的單；手動設定只開放給「${C.COST_SCOPE.EXEMPT_GROUP}」的同仁，簽核人員會由系統依費用所屬人自動安排。`);
+      }
       return syncOwnerOrgOnCreate(event);
     });
   }
