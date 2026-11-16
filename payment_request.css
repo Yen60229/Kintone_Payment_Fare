@@ -941,7 +941,7 @@
 }
 
 /* ── 欄位標籤說明圖示（欄位標籤說明圖示_20261104.js，只上傳到 App 752） ──
-   問號小圖標；說明文字放在 data-pr-hint，hover／鍵盤 focus 時用 ::after 顯示（往下展開）。
+   問號小圖標；說明文字放在 data-pr-hint，hover／鍵盤 focus 時用 ::after 顯示（往上展開，避免被 kintone 原生排序提示蓋住）。
    表頭或欄位容器若 overflow:hidden 會切到 tooltip，JS 替祖先加 .pr-label-hint-host 改成 visible。 */
 .pr-label-hint-host {
   overflow: visible !important;
@@ -989,7 +989,7 @@
 }
 .pr-label-hint::after {
   content: attr(data-pr-hint);
-  top: calc(100% + 9px);
+  bottom: calc(100% + 9px);
   left: -8px;
   box-sizing: border-box;
   width: max-content;
@@ -1008,12 +1008,12 @@
 }
 .pr-label-hint::before {
   content: '';
-  top: calc(100% + 3px);
+  bottom: calc(100% + 3px);
   left: 50%;
   margin-left: -6px;
   border: 6px solid transparent;
-  border-top: 0;
-  border-bottom-color: #263238;
+  border-bottom: 0;
+  border-top-color: #263238;
 }
 .pr-label-hint:hover::after,
 .pr-label-hint:hover::before,

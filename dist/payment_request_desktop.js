@@ -9229,6 +9229,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
     //   規則主檔的 JavaScript（PC）：config -> 交通費明細規則主檔檢查 -> 本檔；CSS（PC）：payment_request.css。
     //
     // 【tooltip 做法】問號的 data-pr-hint 屬性 + CSS ::after（content: attr(data-pr-hint)），
+    //   說明視窗往上展開（2026-11-16）：往下會被 kintone 原生的排序提示（如「依照名稱遞減」）蓋住。
     //   樣式全在 payment_request.css（.pr-label-hint*）。不另設 title（會出現兩個 tooltip）。
     //   表頭／欄位容器可能 overflow:hidden 會切到 tooltip，所以替標籤往上最多 HOST_DEPTH 層祖先加
     //   .pr-label-hint-host（CSS 設 overflow: visible）。
