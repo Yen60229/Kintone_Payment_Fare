@@ -650,19 +650,20 @@
 
   /**
    * 日期視窗的內容 HTML（records 已排好序）：上方「全部套用」，下方每筆記錄一列（受款人、單號、費用所屬人、總金額、日期）。
-   * 受款人只在同一組（受款人鍵相同）的第一列顯示，該列加 pr-export-row--group-start 讓 CSS 畫分隔線。所有值都做 HTML 跳脫。
+   * 受款人直接顯示「受款人」欄位的值（例：公司卡部分支付），同一組（受款人文字相同）只在第一列顯示，
+   * 該列加 pr-export-row--group-start 讓 CSS 畫分隔線。所有值都做 HTML 跳脫。
    */
   function buildDateDialogHtml(records, todayText) {
     const today = escapeHtml(todayText);
     const monthEnd = escapeHtml(lastDayOfPrevMonth(todayText)); // 「月帳」按鈕帶入的日期
-    let prevKey = null;
+    let prevPayee = null;
     const body = records
       .map((r, i) => {
-        const key = payeeKey(r);
-        const first = i === 0 || key !== prevKey;
-        prevKey = key;
+        const payeeText = valueToText(r[FIELDS.PAYEE]?.value).trim();
+        const first = i === 0 || payeeText !== prevPayee;
+        prevPayee = payeeText;
         const rowClass = first ? 'pr-export-row pr-export-row--group-start' : 'pr-export-row';
-        const payee = first ? escapeHtml(key || '—') : '';
+        const payee = first ? escapeHtml(payeeText) : '';
         const no = escapeHtml(valueToText(r[FIELDS.RECORD_NO]?.value));
         const owner = escapeHtml(bracketInner(valueToText(r[FIELDS.EXPENSE_OWNER]?.value)));
         const total = escapeHtml(formatAmount(r[FIELDS.TOTAL_AMOUNT]?.value));

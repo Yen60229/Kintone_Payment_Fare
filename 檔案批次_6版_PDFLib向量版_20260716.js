@@ -855,7 +855,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       if (inputMode === 'range') {
         const startId = parseInt(sanitizeInput(document.getElementById('range-start').value), 10);
         const endId = parseInt(sanitizeInput(document.getElementById('range-end').value), 10);
-        if (isNaN(startId) || isNaN(endId)) throw new Error('請輸入有效的記錄號碼');
+        if (isNaN(startId) || isNaN(endId)) throw new Error('請輸入有效的號碼範圍');
         if (startId > endId) throw new Error('開始號碼必須小於或等於結束號碼');
         for (let i = startId; i <= endId; i++) recordIds.push(i);
       } else {
@@ -865,6 +865,8 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       }
 
       validateRecordIds(recordIds);
+      // 同請購庶務：先確認再開進度視窗
+      if (!(await askConfirm(`確定要批次下載 ${recordIds.length} 筆記錄的附件+截圖嗎？`))) return;
       createSecureLoadingOverlay();
 
       const currentAppId = kintone.app.getId();
@@ -952,8 +954,13 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       showCloseButton();
     } catch (error) {
       console.error('安全下載過程發生錯誤:', error);
-      updateResultMessage(`❌ 安全錯誤: ${error.message}`, 'error');
-      showCloseButton();
+      // 進度視窗還沒建立（輸入驗證階段）：沒地方顯示結果，改跳視窗提示（原本按了看起來沒反應）
+      if (!document.getElementById('result-message')) {
+        notify(error.message, 'warning');
+      } else {
+        updateResultMessage(`❌ 安全錯誤: ${error.message}`, 'error');
+        showCloseButton();
+      }
     } finally {
       securityToken = null;
     }
@@ -1101,6 +1108,78 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
     return overlay;
   }
 
+  /**
+   * 「🗂 批次動作 ▾」下拉選單（樣式 .pr-export-menu*，同請購庶務請款單）。
+   * 結構：<span.pr-export-menu> ├ <button#batch-actions-button> └ <div.pr-export-menu__panel hidden> 數個 <button.pr-export-menu__item>
+   */
+  function buildActionsMenu(items) {
+    const root = document.createElement('span');
+    root.className = 'pr-export-menu';
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.id = 'batch-actions-button';
+    trigger.className = 'batch-print-button pr-export-menu__trigger';
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.textContent = '🗂 批次動作';
+    const caret = document.createElement('span');
+    caret.className = 'pr-export-menu__caret';
+    caret.textContent = '▾';
+    trigger.appendChild(caret);
+
+    const panel = document.createElement('div');
+    panel.className = 'pr-export-menu__panel';
+    panel.setAttribute('role', 'menu');
+    panel.hidden = true;
+    root.append(trigger, panel);
+
+    const isOpen = () => !panel.hidden;
+    const setOpen = (open) => {
+      panel.hidden = !open;
+      root.classList.toggle('is-open', open);
+      trigger.setAttribute('aria-expanded', String(open));
+    };
+
+    items.forEach((item) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pr-export-menu__item';
+      btn.setAttribute('role', 'menuitem');
+      const title = document.createElement('span');
+      title.className = 'pr-export-menu__title';
+      title.textContent = item.title;
+      const desc = document.createElement('span');
+      desc.className = 'pr-export-menu__desc';
+      desc.textContent = item.desc;
+      btn.append(title, desc);
+      btn.addEventListener('click', () => {
+        setOpen(false);
+        Promise.resolve(item.handler()).catch((e) => console.error(`[${item.title}] 執行失敗`, e));
+      });
+      panel.appendChild(btn);
+    });
+
+    trigger.addEventListener('click', () => setOpen(!isOpen()));
+    // 點選單外面、按 Esc、捲動、改視窗大小都收起
+    document.addEventListener('click', (e) => {
+      if (isOpen() && !root.contains(e.target)) setOpen(false);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && isOpen()) {
+        setOpen(false);
+        trigger.focus();
+      }
+    });
+    const closeOnMove = () => {
+      if (isOpen()) setOpen(false);
+    };
+    document.addEventListener('scroll', closeOnMove, true);
+    window.addEventListener('resize', closeOnMove);
+
+    return root;
+  }
+
   async function initUI() {
     try {
       validateSecurity();
@@ -1204,29 +1283,26 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       const buttonsContainer = document.createElement('div');
       buttonsContainer.className = 'buttons-container';
 
-      // 下載附件按鈕
-      const downloadButton = document.createElement('button');
-      downloadButton.id = 'batch-download-button';
-      downloadButton.className = 'batch-download-button';
-      downloadButton.textContent = '📦 批次下載附件+截圖';
-      downloadButton.addEventListener('click', handleSecureBatchDownload);
-
-      // 批次列印PDF按鈕
-      const printButton = document.createElement('button');
-      printButton.id = 'batch-print-button';
-      printButton.className = 'batch-print-button';
-      printButton.textContent = '📄 批次列印交通費請款單PDF';
-      printButton.addEventListener('click', handleBatchPrintPDF);
-
-      // 批次整理資料按鈕（原本就沒實作，保留按鈕不改 UI）
+      // Excel 資料轉出按鈕：交通費只有一種轉出，直接點就執行（click 由 批次整理資料.js 綁定）
       const organizeButton = document.createElement('button');
       organizeButton.id = 'batch-organize-button';
       organizeButton.className = 'batch-print-button';
-      organizeButton.textContent = '📋 交通費Excel資料轉出(AP、費用、稅額)';
+      organizeButton.textContent = '📊 Excel資料轉出';
       buttonsContainer.appendChild(organizeButton);
 
-      buttonsContainer.appendChild(printButton);
-      buttonsContainer.appendChild(downloadButton);
+      // 「🗂 批次動作 ▾」下拉選單：批次列印PDF、批次下載附件+截圖（同請購庶務請款單）
+      buttonsContainer.appendChild(
+        buildActionsMenu([
+          { title: '📄 批次列印交通費請款單PDF', desc: '依照輸入的記錄範圍，產生請款單 PDF', handler: handleBatchPrintPDF },
+          { title: '📦 批次下載附件+截圖', desc: '依照輸入的記錄範圍，打包下載附件與截圖', handler: handleSecureBatchDownload },
+          {
+            title: '📋 批次填傳票／入帳完成',
+            desc: '補填傳票編號、傳票日期，並執行「入帳完成」的簽核',
+            // 批次填傳票_入帳完成_20261118.js；點擊時才取，不受載入順序影響
+            handler: () => (window.PR_BATCH_VOUCHER ? window.PR_BATCH_VOUCHER.openDialog() : notify('批次填傳票功能尚未載入，請重新整理頁面後再試', 'error')),
+          },
+        ])
+      );
 
       // 組裝 UI
       rangeGroup.appendChild(modeSelector);

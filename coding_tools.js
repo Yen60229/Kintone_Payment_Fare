@@ -48,7 +48,7 @@
 
       // 檢查是否存在 batch-download-button
       const headerMenuSpace = KT.app().getHeaderMenuSpaceElement();
-      const batchDownloadButton = document.querySelector('.batch-download-button');
+      const batchDownloadButton = document.querySelector('#batch-actions-button')?.closest('.buttons-container')?.firstElementChild;
 
       if (batchDownloadButton) {
         // 找到 batch-download-button 的父容器

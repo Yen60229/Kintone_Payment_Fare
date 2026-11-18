@@ -419,6 +419,26 @@
       APPLY_START: '點擊流程開始',
     });
 
+    // ── 批次填傳票／入帳完成（批次填傳票_入帳完成_20261118.js 用，2026-11-18 從請購庶務搬來）────────────
+    //   FROM_STATUSES：流程管理裡「入帳完成」動作所在的七個單位會計狀態（要與後台一字不差，含半形括號與 &）。
+    //   ASSIGNEE_FIELD：流程「作業者」欄位（STATUS_ASSIGNEE）代碼；只有目前作業者本人能執行動作，所以只列自己的單。
+    const BATCH_VOUCHER = Object.freeze({
+      ACTION: '入帳完成', // 動作名稱（不是狀態值，見 ACTIONS 註解）
+      TARGET_STATUS: '請款流程結束', // 執行動作後到達的狀態
+      FROM_STATUSES: Object.freeze([
+        '單位會計處理中(台北)',
+        '單位會計處理中(台北海運)',
+        '單位會計處理中(桃園&新竹)',
+        '單位會計處理中(台中)',
+        '單位會計處理中(物流)',
+        '單位會計處理中(高雄)',
+        '單位會計處理中',
+      ]),
+      ASSIGNEE_FIELD: '執行者',
+      CHUNK_SIZE: 100, // REST API 單次 PUT 上限
+      PAGE_LIMIT: 500, // 查詢每頁筆數
+    });
+
     // ── 建單後自動推進流程設定（流程自動推進_20260810.js 用）───────────────────
     //   【要改狀態／動作名稱改這裡】三個字串必須與 kintone 流程管理後台一字不差
     //   （含全形括號、底線、空白），任一不符：API 回 400、單子留在原狀態。
@@ -611,6 +631,7 @@
       INLINE_EDIT,
       STATUS,
       ACTIONS,
+      BATCH_VOUCHER,
       AUTO_ADVANCE,
       OPTIONS,
       TRAFFIC_RULES,
@@ -1580,7 +1601,8 @@
       let index = rows.indexOf(row);
       if (index < 0 && row.id != null) index = rows.findIndex((r) => r.id === row.id);
       if (index < 0) return null;
-      const written = text(row.value?.[COLS.PAYEE]?.value);
+      const raw = text(row.value?.[COLS.PAYEE]?.value);
+      const written = raw === P.TEXT.CARD_PAYEE ? '' : raw; // 從公司信用卡改回員工代墊：殘留字樣不當關鍵字
       if (changedField === COLS.PAYEE && (written === '' || isValidEmployeePayee(written))) return null;
       const keyword = changedField === COLS.PAYEE || !isValidEmployeePayee(written) ? written : written.slice(0, 5);
       return { index, keyword };
@@ -1609,6 +1631,20 @@
         return event;
       });
     });
+
+    /**
+     * 付款來源選公司信用卡 → 同一列受款人直接寫入同選項的字（TEXT.CARD_PAYEE）；
+     * 改成其他來源且受款人還是這個字樣 → 清空（不用手動刪掉再選人）。改動 event.changes.row 後回傳 event 即生效
+     */
+    const fillCardPayee = (event) => {
+      const row = event?.changes?.row;
+      const payee = row?.value?.[COLS.PAYEE];
+      if (!payee) return event;
+      if (row.value[COLS.PAY_SOURCE]?.value === SOURCE.CARD) payee.value = P.TEXT.CARD_PAYEE;
+      else if (text(payee.value) === P.TEXT.CARD_PAYEE) payee.value = '';
+      return event;
+    };
+    KT.on(['create', 'edit'].map((mode) => `app.record.${mode}.change.${COLS.PAY_SOURCE}`), fillCardPayee);
 
     // ── 存檔 ─────────────────────────────────────────────────────────────────
 

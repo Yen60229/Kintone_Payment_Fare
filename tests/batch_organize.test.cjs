@@ -750,9 +750,9 @@ check('buildDateDialogHtml：每筆一列、預設日期、受款人只在同組
   assert.strictEqual((html.match(/data-record-id="\d+" value="2026-11-03"/g) || []).length, 4);
   assert.ok(html.includes('type="date" class="pr-export__date pr-export__bulk-date" value="2026-11-03"'));
   assert.ok(html.includes('全部套用') && html.includes('春木剛') && !html.includes('Takeshi'), '費用所屬人只顯示括號內的名字');
-  assert.strictEqual((html.match(/>24136</g) || []).length, 1, '同組受款人只顯示一次');
+  assert.strictEqual((html.match(/data-label="受款人">24136T</g) || []).length, 1, '受款人直接顯示欄位值，同組只顯示一次');
   assert.ok(html.includes('>1,234,567<') && html.includes('>95<'));
-  assert.ok(html.includes('>—<'), '沒有受款人數字的組顯示破折號');
+  assert.ok(html.includes('data-label="受款人">30000X<') && !html.includes('>—<'), '受款人空白就留白，不顯示破折號');
   assert.strictEqual((html.match(/class="pr-export__month-btn" data-date="2026-10-31"/g) || []).length, 4, '每列日期旁都有「月帳」，帶上個月最後一天');
 });
 

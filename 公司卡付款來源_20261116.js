@@ -317,7 +317,8 @@
     let index = rows.indexOf(row);
     if (index < 0 && row.id != null) index = rows.findIndex((r) => r.id === row.id);
     if (index < 0) return null;
-    const written = text(row.value?.[COLS.PAYEE]?.value);
+    const raw = text(row.value?.[COLS.PAYEE]?.value);
+    const written = raw === P.TEXT.CARD_PAYEE ? '' : raw; // 從公司信用卡改回員工代墊：殘留字樣不當關鍵字
     if (changedField === COLS.PAYEE && (written === '' || isValidEmployeePayee(written))) return null;
     const keyword = changedField === COLS.PAYEE || !isValidEmployeePayee(written) ? written : written.slice(0, 5);
     return { index, keyword };
@@ -346,6 +347,20 @@
       return event;
     });
   });
+
+  /**
+   * 付款來源選公司信用卡 → 同一列受款人直接寫入同選項的字（TEXT.CARD_PAYEE）；
+   * 改成其他來源且受款人還是這個字樣 → 清空（不用手動刪掉再選人）。改動 event.changes.row 後回傳 event 即生效
+   */
+  const fillCardPayee = (event) => {
+    const row = event?.changes?.row;
+    const payee = row?.value?.[COLS.PAYEE];
+    if (!payee) return event;
+    if (row.value[COLS.PAY_SOURCE]?.value === SOURCE.CARD) payee.value = P.TEXT.CARD_PAYEE;
+    else if (text(payee.value) === P.TEXT.CARD_PAYEE) payee.value = '';
+    return event;
+  };
+  KT.on(['create', 'edit'].map((mode) => `app.record.${mode}.change.${COLS.PAY_SOURCE}`), fillCardPayee);
 
   // ── 存檔 ─────────────────────────────────────────────────────────────────
 
