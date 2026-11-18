@@ -7586,6 +7586,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
     const CC = window.PR_CONFIG.REF_FIELDS.COST_CENTER;
     const TABLE = FIELDS.TRAFFIC_TABLE; // 交通費明細子表格（樣板的 {交通費請款單.欄位} 取這張表的列）
     const TAX_COL = TABLE.COLS.TAX;
+    const CARD_PAY = window.PR_CONFIG.CARD_PAY; // 公司卡部分支付 → AP 依受款人明細拆列
 
     const SHEET_NAME = '交通費';
     const DEFAULT_DATE_FORMAT = 'YYYY/MM/DD';
@@ -7595,7 +7596,8 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
     const COST_CENTER_PAGE = 500;
 
     // 三種列各自取設定 App 的哪個樣板欄位
-    const VALUE_FIELD = { ap: '應付帳款_值', expense: '費用成本_值', tax: '稅額_值' };
+    // card＝公司卡的 AP 列（受款人明細的公司信用卡列、或全額支付），同 723 交際費轉出的設定方式
+    const VALUE_FIELD = { ap: '應付帳款_值', card: '應付帳款_公司卡_值', expense: '費用成本_值', tax: '稅額_值' };
 
     // ======================== 取得 UI 輸入的記錄範圍 ========================
     function getRecordIdsFromUI() {
@@ -7709,6 +7711,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
         excelColumnName: record['Excel欄位說明']?.value || '',
         sortOrder: parseInt(record['排序']?.value, 10) || 0,
         應付帳款_值: record['應付帳款_值']?.value || '',
+        應付帳款_公司卡_值: record['應付帳款_公司卡_值']?.value || '',
         費用成本_值: record['費用成本_值']?.value || '',
         稅額_值: record['稅額_值']?.value || '',
         dateFormat: record['日期格式']?.value || DEFAULT_DATE_FORMAT,
@@ -7933,12 +7936,24 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
           text = valueToText(record.$id?.value, dateFormat);
           break;
         default:
-          if (name.includes('.')) {
+          if (ctx.payeeRow && name === FIELDS.PAYEE) {
+            // 公司卡部分支付的 AP 列：受款人、總金額改取這一列受款人明細
+            text = valueToText(ctx.payeeRow.value?.[CARD_PAY.TABLE.COLS.PAYEE]?.value, dateFormat);
+          } else if (ctx.payeeRow && name === FIELDS.TOTAL_AMOUNT) {
+            text = valueToText(ctx.payeeRow.value?.[CARD_PAY.TABLE.COLS.AMOUNT]?.value, dateFormat);
+          } else if (name.includes('.')) {
             const dot = name.indexOf('.');
             const tableCode = name.slice(0, dot);
             const fieldCode = name.slice(dot + 1);
             const rows = record[tableCode]?.value;
-            const row = tableCode === TABLE.CODE && ctx.detailRow ? ctx.detailRow : Array.isArray(rows) ? rows[0] : null;
+            const row =
+              tableCode === TABLE.CODE && ctx.detailRow
+                ? ctx.detailRow
+                : CARD_PAY && tableCode === CARD_PAY.TABLE.CODE && ctx.payeeRow
+                  ? ctx.payeeRow
+                  : Array.isArray(rows)
+                    ? rows[0]
+                    : null;
             text = valueToText(row?.value?.[fieldCode]?.value, dateFormat);
           } else {
             text = valueToText(record[name]?.value, dateFormat);
@@ -8014,6 +8029,36 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       return text.replace(/\{([^{}]*)\}/g, (_, expr) => resolveToken(expr, ctx));
     }
 
+    /**
+     * 公司卡部分支付的受款人明細列（受款人或金額有填的列）；不是部分支付、沒有明細或 config 沒有 CARD_PAY → 空陣列。
+     * 有值時 AP 依這些列各出一列（受款人／總金額取該列），否則照舊 AP 一列。
+     */
+    /** 公司卡支付方式：'full'（全額）、'partial'（部分）、''（沒勾公司卡或 config 沒有 CARD_PAY） */
+    function cardPayMode(record) {
+      if (!CARD_PAY) return '';
+      const has = (code, opt) => {
+        const v = record?.[code]?.value;
+        return Array.isArray(v) ? v.includes(opt) : v === opt;
+      };
+      if (!has(CARD_PAY.FLAG, CARD_PAY.OPTIONS.FLAG.YES)) return '';
+      if (has(CARD_PAY.MODE, CARD_PAY.OPTIONS.MODE.PARTIAL)) return 'partial';
+      if (has(CARD_PAY.MODE, CARD_PAY.OPTIONS.MODE.FULL)) return 'full';
+      return '';
+    }
+
+    /** 受款人明細這一列是不是公司信用卡 */
+    function isCardRow(payeeRow) {
+      return String(payeeRow?.value?.[CARD_PAY.TABLE.COLS.PAY_SOURCE]?.value ?? '').trim() === CARD_PAY.OPTIONS.SOURCE.CARD;
+    }
+
+    function partialPayeeRows(record) {
+      if (cardPayMode(record) !== 'partial') return [];
+      const rows = record?.[CARD_PAY.TABLE.CODE]?.value;
+      if (!Array.isArray(rows)) return [];
+      const { PAYEE, AMOUNT } = CARD_PAY.TABLE.COLS;
+      return rows.filter((r) => String(r?.value?.[PAYEE]?.value ?? '').trim() !== '' || String(r?.value?.[AMOUNT]?.value ?? '').trim() !== '');
+    }
+
     // ======================== 列產生 ========================
     /**
      * 產生所有資料列（records 已是最後順序）。每筆記錄依序轉出：
@@ -8026,18 +8071,29 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       const { today, dates, businessArea } = opts || {};
       const now = today || new Date();
       const rows = [];
+      const cardSet = mappings.some((m) => String(m[VALUE_FIELD.card] || '').trim() !== '');
 
       records.forEach((record, i) => {
         const id = record.$id?.value;
         const exportDate = (id !== undefined && dates?.[id]) || now;
         const details = Array.isArray(record[TABLE.CODE]?.value) ? record[TABLE.CODE].value : [];
-        const make = (kind, detailRow) =>
-          mappings.map((m) => ({
-            value: parseTemplate(m[VALUE_FIELD[kind]] || '', { record, detailRow, seq: i + 1, today: now, exportDate, businessArea, dateFormat: m.dateFormat }),
-            format: m.cellFormat || DEFAULT_CELL_FORMAT,
-          }));
+        // laterAp＝同一筆的第 2 列起的 AP：用到 {序號}／{轉出日期} 的格子留空（只有第一列 AP 帶）
+        const make = (kind, detailRow, payeeRow, laterAp) =>
+          mappings.map((m) => {
+            const tpl = m[VALUE_FIELD[kind]] || '';
+            const skip = laterAp && /\{\s*(序號|轉出日期)\s*[|}]/.test(tpl);
+            return {
+              value: skip ? '' : parseTemplate(tpl, { record, detailRow, payeeRow, seq: i + 1, today: now, exportDate, businessArea, dateFormat: m.dateFormat }),
+              format: m.cellFormat || DEFAULT_CELL_FORMAT,
+            };
+          });
 
-        rows.push(make('ap', details[0]));
+        // 公司卡的 AP 列用 應付帳款_公司卡_值；751 還沒設定（整欄空白）就退回 應付帳款_值
+        const cardKind = cardSet ? 'card' : 'ap';
+        const mode = cardPayMode(record);
+        const payees = partialPayeeRows(record);
+        if (payees.length > 0) payees.forEach((p, k) => rows.push(make(isCardRow(p) ? cardKind : 'ap', details[0], p, k > 0)));
+        else rows.push(make(mode === 'full' ? cardKind : 'ap', details[0]));
         details.forEach((d) => rows.push(make('expense', d)));
         details.filter((d) => isNonZero(d?.value?.[TAX_COL]?.value)).forEach((d) => rows.push(make('tax', d)));
       });

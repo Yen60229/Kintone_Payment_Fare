@@ -383,6 +383,7 @@ check('mapMappingRecord：欄位全轉；日期格式空 → YYYY/MM/DD，儲存
     excelColumnName: '日期',
     sortOrder: 2,
     應付帳款_值: '{TODAY}',
+    應付帳款_公司卡_值: '',
     費用成本_值: '',
     稅額_值: '{TODAY}',
     dateFormat: 'YYYYMMDD',
@@ -662,6 +663,40 @@ check('整合：沒有明細列的記錄只有 AP 一列', () => {
   const rows = buildRows(FIXTURE, [r], { today: NOW, businessArea: BA });
   assert.deepStrictEqual(rows.map((x) => x[2].value), ['1.AP']);
   assert.strictEqual(rows[0][9].value, '', '沒有明細就沒有費用歸屬可查 Business Area');
+});
+
+check('整合：公司卡部分支付 → AP 依受款人明細拆列（受款人／金額取各列）；全額支付或沒勾仍是 AP 一列', () => {
+  const P = C.CARD_PAY;
+  const prow = (src, payee, amt) => ({
+    value: { [P.TABLE.COLS.PAY_SOURCE]: { value: src }, [P.TABLE.COLS.PAYEE]: { value: payee }, [P.TABLE.COLS.AMOUNT]: { value: amt } },
+  });
+  const card = (mode, rows) => ({
+    [P.FLAG]: { value: [P.OPTIONS.FLAG.YES] },
+    [P.MODE]: { value: [mode] },
+    [F.PAYEE]: { value: P.TEXT.PARTIAL_PAYEE },
+    [P.TABLE.CODE]: { value: rows },
+  });
+  const payeeRows = [prow('員工代墊', '19035 劉家萍', '1000'), prow('公司信用卡', '公司信用卡', '460'), prow('', '', '')];
+  const r = mkRecord(16, 16, OWNER, [D(1450, 69)], card(P.OPTIONS.MODE.PARTIAL, payeeRows));
+  const rows = buildRows(FIXTURE, [r], { today: NOW, businessArea: BA });
+  assert.deepStrictEqual(rows.map((x) => x[2].value), ['1.AP', '1.AP', '2.費用', '3.稅'], '空白列不出 AP');
+  assert.deepStrictEqual(rows.slice(0, 2).map((x) => [x[0].value, x[1].value, x[4].value, x[5].value, x[13].value]), [
+    ['1', '20261103', '19035', '1000', 'T'],
+    ['', '', '', '460', 'T'],
+  ], '第二列 AP 不帶序號、日期');
+  const full = mkRecord(17, 17, OWNER, [D(1450, 69)], card(P.OPTIONS.MODE.FULL, payeeRows));
+  assert.deepStrictEqual(buildRows(FIXTURE, [full], { today: NOW, businessArea: BA }).map((x) => x[2].value), ['1.AP', '2.費用', '3.稅']);
+
+  // 同交際費：751 有填 應付帳款_公司卡_值 → 公司信用卡列、全額支付的 AP 用公司卡樣板，員工代墊列仍用 應付帳款_值
+  const withCard = FIXTURE.map((m) => ({ ...m, 應付帳款_公司卡_值: m.excelColumn === 'D' ? '2199999' : m.excelColumn === 'E' ? `{${P.TABLE.CODE}.${P.TABLE.COLS.PAYEE}}` : m.應付帳款_值 }));
+  const split = buildRows(withCard, [r], { today: NOW, businessArea: BA });
+  assert.deepStrictEqual(split.slice(0, 2).map((x) => [x[3].value, x[4].value, x[5].value]), [
+    ['2100000', '19035', '1000'],
+    ['2199999', '公司信用卡', '460'],
+  ]);
+  const fullRows = buildRows(withCard, [full], { today: NOW, businessArea: BA });
+  assert.strictEqual(fullRows[0][3].value, '2199999', '全額支付的 AP 用公司卡樣板');
+  assert.strictEqual(buildRows(withCard, [mkRecord(18, 18, OWNER, [D(100, 0)])], { today: NOW })[0][3].value, FIXTURE[3].應付帳款_值, '沒勾公司卡照舊');
 });
 
 // ── 9b. 排序、Business Area 對照、日期視窗 ────────────────────────────────────
