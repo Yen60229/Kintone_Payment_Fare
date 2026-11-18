@@ -4794,6 +4794,8 @@
     // 開畫面時（帳號權限設定已套用、本模組還沒鎖）各欄的鎖定狀態。
     //   變更事件「解鎖」只回到這個狀態，不會把帳號權限設定鎖住的欄位打開。
     const LOCK_COLS = [COLS.SELLER_TAX_ID, COLS.FORMAT, COLS.TAX, COLS.INVOICE_NO, COLS.FEE];
+    // 主表：紙本收件註記、傳票編號、傳票日期（規則 7 會鎖／解鎖，解鎖一樣只回到開畫面時的狀態）
+    const LOCK_MAIN = [F.PAPER_RECEIVED, F.VOUCHER_NO, F.VOUCHER_DATE];
     let baseLocked = {};
     const captureBaseLocks = (record) => {
       const rows = getRowsOf(record);
@@ -4801,6 +4803,9 @@
       LOCK_COLS.forEach((code) => {
         const cell = rows.map((row) => row.value[code]).find(Boolean);
         baseLocked[code] = cell?.disabled === true;
+      });
+      LOCK_MAIN.forEach((code) => {
+        baseLocked[code] = record?.[code]?.disabled === true;
       });
     };
     /**
@@ -4929,9 +4934,11 @@
     };
 
     /**
-     * 7. 是否有紙本憑證＝否 → 會計課承辦註記是否收到單據紙本 寫「不適用」。
+     * 7. 是否有紙本憑證＝否 → 會計課承辦註記是否收到單據紙本 寫「不適用」並鎖定；傳票編號／傳票日期不因紙本而鎖。
+     *    是否有紙本憑證＝是 → 註記回到原本可否編輯；註記＝已收到才可編輯傳票編號／傳票日期，其他（未收到）鎖定。
      *    改回「是」（變更事件）且還是「不適用」→ 回到 kintone 預設的「未收到」；
      *    開畫面／存檔時是「是」就不動（會計課自己選的值保留）。排在計程車強制選「是」後面。
+     *    解鎖只回到開畫面時（帳號權限設定套用後）的狀態，不會打開帳號權限設定鎖住的欄位。
      * @param {Object} record
      * @param {boolean} unlock true＝變更事件
      */
@@ -4939,8 +4946,14 @@
       const received = record[F.PAPER_RECEIVED];
       const paper = record[F.PAPER_RECEIPT]?.value;
       if (!received || !paper) return;
-      if (paper === OPT.PAPER_RECEIPT.NO) received.value = OPT.PAPER_RECEIVED.NOT_APPLICABLE;
+      const noPaper = paper === OPT.PAPER_RECEIPT.NO;
+      if (noPaper) received.value = OPT.PAPER_RECEIVED.NOT_APPLICABLE;
       else if (unlock && received.value === OPT.PAPER_RECEIVED.NOT_APPLICABLE) received.value = OPT.PAPER_RECEIVED.NOT_RECEIVED;
+      received.disabled = noPaper || baseLocked[F.PAPER_RECEIVED] === true;
+      const voucherLocked = !noPaper && received.value !== OPT.PAPER_RECEIVED.RECEIVED;
+      [F.VOUCHER_NO, F.VOUCHER_DATE].forEach((code) => {
+        if (record[code]) record[code].disabled = voucherLocked || baseLocked[code] === true;
+      });
     };
 
     /**
@@ -5133,7 +5146,7 @@
       return event;
     });
 
-    const changeEvents = [TRAFFIC.CODE, COLS.VEHICLE, COLS.AMOUNT, COLS.FEE, COLS.RECEIPT_TYPE, F.PAPER_RECEIPT].flatMap((code) => [
+    const changeEvents = [TRAFFIC.CODE, COLS.VEHICLE, COLS.AMOUNT, COLS.FEE, COLS.RECEIPT_TYPE, F.PAPER_RECEIPT, F.PAPER_RECEIVED].flatMap((code) => [
       `app.record.create.change.${code}`,
       `app.record.edit.change.${code}`,
     ]);

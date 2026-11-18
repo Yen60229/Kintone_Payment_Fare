@@ -559,6 +559,45 @@ check('normalize（存檔前）：否 → 不適用；是＋不適用 → 不動
   assert.strictEqual(receivedOf(r2), '不適用');
 });
 
+// 7-2. 鎖定：否 → 註記鎖、傳票可編；是 → 註記可編，已收到才可編傳票（解鎖只回到開畫面時的狀態）
+const locksOf = (r) => [r[F.PAPER_RECEIVED].disabled, r[F.VOUCHER_NO].disabled, r[F.VOUCHER_DATE].disabled];
+const withVoucher = (over, base = {}) =>
+  record([row({ [COLS.VEHICLE]: '火車' })], {
+    [F.VOUCHER_NO]: { value: '', disabled: base.no === true },
+    [F.VOUCHER_DATE]: { value: '', disabled: base.date === true },
+    ...over,
+  });
+
+check('show：否 → 註記不適用且鎖定、傳票可編輯；是＋未收到 → 傳票鎖定；是＋已收到 → 傳票可編輯', async () => {
+  for (const type of ['create', 'edit']) {
+    const { env } = setup();
+    let ev = await env.fire(`app.record.${type}.show`, { record: withVoucher({}) });
+    assert.deepStrictEqual(locksOf(ev.record), [true, false, false], `${type}：否`);
+    ev = await env.fire(`app.record.${type}.show`, { record: withVoucher({ [F.PAPER_RECEIPT]: { value: '是' } }) });
+    assert.deepStrictEqual(locksOf(ev.record), [false, true, true], `${type}：是＋未收到`);
+    ev = await env.fire(`app.record.${type}.show`, { record: withVoucher({ [F.PAPER_RECEIPT]: { value: '是' }, [F.PAPER_RECEIVED]: { value: '已收到' } }) });
+    assert.deepStrictEqual(locksOf(ev.record), [false, false, false], `${type}：是＋已收到`);
+  }
+});
+
+check('change：是否有紙本憑證、收件註記改了，鎖定跟著變；帳號權限設定原本鎖住的不會被打開', async () => {
+  const { env } = setup();
+  let ev = await env.fire('app.record.edit.show', { record: withVoucher({ [F.PAPER_RECEIPT]: { value: '是' } }) });
+  ev.record[F.PAPER_RECEIVED].value = '已收到';
+  ev = await env.fire(`app.record.edit.change.${F.PAPER_RECEIVED}`, { record: ev.record });
+  assert.deepStrictEqual(locksOf(ev.record), [false, false, false], '改已收到 → 傳票解鎖');
+  ev.record[F.PAPER_RECEIVED].value = '未收到';
+  ev = await env.fire(`app.record.edit.change.${F.PAPER_RECEIVED}`, { record: ev.record });
+  assert.deepStrictEqual(locksOf(ev.record), [false, true, true], '改未收到 → 傳票鎖定');
+  ev.record[F.PAPER_RECEIPT].value = '否';
+  ev = await env.fire(`app.record.edit.change.${F.PAPER_RECEIPT}`, { record: ev.record });
+  assert.deepStrictEqual(locksOf(ev.record), [true, false, false], '改否 → 註記鎖、傳票解鎖');
+
+  const { env: env2 } = setup();
+  ev = await env2.fire('app.record.edit.show', { record: withVoucher({}, { no: true, date: true }) });
+  assert.deepStrictEqual(locksOf(ev.record), [true, true, true], '帳號權限設定鎖住的傳票維持鎖定');
+});
+
 check('事件註冊：是否有紙本憑證的 create／edit change', () => {
   const { env } = setup();
   const types = env.registeredTypes();
