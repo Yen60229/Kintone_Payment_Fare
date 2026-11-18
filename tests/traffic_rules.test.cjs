@@ -598,6 +598,18 @@ check('change：是否有紙本憑證、收件註記改了，鎖定跟著變；�
   assert.deepStrictEqual(locksOf(ev.record), [true, true, true], '帳號權限設定鎖住的傳票維持鎖定');
 });
 
+check('不適用選項：是否有紙本憑證＝是 → body 掛 pr-hide-paper-na（CSS 藏選項）；改否 → 拿掉', async () => {
+  const { env } = setup();
+  const hidden = () => env.document.body.classList.contains('pr-hide-paper-na');
+  let ev = await env.fire('app.record.edit.show', { record: withVoucher({ [F.PAPER_RECEIPT]: { value: '是' } }) });
+  assert.strictEqual(hidden(), true);
+  ev.record[F.PAPER_RECEIPT].value = '否';
+  ev = await env.fire(`app.record.edit.change.${F.PAPER_RECEIPT}`, { record: ev.record });
+  assert.strictEqual(hidden(), false);
+  const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'payment_request.css'), 'utf8');
+  assert.ok(css.includes('body.pr-hide-paper-na .input-radio-item-cybozu:has(input[value="不適用"])'));
+});
+
 check('事件註冊：是否有紙本憑證的 create／edit change', () => {
   const { env } = setup();
   const types = env.registeredTypes();

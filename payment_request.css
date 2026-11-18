@@ -651,6 +651,11 @@
 .batch-print-button:hover {
   background: linear-gradient(45deg, rgb(139, 113, 223), rgb(81, 103, 222));
 }
+/* ===== 是否有紙本憑證＝是：收件註記藏「不適用」選項（交通費明細規則 toggleNotApplicableOption 在 body 掛 class）=====
+   749 只有「會計課承辦註記是否收到單據紙本」有「不適用」選項；藏掉一個選項後原本依三個選項算的固定寬度會留空白，改 auto */
+body.pr-hide-paper-na .input-radio-item-cybozu:has(input[value="不適用"]) { display: none !important; }
+body.pr-hide-paper-na .control-gaia:has(input[value="不適用"]),
+body.pr-hide-paper-na .control-value-gaia:has(input[value="不適用"]) { width: auto !important; }
 /* ===== 列表頁「🗂 批次動作 ▾」下拉選單（檔案批次 buildActionsMenu）：同請購庶務請款單的 pr-export-menu ===== */
 .pr-export-menu { position: relative; display: inline-block; vertical-align: middle; }
 .pr-export-menu__caret { margin-left: 8px; font-size: 11px; transition: transform 0.15s; }

@@ -437,6 +437,14 @@
     });
   };
 
+  // 是否有紙本憑證＝是 → 收件註記藏「不適用」選項（同交際費）。選項沒有 API，只能在 body 掛 class，
+  // 樣式在 payment_request.css（.pr-hide-paper-na）；掛在 body 上，kintone 重畫欄位也照樣生效。
+  const HIDE_NA_CLASS = 'pr-hide-paper-na';
+  const toggleNotApplicableOption = (record) => {
+    const hide = record?.[F.PAPER_RECEIPT]?.value === OPT.PAPER_RECEIPT.YES;
+    document.body?.classList?.toggle(HIDE_NA_CLASS, hide);
+  };
+
   /**
    * 存檔前整理：高鐵固定值、清掉不該有的發票號碼，並重算「發票號碼記錄」。
    * 程式寫入的值不會觸發 change 事件，所以存檔時一律再算一次，以這裡為準。
@@ -623,6 +631,7 @@
     await loadRules();
     captureBaseLocks(event.record);
     applyRecordRules(event.record, false);
+    toggleNotApplicableOption(event.record);
     updateReasonRequiredMark(reasonVehicles(event.record).length > 0);
     return event;
   });
@@ -634,6 +643,7 @@
 
   KT.on(changeEvents, (event) => {
     applyRecordRules(event.record, true);
+    toggleNotApplicableOption(event.record);
     // 稅額只重算被改的那一列（憑證種類可能剛被上面的規則清空或帶入，所以排在後面）
     const row = changedRow(event);
     if (row) recalcRowTax(row);

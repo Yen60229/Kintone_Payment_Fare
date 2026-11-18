@@ -94,6 +94,14 @@ const createEnv = ({ appId = 749, loginCode = '24136', api, swalAnswer } = {}) =
     },
     head: { appendChild: (el) => documentCalls.headAppended.push(el) },
     body: {
+      // 只做 toggle／contains（測試看 body 上的 class，例：pr-hide-paper-na）
+      classList: (() => {
+        const set = new Set();
+        return {
+          toggle: (name, force) => (force === undefined ? !set.has(name) : force) ? set.add(name) && true : !set.delete(name) && false,
+          contains: (name) => set.has(name),
+        };
+      })(),
       appendChild: (el) => {
         documentCalls.bodyAppended.push(el);
         if (env.onBodyAppend) env.onBodyAppend(el);
@@ -160,6 +168,7 @@ const createEnv = ({ appId = 749, loginCode = '24136', api, swalAnswer } = {}) =
 
   const env = {
     window: sandbox.window,
+    document: documentStub,
     spaces,
     shown,
     timers,
