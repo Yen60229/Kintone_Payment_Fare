@@ -9,6 +9,8 @@
 //   4. CSS 全在 payment_request.css 一個檔、不經過打包：JS 裡沒有 <style> 注入、cssText、HTML style 屬性；
 //      JS 用到的 pr-* class 在 payment_request.css 都有定義
 //   5. 手機版模組整組載入（kintone.mobile 替身）並觸發 mobile.* 事件不會出錯
+//   6. ES module 遷移：入口檔 ?install ⇔ 檔案是 ES module 且 export install；載入時不註冊事件；
+//      直接上傳原始檔的（config、App 752 的兩支）維持傳統 script
 // 單獨執行：node tests/build_targets.test.cjs
 
 const assert = require('assert');
@@ -16,19 +18,22 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { createRunner, readSrc, rootDir } = require('./lib/pr_env.cjs');
+const { createModuleLoader, isEsm } = require('./lib/esm_loader.cjs');
 
 const { check, done } = createRunner('build_targets.test.cjs');
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** 取出入口檔 import 的檔名（去掉 ../ 前綴），分 js 與 css */
+/** 取出入口檔 import 的檔名（去掉 ../ 前綴、?install 後綴），分 js 與 css；install＝有 ?install 的檔 */
 const importsOf = (entry) => {
-  const list = readSrc(entry)
+  const raw = readSrc(entry)
     .split(/\r?\n/)
     .map((l) => /^import '(.+)';$/.exec(l.trim()))
     .filter(Boolean)
     .map((m) => m[1].replace(/^\.\.\//, '').replace(/^\.\//, 'src/'));
-  return { js: list.filter((f) => f.endsWith('.js')), css: list.filter((f) => f.endsWith('.css')) };
+  const list = raw.map((f) => f.replace(/\?install$/, ''));
+  const install = new Set(raw.filter((f) => f.endsWith('?install')).map((f) => f.replace(/\?install$/, '')));
+  return { js: list.filter((f) => f.endsWith('.js')), css: list.filter((f) => f.endsWith('.css')), install };
 };
 const DESKTOP = importsOf('src/index.js');
 const MOBILE = importsOf('src/mobile.js');
@@ -50,6 +55,9 @@ const DESKTOP_ONLY = [
 // 放在專案最外層、不打包，PC 單獨上傳（排在 bundle 後面）
 // （交通費明細規則主檔檢查是上傳到規則主檔 App 的，前面只放 payment_request_config.js 原始檔）
 const STANDALONE = ['交通費明細規則主檔檢查.js'];
+// 直接上傳原始檔（不經打包）的檔：必須維持傳統 script（不能 import／export），其他檔靠它們掛的 window.PR_*
+//   config：App 752 排第一；欄位標籤說明圖示：752 單獨上傳（請款單打包進桌面版）
+const RAW_UPLOAD = ['payment_request_config.js', '欄位標籤說明圖示.js', ...STANDALONE];
 const MOBILE_MODULES = MOBILE.js.filter((f) => f !== 'src/mobile_target.js');
 
 /**
@@ -269,7 +277,8 @@ check('手機版模組整組載入（kintone.mobile 替身），觸發 mobile.* 
   sandbox.Swal = { fire: () => Promise.resolve({ isConfirmed: false }), isVisible: () => false, getPopup: () => null, close: () => {}, showLoading: () => {} };
   sandbox.window.Swal = sandbox.Swal;
   vm.createContext(sandbox);
-  MOBILE.js.forEach((f) => vm.runInContext(readSrc(f), sandbox, { filename: f }));
+  const importModule = createModuleLoader(sandbox);
+  MOBILE.js.forEach((f) => (MOBILE.install.has(f) ? importModule(f).install() : vm.runInContext(readSrc(f), sandbox, { filename: f })));
 
   const types = registered.flatMap((r) => r.types);
   assert.ok(types.length > 20, `註冊了 ${types.length} 個事件`);
@@ -303,6 +312,49 @@ check('手機版模組整組載入（kintone.mobile 替身），觸發 mobile.* 
   assert.strictEqual(shown[F.DEV_ONLY_DATA], false, '一般使用者看不到開發人員用群組');
   await wait(5);
   assert.deepStrictEqual(errors, [], '不應有任何模組報錯');
+});
+
+// ── 6. ES module 遷移 ───────────────────────────────────────────────────────
+check('入口檔：?install 的檔是 ES module 且 export install；沒有 ?install 的是傳統 script（兩套入口一致）', () => {
+  [DESKTOP, MOBILE].forEach((entry) => {
+    entry.js.forEach((f) => {
+      const esm = isEsm(readSrc(f));
+      assert.strictEqual(entry.install.has(f), esm, `${f}：ES module 要用 import '…?install'，傳統 script 不加`);
+      if (esm) assert.ok(/^export (const|function) install\b/m.test(readSrc(f)), `${f} 要 export install()`);
+    });
+  });
+  MOBILE.install.forEach((f) => assert.ok(DESKTOP.install.has(f), `${f}：手機版和桌面版寫法要一致`));
+});
+
+check('直接上傳原始檔的（config、752 的規則主檔檢查與欄位標籤說明圖示）維持傳統 script', () => {
+  RAW_UPLOAD.forEach((f) => assert.ok(!isEsm(readSrc(f)), `${f} 會單獨上傳，不能 import／export`));
+});
+
+check('ES module 載入時不註冊事件、不碰畫面、不排計時器（install() 才做）', () => {
+  const esmFiles = DESKTOP.js.filter((f) => DESKTOP.install.has(f));
+  assert.ok(esmFiles.length > 0);
+  esmFiles.forEach((f) => {
+    const registered = [];
+    const touched = [];
+    const spy = (name) => new Proxy({}, { get: (t, k) => (...a) => touched.push(`${name}.${String(k)}`) });
+    const sandbox = {
+      window: {},
+      console: { log: () => {}, warn: () => {}, error: () => {} },
+      kintone: {
+        app: { getId: () => 749, record: spy('kintone.app.record') },
+        events: { on: (types, handler) => registered.push({ types: [].concat(types), handler }) },
+        getLoginUser: () => ({ code: 'u' }),
+        api: Object.assign(() => touched.push('kintone.api'), { url: (p) => p }),
+      },
+      document: spy('document'),
+      setTimeout: () => touched.push('setTimeout'),
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(readSrc('payment_request_config.js'), sandbox);
+    createModuleLoader(sandbox)(f);
+    assert.deepStrictEqual(registered, [], `${f} 載入時就註冊了事件`);
+    assert.deepStrictEqual(touched, [], `${f} 載入時就動了畫面／打 API／排計時器`);
+  });
 });
 
 done();

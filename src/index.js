@@ -8,6 +8,11 @@
 //   payment_request.css            全部樣式（PC、手機都上傳同一個檔）
 //   coding_tools.js                列表頁「JS 自定義設定」「流程管理」按鈕（排在 bundle 後面）
 //
+// 兩種寫法（ES module 遷移中，逐支改）：
+//   import '../x.js';          傳統 script（IIFE），載入時就註冊事件、掛 window.PR_*
+//   import '../x.js?install';  ES module：載入時只定義函式，輪到這一行才呼叫它的 install() 註冊事件
+//                              （vite.config.js 的 installEntries；註冊順序＝本檔排列順序，不受模組互相 import 影響）
+//
 // 依賴順序說明：
 //   ①  Config 常數檔必須排最前（其他模組在執行時會存取 window.PR_CONFIG、window.PR_KT）
 //   ②  依賴 Config 的模組
@@ -32,7 +37,7 @@ import '../signing_personnel_manager.js';
 // 費用所屬人是對照表裡的部長：上一階主管群組帶進單位主管3（C.DIRECTOR_UPLINE），由 submit 與簽核人員程式呼叫
 import '../部長上一階主管.js';
 // 使用者主檔快取（PR_USERS：/v1/users.json 同一頁面只抓一次）：手動簽核人與受款人選擇員工共用，排在兩者前面
-import '../使用者主檔快取.js';
+import '../使用者主檔快取.js?install';
 import '../手動簽核人設定.js';
 // 申請人部門依申請人帶入：用簽核人員程式提供的 PR_ORG_PICKER，排在它後面
 import '../申請人部門帶入.js';
@@ -47,12 +52,12 @@ import '../流程自動推進.js';
 import '../作廢防呆.js';
 import '../print.show顯示單據編號_請款單據編號.js';
 import '../發票號碼寫入獨立欄位檢查.js';
-import '../開發人員用群組欄位.js';
+import '../開發人員用群組欄位.js?install';
 import '../表頭查詢連結.js';
 // 欄位標籤結尾的括號說明收進「?」（2026-11-16 起請款單也用；同一支也單獨上傳到規則主檔）；只有桌面版
 import '../欄位標籤說明圖示.js';
 // 詳細頁主表欄位外框寬度改 auto（取代 SetFieldWidth）；只有桌面版
-import '../詳細頁欄位寬度自動.js';
+import '../詳細頁欄位寬度自動.js?install';
 import '../請款單作廢_style.js';
 // 列表頁「JS 自定義設定」「流程管理」按鈕（2026-11-12 起打包；排在檔案批次後面，要找它的下載按鈕）
 import '../coding_tools.js';

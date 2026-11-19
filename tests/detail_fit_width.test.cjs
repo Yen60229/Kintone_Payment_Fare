@@ -9,6 +9,7 @@
 const assert = require('assert');
 const vm = require('vm');
 const { createRunner, readSrc } = require('./lib/pr_env.cjs');
+const { createModuleLoader } = require('./lib/esm_loader.cjs');
 
 const { check, done } = createRunner('detail_fit_width.test.cjs');
 
@@ -44,8 +45,9 @@ const load = (elements) => {
   };
   vm.createContext(sandbox);
   vm.runInContext(readSrc('payment_request_config.js'), sandbox);
-  vm.runInContext(readSrc(FILE), sandbox);
-  return { M: sandbox.window.PR_DETAIL_FIT_WIDTH, registered, errors };
+  const M = createModuleLoader(sandbox)(FILE);
+  M.install();
+  return { M, registered, errors };
 };
 
 const record = {
@@ -94,7 +96,7 @@ check('只綁 app.record.detail.show（新增／編輯不動）', () => {
 });
 
 check('入口：只進桌面版；CSS 的 .pr-fit-width 是 width: auto !important', () => {
-  assert.ok(readSrc('src/index.js').includes(`import '../${FILE}';`));
+  assert.ok(readSrc('src/index.js').includes(`import '../${FILE}?install';`));
   assert.ok(!readSrc('src/mobile.js').includes(FILE));
   const rule = /\.pr-fit-width\s*\{([^}]*)\}/.exec(readSrc('payment_request.css'));
   assert.ok(rule, '.pr-fit-width 要定義');

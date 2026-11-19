@@ -53,8 +53,7 @@ global.kintone = {
 
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
-// eslint-disable-next-line no-eval
-eval(readSrc('使用者主檔快取.js'));
+require('./lib/esm_loader.cjs').createModuleLoader(null)('使用者主檔快取.js').install();
 // eslint-disable-next-line no-eval
 eval(readSrc('受款人填寫設定.js'));
 

@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：使用者主檔快取.js（window.PR_USERS）
+// 測試：使用者主檔快取.js（ES module；過渡期 install() 另掛 window.PR_USERS）
 //   一、fetchAll：/v1/users.json 一次 100 筆分頁，抓到不足一頁為止；停用帳號也回傳（由使用端過濾）
 //   二、loadAll：同一頁面共用同一個 Promise（同時呼叫只打一次 API）、抓過就用快取、失敗清掉下次重抓
 //   三、受款人選擇員工＋手動簽核人視窗同一頁面一起開：/v1/users.json 只抓一輪
@@ -28,8 +28,9 @@ const setup = ({ users = usersOf(250), fail = () => false } = {}) => {
       return Promise.resolve({ users: users.slice(params.offset, params.offset + params.size) });
     },
   });
-  env.load('使用者主檔快取.js');
-  return { env, U: env.window.PR_USERS, calls };
+  const U = env.load('使用者主檔快取.js');
+  assert.strictEqual(env.window.PR_USERS.loadAll, U.loadAll, '過渡期：window.PR_USERS 和 import 拿到的是同一份');
+  return { env, U, calls };
 };
 
 check('fetchAll：一次 100 筆分頁抓到不足一頁為止；停用帳號也回傳', async () => {
@@ -138,7 +139,8 @@ check('使用端不再自己打 /v1/users.json，改用 PR_USERS', () => {
 check('入口檔：使用者主檔快取排在手動簽核人與受款人前面（桌面版、手機版）', () => {
   ['src/index.js', 'src/mobile.js'].forEach((entry) => {
     const src = readSrc(entry);
-    const at = (f) => src.indexOf(`import '../${f}';`);
+    // 傳統 script 是 import '../x.js';，ES module 是 import '../x.js?install';
+    const at = (f) => src.search(new RegExp(`import '\\.\\./${f.replace('.', '\\.')}(\\?install)?';`));
     assert.ok(at('使用者主檔快取.js') >= 0, `${entry} 沒有接使用者主檔快取`);
     assert.ok(at('使用者主檔快取.js') < at('手動簽核人設定.js'), entry);
     assert.ok(at('使用者主檔快取.js') < at('受款人填寫設定.js'), entry);

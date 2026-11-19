@@ -57,6 +57,7 @@ npm test && bash tests/syntax.test.sh && npm run scan
 **不打包、放專案最外層直接上傳**：`payment_request.css`（全部樣式只有這一個檔，PC／手機同一份）、
 `交通費明細規則主檔檢查.js`（**上傳到 App 752 規則主檔**，前面只放 `payment_request_config.js` 原始檔；
 讀請款單設定用 `APPS.TRAFFIC_PAYMENT`，不能用 `APPS.PAYMENT`）——不要把它們加回 `src/index.js`。
+ES module 遷移中（計畫見 [`docs/ES_module遷移計畫.md`](docs/ES_module遷移計畫.md)）：已改成 ES module 的檔，入口寫 `import '../x.js?install';`，載入時只定義函式，事件／DOM／計時器都放在 `export const install`；config 與 752 單獨上傳的兩支維持傳統 script。
 新模組要上線才加進 `src/index.js`，並決定要不要進手機版：進就加進 `src/mobile.js`，不進就加進
 `tests/build_targets.test.cjs` 的 `DESKTOP_ONLY`。
 - 事件與畫面 API 一律走 `window.PR_KT`（`KT.on`、`KT.record()`、`KT.app()`），寫桌面版事件名稱即可，手機版自動轉換；
