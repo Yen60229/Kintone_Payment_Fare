@@ -41,17 +41,17 @@ import '../使用者主檔快取.js?install';
 import '../手動簽核人設定.js';
 // 申請人部門依申請人帶入：用簽核人員程式提供的 PR_ORG_PICKER，排在它後面
 import '../申請人部門帶入.js?install';
-import '../交通費明細規則.js';
+import '../交通費明細規則.js?install';
 import '../預計付款日.js?install';
 import '../檔案批次.js?install';
 import '../批次整理資料.js?install';
 // 列表頁「🗂 批次動作 ▾」的批次填傳票／入帳完成；只有桌面版
 import '../批次填傳票_入帳完成.js';
-import '../受款人填寫設定.js';
+import '../受款人填寫設定.js?install';
 import '../流程自動推進.js?install';
 import '../作廢防呆.js?install';
 import '../print.show顯示單據編號_請款單據編號.js?install';
-import '../發票號碼寫入獨立欄位檢查.js';
+import '../發票號碼寫入獨立欄位檢查.js?install';
 import '../開發人員用群組欄位.js?install';
 import '../表頭查詢連結.js?install';
 // 欄位標籤結尾的括號說明收進「?」（2026-11-16 起請款單也用；同一支也單獨上傳到規則主檔）；只有桌面版

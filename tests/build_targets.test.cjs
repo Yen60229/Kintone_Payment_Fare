@@ -278,7 +278,11 @@ check('手機版模組整組載入（kintone.mobile 替身），觸發 mobile.* 
   sandbox.window.Swal = sandbox.Swal;
   vm.createContext(sandbox);
   const importModule = createModuleLoader(sandbox);
-  MOBILE.js.forEach((f) => (MOBILE.install.has(f) ? importModule(f).install() : vm.runInContext(readSrc(f), sandbox, { filename: f })));
+  MOBILE.js.forEach((f) => {
+    if (!isEsm(readSrc(f))) return vm.runInContext(readSrc(f), sandbox, { filename: f });
+    const M = importModule(f);
+    if (MOBILE.install.has(f)) M.install();
+  });
 
   const types = registered.flatMap((r) => r.types);
   assert.ok(types.length > 20, `註冊了 ${types.length} 個事件`);
@@ -315,12 +319,12 @@ check('手機版模組整組載入（kintone.mobile 替身），觸發 mobile.* 
 });
 
 // ── 6. ES module 遷移 ───────────────────────────────────────────────────────
-check('入口檔：?install 的檔是 ES module 且 export install；沒有 ?install 的是傳統 script（兩套入口一致）', () => {
+const hasInstall = (f) => /^export (const|function) install\b/m.test(readSrc(f));
+check('入口檔：有 export install 的 ES module 用 ?install；沒有 install 的（傳統 script、只提供函式的 ES module）不加（兩套入口一致）', () => {
   [DESKTOP, MOBILE].forEach((entry) => {
     entry.js.forEach((f) => {
       const esm = isEsm(readSrc(f));
-      assert.strictEqual(entry.install.has(f), esm, `${f}：ES module 要用 import '…?install'，傳統 script 不加`);
-      if (esm) assert.ok(/^export (const|function) install\b/m.test(readSrc(f)), `${f} 要 export install()`);
+      assert.strictEqual(entry.install.has(f), esm && hasInstall(f), `${f}：有 export install 的 ES module 要用 import '…?install'，其他不加`);
     });
   });
   MOBILE.install.forEach((f) => assert.ok(DESKTOP.install.has(f), `${f}：手機版和桌面版寫法要一致`));
@@ -331,7 +335,7 @@ check('直接上傳原始檔的（config、752 的規則主檔檢查與欄位標
 });
 
 check('ES module 載入時不註冊事件、不碰畫面、不排計時器（install() 才做）', () => {
-  const esmFiles = DESKTOP.js.filter((f) => DESKTOP.install.has(f));
+  const esmFiles = DESKTOP.js.filter((f) => isEsm(readSrc(f)));
   assert.ok(esmFiles.length > 0);
   esmFiles.forEach((f) => {
     const registered = [];

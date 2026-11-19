@@ -1,3 +1,5 @@
+import { openUserPicker } from './受款人填寫設定.js';
+
 // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
 const KT = window.PR_KT;
 
@@ -322,7 +324,7 @@ const writePayee = (index, payee) => {
 };
 
 const openPicker = ({ index, keyword }) =>
-  window.PR_PAYEE?.openUserPicker?.({ title: `選擇員工代墊受款人（第 ${index + 1} 行）`, keyword, onPick: (payee) => writePayee(index, payee) });
+  openUserPicker({ title: `選擇員工代墊受款人（第 ${index + 1} 行）`, keyword, onPick: (payee) => writePayee(index, payee) });
 
 /**
  * 付款來源選公司信用卡 → 同一列受款人直接寫入同選項的字（TEXT.CARD_PAYEE）；

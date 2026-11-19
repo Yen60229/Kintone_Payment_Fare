@@ -106,10 +106,10 @@ check('受款人選擇員工＋手動簽核人視窗同一頁面一起開：/v1/
   env.run('this.Swal = window.Swal;');
   env.load('payment_request_config.js');
   env.load('手動簽核人設定.js');
-  env.load('受款人填寫設定.js');
+  const payee = env.load('受款人填寫設定.js');
 
   env.window.PR_MANUAL_SIGNERS.openDialog({ initial: [], applicant: { code: 'ME' }, accounting: [] });
-  assert.strictEqual(env.window.PR_PAYEE.openUserPicker({ title: '選擇員工', keyword: '人12', onPick() {} }), true);
+  assert.strictEqual(payee.openUserPicker({ title: '選擇員工', keyword: '人12', onPick() {} }), true);
   await settle();
   assert.strictEqual(fired.length, 2);
   assert.deepStrictEqual(
@@ -121,18 +121,19 @@ check('受款人選擇員工＋手動簽核人視窗同一頁面一起開：/v1/
   assert.strictEqual(env.logs.error.length, 0, env.logs.error.join('|'));
 
   // 再開一次：都用快取
-  env.window.PR_PAYEE.openUserPicker({ title: '選擇員工', onPick() {} });
+  payee.openUserPicker({ title: '選擇員工', onPick() {} });
   env.window.PR_MANUAL_SIGNERS.openDialog({ initial: [], applicant: { code: 'ME' }, accounting: [] });
   await settle();
   assert.strictEqual(calls.length, 2);
 });
 
-check('使用端不再自己打 /v1/users.json，改用 PR_USERS', () => {
+check('使用端不再自己打 /v1/users.json，改用使用者主檔快取的 loadAll()', () => {
   ['受款人填寫設定.js', '手動簽核人設定.js'].forEach((f) => {
     const src = readSrc(f);
     assert.ok(!/kintone\.api\(\s*kintone\.api\.url\(\s*['"]\/v1\/users\.json/.test(src), `${f} 不應直接打 /v1/users.json`);
     assert.ok(!/USERS_API/.test(src), `${f} 不應自己定義 USERS_API`);
-    assert.ok(src.includes('window.PR_USERS.loadAll()'), `${f} 要用 PR_USERS.loadAll()`);
+    const imported = /^import \{[^}]*\bloadAll\b[^}]*\} from '\.\/使用者主檔快取\.js';/m.test(src) && /\bloadAll\(\)/.test(src);
+    assert.ok(imported || src.includes('window.PR_USERS.loadAll()'), `${f} 要用使用者主檔快取的 loadAll()`);
   });
 });
 

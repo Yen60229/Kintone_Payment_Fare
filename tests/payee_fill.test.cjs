@@ -53,12 +53,11 @@ global.kintone = {
 
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
-require('./lib/esm_loader.cjs').createModuleLoader(null)('使用者主檔快取.js').install();
-// eslint-disable-next-line no-eval
-eval(readSrc('受款人填寫設定.js'));
+const { loadInto } = require('./lib/esm_loader.cjs');
+loadInto(null, '使用者主檔快取.js');
+const P = loadInto(null, '受款人填寫設定.js');
 
 const F = global.window.PR_CONFIG.FIELDS;
-const P = global.window.PR_PAYEE;
 
 let passed = 0;
 // 依序執行（有些項目是 async）：每一項等前一項跑完

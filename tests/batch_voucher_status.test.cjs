@@ -23,9 +23,7 @@ global.kintone = {
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
 const C = global.window.PR_CONFIG;
-// eslint-disable-next-line no-eval
-eval(readSrc(MOD));
-const M = global.window.PR_BATCH_VOUCHER;
+const M = require('./lib/esm_loader.cjs').loadInto(null, MOD);
 const BV = C.BATCH_VOUCHER;
 
 let passed = 0;
@@ -229,7 +227,7 @@ check('註冊與載入：按鈕在「批次動作」下拉選單（本檔不註�
   const iMod = idx.indexOf(`'../${MOD}`);
   assert.ok(iPrev > 0 && iMod > iPrev);
   const batch = readSrc('檔案批次.js');
-  assert.ok(batch.includes('📋 批次填傳票／入帳完成') && batch.includes('window.PR_BATCH_VOUCHER.openDialog()'));
+  assert.ok(batch.includes('📋 批次填傳票／入帳完成') && batch.includes("import { openDialog as openBatchVoucherDialog } from './批次填傳票_入帳完成.js';") && batch.includes('openBatchVoucherDialog()'));
   assert.ok(fs.readdirSync(__dirname).includes('batch_voucher_status.test.cjs') && /\.test\.cjs$/.test(path.basename(__filename)), 'npm test（scripts/run-tests.cjs）會自動找到本檔');
   assert.ok(!/\b(749|752|673)\b/.test(readSrc(MOD)));
   assert.ok(!/<style|style="/.test(readSrc(MOD)), '樣式只寫在 payment_request.css');

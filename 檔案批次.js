@@ -1,3 +1,5 @@
+import { openDialog as openBatchVoucherDialog } from './批次填傳票_入帳完成.js';
+
 // 檔案批次.js（舊名 檔案批次_6版_PDFLib向量版；最早由「檔案批次+截圖_4版」改來）
 // 批次下載附件 + 批次列印PDF（改：PDF 由 PDFLib 向量生成；移除 html2canvas / jsPDF）
 // 事件註冊放最下方
@@ -1236,7 +1238,7 @@ async function initUI() {
           title: '📋 批次填傳票／入帳完成',
           desc: '補填傳票編號、傳票日期，並執行「入帳完成」的簽核',
           // 批次填傳票_入帳完成.js；點擊時才取，不受載入順序影響
-          handler: () => (window.PR_BATCH_VOUCHER ? window.PR_BATCH_VOUCHER.openDialog() : notify('批次填傳票功能尚未載入，請重新整理頁面後再試', 'error')),
+          handler: () => openBatchVoucherDialog(),
         },
       ])
     );
