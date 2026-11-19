@@ -76,6 +76,8 @@ npm run build
 | [`交通費明細規則主檔檢查_20261104.js`](交通費明細規則主檔檢查_20261104.js) | **上傳到 App 752（規則主檔），不是請款單**：存檔時檢查名稱與請款單下拉選項一字不差等（只有 PC） |
 
 - 只打一套：`npm run build:desktop`、`npm run build:mobile`（`build:mobile` 不會清空 `dist/`）。
+- 輸出經 terser 壓縮（另有 `.map`）；要在 kintone 上看未壓縮的程式碼除錯：`npm run build:debug`。
+- 除錯訊息：Console 輸入 `localStorage['pr-debug'] = '1'` 後重新整理（或網址加 `?pr-debug=1`），`PR_LOG.debug`／`info` 才會印。
 - `.map` 是除錯用，不用上傳。
 - 樣式一律寫在 `payment_request.css`，JS 裡不注入 `<style>`、不寫 `cssText`／HTML `style` 屬性，只加 `pr-` 開頭的 class（`tests/build_targets.test.cjs` 會檢查）；
   只有執行時才算得出來的值（欄寬、顯示／隱藏、進度條）留在 JS。

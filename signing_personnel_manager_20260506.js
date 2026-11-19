@@ -628,7 +628,7 @@
           });
           recountSigning(current.record);
           KT.record().set(current);
-          console.log(`[簽核人員] ${orgName} 部長 → 上一階主管群組 ${group}：`, users.map((u) => u.code));
+          window.PR_LOG.debug(`[簽核人員] ${orgName} 部長 → 上一階主管群組 ${group}：`, users.map((u) => u.code));
           if (users.length === 0) notify('warning', '上一階主管群組沒有人', `${upline.emptyMessage(orgName, group)}，存檔會被擋下，請聯絡系統管理員。`);
         }),
       )
@@ -719,7 +719,7 @@
         applyUplineToScreen({ group: uplineGroup, ownerCode, orgName: ownerOrgName, isLatest });
         return;
       }
-      console.log(`簽核流程查詢：${approvalQuery}`);
+      window.PR_LOG.debug(`簽核流程查詢：${approvalQuery}`);
 
       // 查簽核流程主檔 → 排好整條簽核鏈（fillChain，存檔時 applyOnSave 用同一套）→ 寫回畫面
       fetchManagerData(owner).then(
@@ -732,8 +732,8 @@
             // API 回來前使用者可能已勾選手動設定簽核流程，那就不蓋掉他自選的人
             if (isManualSigningMode(updateRecord.record)) return;
 
-            if (isSpecificDirector) console.log('台中支店長/營業戰略部長/總務部長/事業本部長，不帶入課/次/部長流程');
-            else if (!managerData) console.log('此費用所屬人部門沒有設定簽核流程');
+            if (isSpecificDirector) window.PR_LOG.debug('台中支店長/營業戰略部長/總務部長/事業本部長，不帶入課/次/部長流程');
+            else if (!managerData) window.PR_LOG.debug('此費用所屬人部門沒有設定簽核流程');
 
             fillChain(updateRecord.record, managerData, owner, ownerCode);
             syncSigningShown(updateRecord.record);

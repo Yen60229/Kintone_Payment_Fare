@@ -31,8 +31,9 @@ export default defineConfig(({ mode }) => {
           format: 'iife',
         },
       },
-      // 開發／測試除錯階段不壓縮，保持原本排版；正式上線穩定後可改回 'terser'
-      minify: false,
+      // 壓縮（terser）：上傳檔變小；報錯時靠上面的 Source Map 對回原始碼。
+      // 要在 kintone 上直接看未壓縮的程式碼除錯：npm run build:debug（CLI 的 --minify false 蓋過這裡）
+      minify: 'terser',
     },
   };
 });
