@@ -22,12 +22,12 @@ import '../payment_request_config.js';
 import '../存檔等待提示.js?install';
 
 // ② 表單行為 ────────────────────────────────────────────────────────────
-import '../payment_request_main.js';
+import '../payment_request_main.js?install';
 import '../公司卡付款來源.js?install';
 import '../payment_request_submit.js';
-import '../費用歸屬部門限制.js';
+import '../費用歸屬部門限制.js?install';
 import '../signing_personnel_manager.js';
-import '../部長上一階主管.js';
+import '../部長上一階主管.js?install';
 import '../使用者主檔快取.js?install';
 import '../手動簽核人設定.js';
 import '../申請人部門帶入.js?install';

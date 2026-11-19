@@ -32,9 +32,9 @@ const loadMain = async ({ loginCode = 'someone', costCenters = [] } = {}) => {
     },
   });
   env.load('payment_request_config.js');
-  env.load('payment_request_main.js');
+  const main = env.load('payment_request_main.js');
   await env.window.PR_COST_CENTER.ensureLoaded();
-  return { env, C: env.window.PR_CONFIG, F: env.window.PR_CONFIG.FIELDS };
+  return { env, main, C: env.window.PR_CONFIG, F: env.window.PR_CONFIG.FIELDS };
 };
 
 const baseRecord = (F, { orgCode = '總務部-總務課', orgName = '總務部-總務課', codes = [''], status } = {}) => {
@@ -333,8 +333,8 @@ const labelsOf = (C) => C.TRAFFIC_TABLE_LAYOUT.COLUMNS.map((c) => c.label);
 const SIGN_LABELS = ['日期與時間', '變更前的狀態', '動作', '變更後的狀態', '簽核人員', '經過的時間(分)'];
 
 check('planTrafficTable：整欄沒有值就藏；有值依最長顯示文字與表頭文字算寬；數值加千分位與單位、0 當沒有值', async () => {
-  const { env, F, C } = await loadMain();
-  const T = env.window.PR_TABLE_LAYOUT;
+  const { main, F, C } = await loadMain();
+  const T = main.TABLE_PLAN;
   const c = F.TRAFFIC_TABLE.COLS;
   const plan = T.planTrafficTable([tableRow({ [c.AMOUNT]: '1490', [c.TAX]: '0', [c.ROUTE]: '台北→台中' }), tableRow({ [c.AMOUNT]: '12345', [c.TAX]: '' })]);
   const byCode = Object.fromEntries(plan.map((p) => [p.code, p]));
@@ -350,8 +350,8 @@ check('planTrafficTable：整欄沒有值就藏；有值依最長顯示文字與
 });
 
 check('planTrafficTable：寬度限制在 MIN～MAX；沒有任何列 → 全部藏', async () => {
-  const { env, F, C } = await loadMain();
-  const T = env.window.PR_TABLE_LAYOUT;
+  const { main, F, C } = await loadMain();
+  const T = main.TABLE_PLAN;
   const c = F.TRAFFIC_TABLE.COLS;
   const W = C.TRAFFIC_TABLE_LAYOUT.WIDTH;
   const plan = T.planTrafficTable([tableRow({ [c.VISIT_CUSTOMER]: '很長的客戶名稱'.repeat(20), [c.FORMAT]: '2' })]);
@@ -463,8 +463,8 @@ check('進新增／編輯畫面：把詳細頁調過的格子寬度與隱藏還�
 });
 
 check('欄寬 class：MIN～MAX 每 8px 都在 payment_request.css 有定義；markCell 不寫 inline style', async () => {
-  const { env, C } = await loadMain();
-  const T = env.window.PR_TABLE_LAYOUT;
+  const { main, C } = await loadMain();
+  const T = main.TABLE_PLAN;
   const W = C.TRAFFIC_TABLE_LAYOUT.WIDTH;
   assert.strictEqual(W.PX_PER_UNIT % 8, 0, '寬度要是 8 的倍數，class 才對得上');
   assert.strictEqual(W.PADDING_PX % 8, 0);

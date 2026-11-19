@@ -53,6 +53,12 @@ const createModuleLoader = (context) => {
     fn(module.exports, (spec) => load(resolveSpec(key, spec)), module);
     return module.exports;
   };
+  /** 指定某支檔的 exports 用替身（要在第一次 import 它之前設；之後 import 它的模組都拿到替身） */
+  load.stub = (file, exports) => {
+    const key = normalize(file);
+    if (cache.has(key)) throw new Error(`${key} 已經載入過，替身要在載入使用端之前設`);
+    cache.set(key, { exports });
+  };
   return load;
 };
 
@@ -65,18 +71,18 @@ let globalLoader = null;
  * @param {string} file 專案根目錄相對路徑
  * @param {{ install?: boolean }} [opts] install: false 只載入不註冊
  */
+const loaderOf = (context) => {
+  if (!context) return (globalLoader = globalLoader || createModuleLoader(null));
+  if (!loaders.has(context)) loaders.set(context, createModuleLoader(context));
+  return loaders.get(context);
+};
 const loadInto = (context, file, { install = true } = {}) => {
-  let load;
-  if (context) {
-    if (!loaders.has(context)) loaders.set(context, createModuleLoader(context));
-    load = loaders.get(context);
-  } else {
-    globalLoader = globalLoader || createModuleLoader(null);
-    load = globalLoader;
-  }
-  const exports = load(file);
+  const exports = loaderOf(context)(file);
   if (install && typeof exports.install === 'function') exports.install();
   return exports;
 };
 
-module.exports = { createModuleLoader, loadInto, isEsm, normalize };
+/** loadInto 用的同一份快取裡，指定某支檔的 exports 用替身（見 createModuleLoader 的 load.stub） */
+const stubInto = (context, file, exports) => loaderOf(context).stub(file, exports);
+
+module.exports = { createModuleLoader, loadInto, stubInto, isEsm, normalize };

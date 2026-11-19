@@ -232,7 +232,7 @@ const loadSavingHint = () => {
 
   await check('主程式的代碼集合用原始大小寫建（和 submit 原本自己查時的比對方式一致）', () => {
     const mainSrc = readSrc('payment_request_main.js');
-    const loadBody = extract(mainSrc, /const loadCostCenterMaps = \(\) => \{[\s\S]*?\n  \};/, 'loadCostCenterMaps');
+    const loadBody = extract(mainSrc, /const loadCostCenterMaps = \(\) => \{[\s\S]*?\n\};/, 'loadCostCenterMaps');
     const addIdx = loadBody.indexOf('validCodes.add(rawCode)');
     const upperIdx = loadBody.indexOf('rawCode.toUpperCase()');
     assert.ok(addIdx > 0 && addIdx < upperIdx, '要在轉大寫之前，用原始代碼加入集合');

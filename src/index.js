@@ -28,14 +28,14 @@ import '../存檔等待提示.js?install';
 
 // ② 依賴 Config 的模組（帳號權限設定排最前）────────────────────────────────
 import '../帳號權限設定.js?install';
-import '../payment_request_main.js';
+import '../payment_request_main.js?install';
 // 公司卡支付／受款人明細：存檔錯誤交給 PR_SAVE_ERRORS，要排在 submit 前面才會併進同一個錯誤視窗
 import '../公司卡付款來源.js?install';
 import '../payment_request_submit.js';
-import '../費用歸屬部門限制.js';
+import '../費用歸屬部門限制.js?install';
 import '../signing_personnel_manager.js';
 // 費用所屬人是對照表裡的部長：上一階主管群組帶進單位主管3（C.DIRECTOR_UPLINE），由 submit 與簽核人員程式呼叫
-import '../部長上一階主管.js';
+import '../部長上一階主管.js?install';
 // 使用者主檔快取（PR_USERS：/v1/users.json 同一頁面只抓一次）：手動簽核人與受款人選擇員工共用，排在兩者前面
 import '../使用者主檔快取.js?install';
 import '../手動簽核人設定.js';

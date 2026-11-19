@@ -190,7 +190,7 @@ const createAuditSandbox = (api, appId) => {
   // PR_COST_CENTER：與 payment_request_main 的 loadCostCenterMaps 同一個查詢與對照方式
   let loaded = null;
   const maps = { validCodes: new Set(), deptsOfCode: {}, deptNames: {} };
-  env.window.PR_COST_CENTER = Object.freeze({
+  const COST_CENTER = Object.freeze({
     ensureLoaded: () => {
       if (!loaded) {
         const CC = C.REF_FIELDS.COST_CENTER;
@@ -218,6 +218,10 @@ const createAuditSandbox = (api, appId) => {
     getDeptsOfCode: () => maps.deptsOfCode,
     getDeptNames: () => maps.deptNames,
   });
+  // 費用歸屬部門限制 import main 的 COST_CENTER：換成上面的替身，不載入整支畫面程式；
+  // 還沒改成 import 的傳統 script（submit）讀 window.PR_COST_CENTER
+  env.stub('payment_request_main.js', { COST_CENTER });
+  env.window.PR_COST_CENTER = COST_CENTER;
 
   MODULES.slice(1).forEach((file) => env.load(file));
   return { env, C };

@@ -202,6 +202,8 @@ const createEnv = ({ appId = 749, loginCode = '24136', api, swalAnswer } = {}) =
     },
     /** 只 import 一支 ES module、不呼叫 install()（測「載入時不碰畫面、不註冊事件」或只測純函式） */
     import: (file) => importModule(file),
+    /** 指定某支 ES module 的 exports 用替身（要在載入使用端之前；例：stub('payment_request_main.js', { COST_CENTER })） */
+    stub: (file, exports) => importModule.stub(file, exports),
     /** 執行一段程式碼（例：把 config 的某個值換掉再載入） */
     run: (code, filename = 'inline.js') => vm.runInContext(code, sandbox, { filename }),
     /** 觸發事件：依註冊順序執行所有監聽該事件的處理程式，回傳最後的 event */

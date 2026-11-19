@@ -79,8 +79,7 @@ const loadSigning = () => {
   // eslint-disable-next-line no-eval
   eval(readSrc('payment_request_config.js'));
   env.C = global.window.PR_CONFIG;
-  // eslint-disable-next-line no-eval
-  eval(readSrc('費用歸屬部門限制.js'));
+  require('./lib/esm_loader.cjs').createModuleLoader(null)('費用歸屬部門限制.js').install();
   // eslint-disable-next-line no-eval
   eval(readSrc('signing_personnel_manager.js'));
   const ACC = env.C.REF_FIELDS.ACCOUNTING_MAP;

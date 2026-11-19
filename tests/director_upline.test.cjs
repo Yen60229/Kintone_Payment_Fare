@@ -87,8 +87,7 @@ eval(readSrc('payment_request_config.js'));
 env.C = global.window.PR_CONFIG;
 // eslint-disable-next-line no-eval
 eval(readSrc('signing_personnel_manager.js'));
-// eslint-disable-next-line no-eval
-eval(readSrc('部長上一階主管.js'));
+require('./lib/esm_loader.cjs').loadInto(null, '部長上一階主管.js');
 const C = env.C;
 const F = C.FIELDS;
 const D = global.window.PR_DIRECTOR_UPLINE;
