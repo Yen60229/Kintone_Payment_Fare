@@ -334,6 +334,14 @@ check('直接上傳原始檔的（config、752 的規則主檔檢查與欄位標
   RAW_UPLOAD.forEach((f) => assert.ok(!isEsm(readSrc(f)), `${f} 會單獨上傳，不能 import／export`));
 });
 
+check('入口檔其他模組全部是 ES module（只有直接上傳的與手機版 mobile_target 是傳統 script）', () => {
+  [DESKTOP, MOBILE].forEach((entry) => {
+    entry.js
+      .filter((f) => !RAW_UPLOAD.includes(f) && f !== 'src/mobile_target.js')
+      .forEach((f) => assert.ok(isEsm(readSrc(f)), `${f} 要寫成 ES module（export／import，事件放 install()），不要再掛 window.PR_*`));
+  });
+});
+
 check('ES module 載入時不註冊事件、不碰畫面、不排計時器（install() 才做）', () => {
   const esmFiles = DESKTOP.js.filter((f) => isEsm(readSrc(f)));
   assert.ok(esmFiles.length > 0);

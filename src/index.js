@@ -8,10 +8,11 @@
 //   payment_request.css            全部樣式（PC、手機都上傳同一個檔）
 //   coding_tools.js                列表頁「JS 自定義設定」「流程管理」按鈕（排在 bundle 後面）
 //
-// 兩種寫法（ES module 遷移中，逐支改）：
-//   import '../x.js';          傳統 script（IIFE），載入時就註冊事件、掛 window.PR_*
+// 兩種寫法：
 //   import '../x.js?install';  ES module：載入時只定義函式，輪到這一行才呼叫它的 install() 註冊事件
 //                              （vite.config.js 的 installEntries；註冊順序＝本檔排列順序，不受模組互相 import 影響）
+//   import '../x.js';          沒有 install 的：config 與 752 也要單獨上傳的傳統 script（掛 window.PR_*），
+//                              或只提供函式的 ES module（被別支 import，寫在這裡只為標出位置）
 //
 // 依賴順序說明：
 //   ①  Config 常數檔必須排最前（其他模組在執行時會存取 window.PR_CONFIG、window.PR_KT）

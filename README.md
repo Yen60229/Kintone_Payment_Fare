@@ -132,3 +132,4 @@ npm run build
 1. **載入順序的單一事實來源是 [`src/index.js`](src/index.js)**（手機版 [`src/mobile.js`](src/mobile.js) 是它的子集，順序一致）。打包後已把順序固化，上傳打包好的檔即可；不打包的兩支照上表排在 bundle 後面。
 2. 模組一律寫桌面版的事件名稱，透過 `window.PR_KT`（`payment_request_config.js`）註冊與取用 kintone API；手機版打包時自動換成 `mobile.*` 事件與 `kintone.mobile.app.record`。
 3. `APPS.PAYMENT` 用 `PR_KT.app().getId()` 動態取得，同一份檔可上傳到測試區或正式區。其他會因環境不同的值（主檔 App ID、管理員名單、部長上一階主管對照、會計群組）寫在 config 的 `ENV_SETTINGS { test, prod }`，執行時依 App ID 自動選；**正式區上線前要把 `ENV_SETTINGS.prod` 的 null 全部填好**（見現況文件 §6.7）。
+4. 模組是 ES module：事件註冊放在 `export const install`，入口檔寫 `import '../x.js?install';`（`vite.config.js` 的 `installEntries` 依入口順序呼叫 `install()`），模組之間用 `import`。config 與 752 要單獨上傳的兩支維持傳統 script。
