@@ -1,6 +1,5 @@
-(() => {
-  'use strict';
-
+/** 入口檔 import '…?install' 時呼叫：註冊事件（載入時只定義函式） */
+export const install = () => {
   // 詳細頁面顯示事件
   window.PR_KT.on('app.record.detail.show', (event) => {
     const record = event.record;
@@ -25,4 +24,4 @@
 
     return event;
   });
-})();
+};

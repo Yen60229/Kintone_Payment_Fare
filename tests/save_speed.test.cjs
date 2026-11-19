@@ -10,6 +10,8 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
+const vm = require('vm');
+const { loadInto } = require('./lib/esm_loader.cjs');
 
 const readSrc = (name) => fs.readFileSync(path.join(__dirname, '..', name), 'utf8');
 
@@ -21,6 +23,9 @@ const check = async (label, fn) => {
 };
 
 // ── 「儲存中」提示模組的替身環境 ────────────────────────────────────────────
+/** 在 vm 沙箱（window／kintone／setTimeout 替身）載入提示模組並 install()，回傳 exports */
+const runSavingHint = (sandbox) => loadInto(vm.createContext({ console, ...sandbox }), '存檔等待提示.js');
+
 const loadSavingHint = () => {
   const registered = [];
   const deferred = [];
@@ -50,16 +55,10 @@ const loadSavingHint = () => {
     },
     clearTimeout: () => {},
   };
-  // eslint-disable-next-line no-new-func
-  new Function('window', 'kintone', 'setTimeout', 'clearTimeout', readSrc('存檔等待提示.js'))(
-    sandbox.window,
-    sandbox.kintone,
-    sandbox.setTimeout,
-    sandbox.clearTimeout,
-  );
+  const api = runSavingHint(sandbox);
   // 模擬「所有模組載入完後的下一輪」：執行延後註冊（ms = 0 的那一個）
   const runDeferredRegistration = () => deferred.filter((d) => d.ms === 0).forEach((d) => d.fn());
-  return { api: sandbox.window.PR_SAVING_HINT, registered, deferred, swalState, runDeferredRegistration };
+  return { api, registered, deferred, swalState, runDeferredRegistration };
 };
 
 (async () => {
@@ -93,14 +92,8 @@ const loadSavingHint = () => {
     const src = readSrc('存檔等待提示.js');
     assert.ok(/const onSubmitStart = \(event\) => \{\s*window\.PR_SAVE_ERRORS\?\.take\(\);\s*openSaving\(\);/.test(src), '開提示前先 take() 清空');
     const fakeWindow = { PR_SAVE_ERRORS: { take: () => queued.splice(0) } };
-    // eslint-disable-next-line no-new-func
-    new Function('window', 'kintone', 'setTimeout', 'clearTimeout', src)(
-      Object.assign(fakeWindow, { PR_KT: { on: () => {} } }),
-      {},
-      () => 0,
-      () => {},
-    );
-    fakeWindow.PR_SAVING_HINT.onSubmitStart({});
+    const hint = runSavingHint({ window: Object.assign(fakeWindow, { PR_KT: { on: () => {} } }), kintone: {}, setTimeout: () => 0, clearTimeout: () => {} });
+    hint.onSubmitStart({});
     assert.deepStrictEqual(queued, [], '殘留的訊息被清掉');
   });
 
@@ -112,7 +105,7 @@ const loadSavingHint = () => {
       交通費請款單: { type: 'SUBTABLE', code: '交通費請款單', fields: { 金額: { code: '金額', required: true }, 稅額: { code: '稅額', required: false } } },
     };
     const req = api.parseRequiredFields(props);
-    assert.deepStrictEqual(req, { main: ['附件'], tables: { 交通費請款單: ['金額'] } });
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(req)), { main: ['附件'], tables: { 交通費請款單: ['金額'] } });
     api.setRequiredFields(req);
     const rec = (files, amount) => ({ 附件: { value: files }, 理由: { value: '' }, 交通費請款單: { value: [{ value: { 金額: { value: amount }, 稅額: { value: '' } } }] } });
     assert.strictEqual(api.hasMissingRequired(rec([{ fileKey: 'k' }], '100')), false, '必填都有填；非必填空白不算');
@@ -140,15 +133,14 @@ const loadSavingHint = () => {
     };
     kintoneStub.api.url = (p) => p;
     const win = { PR_KT: { on, app: () => ({ getId: () => 749 }) } };
-    // eslint-disable-next-line no-new-func
-    new Function('window', 'kintone', 'setTimeout', 'clearTimeout', readSrc('存檔等待提示.js'))(win, kintoneStub, () => 0, () => {});
+    const hint = runSavingHint({ window: win, kintone: kintoneStub, setTimeout: () => 0, clearTimeout: () => {} });
     const leave = registered.find((r) => r.types.includes('app.record.create.show')).handler;
     leave({ type: 'app.record.detail.show' });
     assert.strictEqual(calls.length, 0, '詳細頁不用讀');
     leave({ type: 'app.record.create.show' });
     await new Promise((r) => setImmediate(r));
-    assert.deepStrictEqual(calls, [{ app: 749 }]);
-    assert.strictEqual(win.PR_SAVING_HINT.hasMissingRequired({ 附件: { value: [] } }), true);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(calls)), [{ app: 749 }]);
+    assert.strictEqual(hint.hasMissingRequired({ 附件: { value: [] } }), true);
     leave({ type: 'app.record.edit.show' });
     assert.strictEqual(calls.length, 1, '讀過就不再讀');
   });
@@ -187,14 +179,8 @@ const loadSavingHint = () => {
 
   await check('沒有載入 SweetAlert 時不報錯（什麼都不做）', () => {
     const registered = [];
-    // eslint-disable-next-line no-new-func
     const on = (types, handler) => registered.push({ types, handler });
-    new Function('window', 'kintone', 'setTimeout', 'clearTimeout', readSrc('存檔等待提示.js'))(
-      { PR_KT: { on } },
-      { events: { on } },
-      () => 0,
-      () => {},
-    );
+    runSavingHint({ window: { PR_KT: { on } }, kintone: { events: { on } }, setTimeout: () => 0, clearTimeout: () => {} });
     const start = registered.find((r) => r.handler.name === 'onSubmitStart');
     assert.deepStrictEqual(start.handler({ a: 1 }), { a: 1 });
   });
@@ -203,7 +189,7 @@ const loadSavingHint = () => {
     const imports = readSrc('src/index.js')
       .split('\n')
       .map((l) => l.trim())
-      .filter((l) => l.startsWith('import ') && l.endsWith(".js';"));
+      .filter((l) => l.startsWith('import ') && /\.js(\?install)?';$/.test(l));
     assert.ok(imports[0].includes('payment_request_config.js'));
     assert.ok(imports[1].includes('存檔等待提示.js'), `第二個應該是提示模組，實際是 ${imports[1]}`);
   });
@@ -215,14 +201,14 @@ const loadSavingHint = () => {
     assert.ok(m, `找不到 ${label}`);
     return m[0];
   };
-  const getValidSrc = extract(submitSrc, /const getValidCostCenters = async \(\) => \{[\s\S]*?\n  \};/, 'getValidCostCenters');
+  const getValidSrc = extract(submitSrc, /const getValidCostCenters = async \(\) => \{[\s\S]*?\n\};/, 'getValidCostCenters');
 
   await check('submit 驗證優先用主程式已載入的費用歸屬代碼，不再自己查', async () => {
     let ownFetch = 0;
     const shared = { ensureLoaded: async () => {}, getValidCodes: () => new Set(['AJ30', 'aj31']) };
     // eslint-disable-next-line no-new-func
-    const fn = new Function('window', 'fetchValidCostCenters', `${getValidSrc}; return getValidCostCenters;`)(
-      { PR_COST_CENTER: shared },
+    const fn = new Function('COST_CENTER', 'fetchValidCostCenters', `${getValidSrc}; return getValidCostCenters;`)(
+      shared,
       async () => {
         ownFetch += 1;
         return new Set();
@@ -236,7 +222,7 @@ const loadSavingHint = () => {
   await check('主程式沒載入時，submit 驗證退回自己查', async () => {
     let ownFetch = 0;
     // eslint-disable-next-line no-new-func
-    const fn = new Function('window', 'fetchValidCostCenters', `${getValidSrc}; return getValidCostCenters;`)({}, async () => {
+    const fn = new Function('COST_CENTER', 'fetchValidCostCenters', `${getValidSrc}; return getValidCostCenters;`)(undefined, async () => {
       ownFetch += 1;
       return new Set(['AJ30']);
     });
@@ -246,7 +232,7 @@ const loadSavingHint = () => {
 
   await check('主程式的代碼集合用原始大小寫建（和 submit 原本自己查時的比對方式一致）', () => {
     const mainSrc = readSrc('payment_request_main.js');
-    const loadBody = extract(mainSrc, /const loadCostCenterMaps = \(\) => \{[\s\S]*?\n  \};/, 'loadCostCenterMaps');
+    const loadBody = extract(mainSrc, /const loadCostCenterMaps = \(\) => \{[\s\S]*?\n\};/, 'loadCostCenterMaps');
     const addIdx = loadBody.indexOf('validCodes.add(rawCode)');
     const upperIdx = loadBody.indexOf('rawCode.toUpperCase()');
     assert.ok(addIdx > 0 && addIdx < upperIdx, '要在轉大寫之前，用原始代碼加入集合');

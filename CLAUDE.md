@@ -27,7 +27,7 @@
 ```bash
 npm test && bash tests/syntax.test.sh && npm run scan
 ```
-目前基準：**41 支測試／836 項斷言**、語法檢查 **32 檔**、硬編碼掃描 **12 處**。
+目前基準：**41 支測試／840 項斷言**、語法檢查 **32 檔**、硬編碼掃描 **12 處**。
 掃描數字若無故上升，多半是**註解裡寫了 App ID 數字**（規則 1 刻意連註解一起掃）——
 註解請改引用常數名（如 `APPS.APPROVAL_FLOW`），不要寫 App 的數字。
 測試檔命名 `tests/*.test.cjs`（plug-in 為 `plugins/*/tests/*.test.cjs`），`scripts/run-tests.cjs` 會自動找到，不用改 `package.json`。
@@ -57,6 +57,9 @@ npm test && bash tests/syntax.test.sh && npm run scan
 **不打包、放專案最外層直接上傳**：`payment_request.css`（全部樣式只有這一個檔，PC／手機同一份）、
 `交通費明細規則主檔檢查.js`（**上傳到 App 752 規則主檔**，前面只放 `payment_request_config.js` 原始檔；
 讀請款單設定用 `APPS.TRAFFIC_PAYMENT`，不能用 `APPS.PAYMENT`）——不要把它們加回 `src/index.js`。
+**模組一律寫 ES module**（現況文件 §2.16）：載入時只定義函式，事件／DOM／計時器都放在 `export const install = () => {…}`，入口寫 `import '../x.js?install';`（註冊順序＝入口排列順序）；模組之間用 `import`，不要新增 `window.PR_*`。只提供函式、沒有 install 的入口寫 `import '../x.js';`。
+只有 config、`欄位標籤說明圖示.js`、`交通費明細規則主檔檢查.js`（752 要單獨上傳原始檔）維持傳統 script（`build_targets.test` 會檢查）。
+測試：`env.load(f)` 載入＋install 並回傳 exports，`env.import(f)` 只載入，`env.stub(f, exports)` 換替身；自己建沙箱用 `tests/lib/esm_loader.cjs`，簽核相依的「沒載入」替身用 `tests/lib/signing_deps.cjs`。
 新模組要上線才加進 `src/index.js`，並決定要不要進手機版：進就加進 `src/mobile.js`，不進就加進
 `tests/build_targets.test.cjs` 的 `DESKTOP_ONLY`。
 - 事件與畫面 API 一律走 `window.PR_KT`（`KT.on`、`KT.record()`、`KT.app()`），寫桌面版事件名稱即可，手機版自動轉換；

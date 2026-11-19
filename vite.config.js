@@ -10,10 +10,31 @@ const TARGETS = {
   mobile: { input: 'src/mobile.js', name: 'payment_request_mobile' },
 };
 
+// 入口檔的 import '../模組.js?install'：先執行模組本身（只定義函式、不碰畫面），再呼叫它 export 的 install()（註冊事件）。
+//   事件註冊順序＝入口檔的排列順序，不受模組之間互相 import 影響
+//   （被別的模組 import 的檔會提早執行，但它的 install() 仍等輪到它那一行才呼叫）。
+//   模組沒有 export install 的話，打包直接報錯。
+const INSTALL_QUERY = '?install';
+const INSTALL_PREFIX = '\0pr-install:';
+const installEntries = () => ({
+  name: 'pr-install-entries',
+  enforce: 'pre',
+  async resolveId(source, importer) {
+    if (!source.endsWith(INSTALL_QUERY)) return null;
+    const resolved = await this.resolve(source.slice(0, -INSTALL_QUERY.length), importer, { skipSelf: true });
+    return resolved ? INSTALL_PREFIX + resolved.id : null;
+  },
+  load(id) {
+    if (!id.startsWith(INSTALL_PREFIX)) return null;
+    return `import { install } from ${JSON.stringify(id.slice(INSTALL_PREFIX.length))};\ninstall();\n`;
+  },
+});
+
 export default defineConfig(({ mode }) => {
   const target = TARGETS[mode];
   if (!target) throw new Error(`未知的打包目標「${mode}」，請用 --mode desktop 或 --mode mobile（npm run build 會兩個都打）`);
   return {
+    plugins: [installEntries()],
     build: {
       outDir: 'dist',
       // 先打的桌面版負責清空 dist，手機版接著輸出到同一個資料夾

@@ -1,23 +1,1266 @@
+import { openDialog as openBatchVoucherDialog } from './批次填傳票_入帳完成.js';
+
 // 檔案批次.js（舊名 檔案批次_6版_PDFLib向量版；最早由「檔案批次+截圖_4版」改來）
 // 批次下載附件 + 批次列印PDF（改：PDF 由 PDFLib 向量生成；移除 html2canvas / jsPDF）
 // 事件註冊放最下方
-(function () {
-  'use strict';
 
-  const F = window.PR_CONFIG.FIELDS;
+const F = window.PR_CONFIG.FIELDS;
 
-  // ======================== 基本設定 ========================
-  const DOWNLOAD_FOLDER_NAME = '請款_報銷申請單';
+// ======================== 基本設定 ========================
+const DOWNLOAD_FOLDER_NAME = '請款_報銷申請單';
 
-  // PDF 字型來源（Kintone 檔案欄位放置字型檔）
-  const FONT_CONFIG = {
-    FONT_APP_ID: window.PR_CONFIG.APPS.PDF_FONT,
-    FONT_RECORD_ID: 1,
-    FONT_FIELD_CODE: 'Kintone主頁用',
-    FONT_FILE_NAME: 'FONT_FILE_NAME',
+// PDF 字型來源（Kintone 檔案欄位放置字型檔）
+const FONT_CONFIG = {
+  FONT_APP_ID: window.PR_CONFIG.APPS.PDF_FONT,
+  FONT_RECORD_ID: 1,
+  FONT_FIELD_CODE: 'Kintone主頁用',
+  FONT_FILE_NAME: 'FONT_FILE_NAME',
+};
+
+const { PDFDocument, rgb } = window.PDFLib || {};
+
+// ======================== 數量／大小上限 ========================
+//   壓縮檔整包在瀏覽器記憶體裡產生，附件合計太大會讓分頁當掉 → 開始前先算附件合計，超過 maxZipBytes 就請使用者分批。
+const LIMITS = {
+  maxRecords: 50, // 單次批次下載／列印的記錄數
+  maxFileSize: 50 * 1024 * 1024, // 單一附件
+  maxZipBytes: 300 * 1024 * 1024, // 批次下載的附件合計（壓縮前）
+  queryChunk: 100, // 批次查詢一次的記錄數（$id in (...)；REST API 的 limit 上限）
+};
+
+// ======================== 表格設定 ========================
+// 明細只有「交通費請款單」子表格一種：[顯示名稱, 子表格欄位代碼]
+const TABLE_CONFIG = {
+  tableFieldName: F.TRAFFIC_TABLE.CODE,
+  fields: [
+    ['憑證日期', F.TRAFFIC_TABLE.COLS.DATE],
+    ['交通工具', F.TRAFFIC_TABLE.COLS.VEHICLE],
+    ['拜訪客戶', F.TRAFFIC_TABLE.COLS.VISIT_CUSTOMER],
+    ['起訖點', F.TRAFFIC_TABLE.COLS.ROUTE],
+    ['金額', F.TRAFFIC_TABLE.COLS.AMOUNT],
+    ['手續費', F.TRAFFIC_TABLE.COLS.FEE],
+    ['費用歸屬', F.TRAFFIC_TABLE.COLS.EXPENSE],
+    ['憑證種類', F.TRAFFIC_TABLE.COLS.RECEIPT_TYPE],
+    ['發票號碼', F.TRAFFIC_TABLE.COLS.INVOICE_NO],
+    ['賣方統編', F.TRAFFIC_TABLE.COLS.SELLER_TAX_ID],
+    ['格式', F.TRAFFIC_TABLE.COLS.FORMAT],
+    ['稅額', F.TRAFFIC_TABLE.COLS.TAX],
+  ],
+};
+
+// 數字欄位（靠右、加千分位）的顯示名稱
+const NUMERIC_COLUMNS = ['金額', '手續費', '稅額'];
+
+// ======================== 通用工具 ========================
+const formatDateTime = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${y}${m}${d}_${h}${min}`;
+};
+
+const formatNumber = (num) => {
+  if (num === undefined || num === null || num === '') return '';
+  const n = Number(String(num).replace(/,/g, ''));
+  if (Number.isNaN(n)) return String(num);
+  return n.toLocaleString('zh-TW');
+};
+
+/** 檔名裡 Windows／壓縮檔不允許的字元（路徑符號、控制字元）換成 _；其餘保留（& ' 等是合法檔名字元） */
+// eslint-disable-next-line no-control-regex -- 刻意比對控制字元
+const safeFileName = (name) => String(name ?? '').replace(/[/\\:*?"<>|\x00-\x1F\x7F]/g, '_').trim();
+
+const formatMB = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+/** 附件欄位的檔案大小合計（kintone 的 size 是位元組字串） */
+const attachmentBytes = (records) =>
+  records.reduce((sum, r) => sum + (r[F.ATTACHMENT]?.value || []).reduce((a, f) => a + (Number(f.size) || 0), 0), 0);
+
+/**
+ * 依 $id 一次查多筆（每 LIMITS.queryChunk 筆查一次），回傳 Map(id → record)。
+ * @param {number} app
+ * @param {number[]} ids
+ * @param {string[]} [fields] 不給＝全部欄位
+ */
+const fetchRecordsByIds = async (app, ids, fields) => {
+  const byId = new Map();
+  for (let i = 0; i < ids.length; i += LIMITS.queryChunk) {
+    const chunk = ids.slice(i, i + LIMITS.queryChunk);
+    const params = { app, query: `$id in (${chunk.join(',')}) limit ${LIMITS.queryChunk}` };
+    if (fields) params.fields = fields;
+    const resp = await kintone.api(kintone.api.url('/k/v1/records', true), 'GET', params);
+    (resp?.records || []).forEach((r) => byId.set(Number(r.$id.value), r));
+  }
+  return byId;
+};
+
+/** 把使用者輸入的範圍／指定號碼轉成記錄號碼陣列（不合法丟 Error，訊息直接給使用者看） */
+const readRecordIdsFromUI = () => {
+  const mode = document.querySelector('input[name="input-mode"]:checked')?.value || 'range';
+  let ids;
+  if (mode === 'range') {
+    const start = parseInt(document.getElementById('range-start').value, 10);
+    const end = parseInt(document.getElementById('range-end').value, 10);
+    if (isNaN(start) || isNaN(end)) throw new Error('請輸入有效的號碼範圍');
+    if (start > end) throw new Error('開始號碼不能大於結束號碼');
+    if (end - start + 1 > LIMITS.maxRecords) throw new Error(`一次最多只能處理 ${LIMITS.maxRecords} 筆記錄`);
+    ids = Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  } else {
+    const input = document.getElementById('specific-records').value.trim();
+    if (!input) throw new Error('請輸入記錄號碼');
+    ids = [...new Set(input.split(',').map((id) => parseInt(id.trim(), 10)))].filter((x) => Number.isInteger(x) && x > 0);
+  }
+  if (ids.length === 0) throw new Error('請至少輸入一筆有效的記錄號碼');
+  if (ids.length > LIMITS.maxRecords) throw new Error(`一次最多只能處理 ${LIMITS.maxRecords} 筆記錄`);
+  return ids;
+};
+
+// ======================== 檔案下載（附件 / 字型）========================
+const downloadFile = function (fileKey) {
+  return new Promise(function (resolve, reject) {
+    const url = kintone.api.url('/k/v1/file', true) + '?fileKey=' + fileKey;
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    xhr.responseType = 'blob';
+    xhr.onload = function () {
+      if (xhr.status === 200) resolve(xhr.response);
+      else reject(new Error('下載檔案失敗'));
+    };
+    xhr.onerror = function () {
+      reject(new Error('網路錯誤'));
+    };
+    xhr.send();
+  });
+};
+
+const blobToArrayBuffer = function (blob) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.readAsArrayBuffer(blob);
+  });
+};
+
+async function secureFileDownload(fileKey) {
+  const downloadUrl = kintone.api.url('/k/v1/file', true) + '?fileKey=' + fileKey;
+  const response = await fetch(downloadUrl, { method: 'GET', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+  const blob = await response.blob();
+  if (blob.size > LIMITS.maxFileSize) throw new Error('檔案大小超過限制');
+  return blob;
+}
+
+// 字型快取（避免每筆都重抓）
+let _fontBufferCache = null;
+const fetchFontFromKintone = async function () {
+  if (_fontBufferCache) return _fontBufferCache;
+
+  // 取得指定 App 與 Record 的資料
+  const resp = await kintone.api(kintone.api.url('/k/v1/record', true), 'GET', {
+    app: FONT_CONFIG.FONT_APP_ID,
+    id: FONT_CONFIG.FONT_RECORD_ID,
+  });
+
+  // 從同筆記錄的 FONT_FILE_NAME 欄位讀取檔案名稱
+  const targetFileName = resp.record[FONT_CONFIG.FONT_FILE_NAME]?.value;
+  if (!targetFileName) {
+    throw new Error('找不到 FONT_FILE_NAME 欄位值');
+  }
+
+  // 從附件欄位中尋找對應檔案
+  const attachments = resp.record[FONT_CONFIG.FONT_FIELD_CODE]?.value || [];
+  const fontFile = attachments.find((file) => file.name === targetFileName);
+  if (!fontFile) {
+    throw new Error(`找不到檔案：${targetFileName}`);
+  }
+
+  // 下載檔案並轉成 ArrayBuffer
+  const fontBlob = await downloadFile(fontFile.fileKey);
+  _fontBufferCache = await blobToArrayBuffer(fontBlob);
+  return _fontBufferCache;
+};
+
+// ======================== 取得表格資料（明細）========================
+function getTableData(record) {
+  const { tableFieldName, fields } = TABLE_CONFIG;
+  const tableData = record[tableFieldName]?.value;
+  if (!Array.isArray(tableData) || tableData.length === 0) return null;
+
+  const displayNames = fields.map((f) => f[0]);
+  const rows = tableData.map((row) => {
+    const rowData = {};
+    fields.forEach(([displayName, fieldCode]) => {
+      rowData[displayName] = row.value?.[fieldCode]?.value || '';
+    });
+    return rowData;
+  });
+
+  return { displayNames, rows };
+}
+
+// ======================== PDFLib 向量繪製工具 ========================
+const ensurePdfDeps = () => {
+  if (!window.PDFLib || !PDFDocument) throw new Error('缺少 PDFLib，請先載入 PDFLib library');
+  if (!window.fontkit) throw new Error('缺少 fontkit，請先載入 fontkit library');
+};
+
+const measureTextW = (font, size, text) => font.widthOfTextAtSize(String(text ?? ''), size);
+
+const wrapTextPdf = (font, size, text, maxWidth) => {
+  const s = String(text ?? '');
+  if (!s) return [''];
+
+  const result = [];
+  // 先依換行符拆分
+  const paragraphs = s.split('\n');
+
+  for (const para of paragraphs) {
+    if (!para) {
+      result.push('');
+      continue;
+    }
+    let cur = '';
+    for (const ch of para) {
+      const test = cur + ch;
+      if (measureTextW(font, size, test) > maxWidth && cur) {
+        result.push(cur);
+        cur = ch;
+      } else {
+        cur = test;
+      }
+    }
+    if (cur) result.push(cur);
+  }
+
+  return result.length ? result : [''];
+};
+
+const createPager = (pdfDoc, pageW, pageH, margins) => {
+  const state = {
+    pageW,
+    pageH,
+    marginL: margins.l,
+    marginR: margins.r,
+    marginT: margins.t,
+    marginB: margins.b,
+    page: pdfDoc.addPage([pageW, pageH]),
+    y: pageH - margins.t,
   };
 
-  const { PDFDocument, rgb } = window.PDFLib || {};
+  state.newPage = () => {
+    state.page = pdfDoc.addPage([pageW, pageH]);
+    state.y = pageH - margins.t;
+  };
+
+  state.ensureSpace = (needH) => {
+    if (state.y - needH < state.marginB) state.newPage();
+  };
+
+  return state;
+};
+
+const drawCell = ({ page, x, yTop, w, h, border = true, fill = null }) => {
+  const y = yTop - h;
+  page.drawRectangle({
+    x,
+    y,
+    width: w,
+    height: h,
+    color: fill || rgb(1, 1, 1),
+    borderColor: border ? rgb(0, 0, 0) : undefined,
+    borderWidth: border ? 1 : 0,
+  });
+};
+
+const drawTextInCell = ({ page, font, size, x, yTop, w, h, text, align = 'left', padding = 4, color = rgb(0, 0, 0) }) => {
+  const maxW = w - padding * 2;
+  const lines = wrapTextPdf(font, size, text, maxW);
+
+  const lineH = size + 2;
+  const maxLinesByHeight = Math.max(1, Math.floor((h - padding * 2) / lineH));
+  const usedLines = lines.slice(0, maxLinesByHeight);
+
+  let y = yTop - padding - size;
+  for (const line of usedLines) {
+    const t = String(line ?? '');
+    let tx = x + padding;
+    if (align === 'center') {
+      const tw = measureTextW(font, size, t);
+      tx = x + (w - tw) / 2;
+    } else if (align === 'right') {
+      const tw = measureTextW(font, size, t);
+      tx = x + w - padding - tw;
+    }
+    page.drawText(t, { x: tx, y, size, font, color });
+    y -= lineH;
+  }
+};
+
+const calcRowHeight = ({ columns, colWidths, font, size, row, padding = 4, minH = 18 }) => {
+  const lineH = size + 2;
+  let maxLines = 1;
+
+  columns.forEach((c, i) => {
+    const w = colWidths[i];
+    const lines = wrapTextPdf(font, size, row[c.key], w - padding * 2);
+    maxLines = Math.max(maxLines, lines.length);
+  });
+
+  return Math.max(minH, maxLines * lineH + padding * 2);
+};
+
+const drawTablePdf = ({
+  pager,
+  title,
+  columns, // [{label,key,align?}]
+  rows, // array of object
+  font,
+  fontBold,
+  colWidths,
+  fontSize = 10,
+  headerSize = 10,
+  padding = 4,
+}) => {
+  const x0 = pager.marginL;
+
+  // title
+  if (title) {
+    pager.ensureSpace(22);
+    pager.page.drawText(title, { x: x0, y: pager.y - 16, size: 14, font: fontBold });
+    pager.y -= 22;
+  }
+
+  // header
+  const headerH = 20;
+  pager.ensureSpace(headerH);
+
+  let x = x0;
+  columns.forEach((c, i) => {
+    const w = colWidths[i];
+    drawCell({ page: pager.page, x, yTop: pager.y, w, h: headerH, fill: rgb(0.97, 0.97, 0.97) });
+    drawTextInCell({
+      page: pager.page,
+      font: fontBold,
+      size: headerSize,
+      x,
+      yTop: pager.y,
+      w,
+      h: headerH,
+      text: c.label,
+      align: 'center',
+      padding,
+    });
+    x += w;
+  });
+
+  pager.y -= headerH;
+
+  // body
+  rows.forEach((row, idx) => {
+    const rowH = calcRowHeight({ columns, colWidths, font, size: fontSize, row, padding, minH: 18 });
+    pager.ensureSpace(rowH);
+
+    const fill = idx % 2 === 1 ? rgb(0.99, 0.99, 0.99) : rgb(1, 1, 1);
+
+    x = x0;
+    columns.forEach((c, i) => {
+      const w = colWidths[i];
+      drawCell({ page: pager.page, x, yTop: pager.y, w, h: rowH, fill });
+      drawTextInCell({
+        page: pager.page,
+        font,
+        size: fontSize,
+        x,
+        yTop: pager.y,
+        w,
+        h: rowH,
+        text: row[c.key],
+        align: c.align || 'left',
+        padding,
+      });
+      x += w;
+    });
+
+    pager.y -= rowH;
+  });
+
+  // table bottom spacing
+  pager.y -= 10;
+};
+
+// header key/value（兩欄一組）
+const drawKeyValueGrid = ({ pager, font, fontBold, rows }) => {
+  const usableW = pager.pageW - pager.marginL - pager.marginR;
+  const x0 = pager.marginL;
+
+  // 欄寬：label / value / label / value
+  const wL = 90;
+  const wR = 90;
+  const wV1 = (usableW - wL - wR) / 2;
+  const wV2 = (usableW - wL - wR) / 2;
+  const colW = [wL, wV1, wR, wV2];
+
+  const columns = [
+    { label: '', key: 'l1', align: 'center' },
+    { label: '', key: 'v1', align: 'left' },
+    { label: '', key: 'l2', align: 'center' },
+    { label: '', key: 'v2', align: 'left' },
+  ];
+
+  // 不畫 header，直接畫 body（自己畫）
+  rows.forEach((r, idx) => {
+    const rowH = calcRowHeight({ columns, colWidths: colW, font, size: 11, row: r, padding: 4, minH: 20 });
+    pager.ensureSpace(rowH);
+
+    const yTop = pager.y;
+    let x = x0;
+
+    // label1
+    drawCell({ page: pager.page, x, yTop, w: colW[0], h: rowH, fill: rgb(0.98, 0.98, 0.98) });
+    drawTextInCell({ page: pager.page, font: fontBold, size: 11, x, yTop, w: colW[0], h: rowH, text: r.l1, align: 'center' });
+    x += colW[0];
+
+    // value1
+    drawCell({ page: pager.page, x, yTop, w: colW[1], h: rowH, fill: rgb(1, 1, 1) });
+    drawTextInCell({ page: pager.page, font, size: 11, x, yTop, w: colW[1], h: rowH, text: r.v1, align: 'left' });
+    x += colW[1];
+
+    // label2
+    drawCell({ page: pager.page, x, yTop, w: colW[2], h: rowH, fill: rgb(0.98, 0.98, 0.98) });
+    drawTextInCell({ page: pager.page, font: fontBold, size: 11, x, yTop, w: colW[2], h: rowH, text: r.l2, align: 'center' });
+    x += colW[2];
+
+    // value2
+    drawCell({ page: pager.page, x, yTop, w: colW[3], h: rowH, fill: rgb(1, 1, 1) });
+    drawTextInCell({ page: pager.page, font, size: 11, x, yTop, w: colW[3], h: rowH, text: r.v2, align: 'left' });
+
+    pager.y -= rowH;
+  });
+
+  pager.y -= 12;
+};
+
+// ======================== PDF 表頭（請款單主表欄位）========================
+const PDF_TITLE = '交通費請款單';
+
+const fmtDate = (d) => (d ? String(d).split('T')[0] : '');
+
+// USER_SELECT／ORGANIZATION_SELECT 是 [{code,name}]，取顯示名稱串接
+const namesOf = (field) =>
+  Array.isArray(field?.value)
+    ? field.value
+        .map((o) => o.name)
+        .filter(Boolean)
+        .join(', ')
+    : '';
+
+// 表頭兩欄一組：[標籤1, 值1, 標籤2, 值2]
+const buildHeaderRows = (record) => {
+  const get = (code) => record[code]?.value ?? '';
+  const text = (code) => {
+    const v = get(code);
+    return Array.isArray(v) ? v.join(', ') : v;
+  };
+  return [
+    { l1: '交通費請款單號', v1: get(F.RECORD_NO), l2: '請款日期', v2: fmtDate(get(F.PAYMENT_DATE)) },
+    { l1: '公司名稱', v1: get(F.COMPANY_NAME), l2: '預計付款日', v2: fmtDate(get(F.EXPECTED_PAY_DATE)) },
+    { l1: '申請人', v1: namesOf(record[F.APPLICANT]), l2: '申請部門', v2: namesOf(record[F.APPLICANT_ORG]) },
+    { l1: '費用所屬人', v1: namesOf(record[F.EXPENSE_OWNER]), l2: '費用所屬人部門', v2: namesOf(record[F.EXPENSE_OWNER_ORG]) },
+    { l1: '受款人', v1: get(F.PAYEE), l2: '付款方式', v2: text(F.PAY_METHOD) },
+    { l1: '傳票編號', v1: get(F.VOUCHER_NO), l2: '傳票日期', v2: fmtDate(get(F.VOUCHER_DATE)) },
+    { l1: '是否有紙本憑證', v1: get(F.PAPER_RECEIPT), l2: '理由', v2: get(F.REASON) },
+  ];
+};
+
+// ======================== 附件接在 PDF 後面 ========================
+/**
+ * 附件能不能放進 PDF：'pdf'＝整份頁面接上；'jpg'／'png'＝一張圖一頁；null＝不支援（Word、Excel…，略過）
+ * @param {{name?: string, contentType?: string}} file kintone 附件欄位的一個檔案
+ */
+const attachmentKind = (file) => {
+  const type = String(file?.contentType || '').toLowerCase();
+  const ext = (String(file?.name || '').toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1] || '';
+  if (type === 'application/pdf' || ext === 'pdf') return 'pdf';
+  if (type === 'image/jpeg' || ext === 'jpg' || ext === 'jpeg') return 'jpg';
+  if (type === 'image/png' || ext === 'png') return 'png';
+  return null;
+};
+
+/**
+ * 把記錄「附件」欄位的檔案依序接在 pdfDoc 後面。
+ * @returns {Promise<string[]>} 沒接上的檔名（不支援的格式或讀取失敗）
+ */
+const appendAttachments = async (pdfDoc, record) => {
+  const skipped = [];
+  const files = record[F.ATTACHMENT]?.value || [];
+  for (const file of files) {
+    const kind = attachmentKind(file);
+    if (!kind) {
+      skipped.push(file.name);
+      continue;
+    }
+    try {
+      const bytes = await (await secureFileDownload(file.fileKey)).arrayBuffer();
+      if (kind === 'pdf') {
+        const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        const pages = await pdfDoc.copyPages(src, src.getPageIndices());
+        pages.forEach((p) => pdfDoc.addPage(p));
+      } else {
+        const img = kind === 'jpg' ? await pdfDoc.embedJpg(bytes) : await pdfDoc.embedPng(bytes);
+        // A4，依圖片方向選直式／橫式，等比例縮到邊界內、置中
+        const [w, h] = img.width > img.height ? [841.89, 595.28] : [595.28, 841.89];
+        const margin = 24;
+        const scale = Math.min((w - margin * 2) / img.width, (h - margin * 2) / img.height, 1);
+        const dw = img.width * scale;
+        const dh = img.height * scale;
+        const page = pdfDoc.addPage([w, h]);
+        page.drawImage(img, { x: (w - dw) / 2, y: (h - dh) / 2, width: dw, height: dh });
+      }
+    } catch (e) {
+      console.error(`[PDF] 附件接上失敗：${file.name}`, e);
+      skipped.push(file.name);
+    }
+  }
+  return skipped;
+};
+
+// ======================== PDF 生成（PDFLib 向量）========================
+/** 新的 PDF 文件＋嵌入字型（subset=true：檔案會小很多）。批次列印整份只嵌一次。 */
+const createPdfWithFont = async () => {
+  ensurePdfDeps();
+  const fontBuffer = await fetchFontFromKintone();
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.registerFontkit(window.fontkit);
+  const font = await pdfDoc.embedFont(fontBuffer, { subset: true });
+  return { pdfDoc, font };
+};
+
+/**
+ * 把一筆記錄（明細頁＋附件頁）直接畫進 pdfDoc；批次列印共用同一份文件，不用先存檔再讀回來合併。
+ * @returns {Promise<string[]>} 沒接上的附件檔名
+ */
+const drawRecordInto = async (pdfDoc, font, record, id) => {
+  const fontBold = font; // 若有粗體字型檔可另 embed
+
+  // A4 landscape (points)
+  const pageW = 841.89;
+  const pageH = 595.28;
+  const pager = createPager(pdfDoc, pageW, pageH, { l: 24, r: 24, t: 24, b: 24 });
+
+  // 標題 + 可點擊連結
+  const appId = kintone.app.getId();
+  const detailUrl = `${location.origin}/k/${appId}/show#record=${id}`;
+
+  // 繪製「交通費請款單」標題
+  pager.page.drawText(PDF_TITLE, {
+    x: pager.marginL,
+    y: pager.y - 22,
+    size: 18,
+    font: fontBold,
+    color: rgb(0, 0, 0),
+  });
+
+  // 計算連結文字位置
+  const titleWidth = fontBold.widthOfTextAtSize(PDF_TITLE, 18);
+  const linkText = '[LINK點選查詢]';
+  const linkFontSize = 10;
+  const linkX = pager.marginL + titleWidth + 10;
+  const linkY = pager.y - 20;
+  const linkWidth = font.widthOfTextAtSize(linkText, linkFontSize);
+  const linkHeight = linkFontSize;
+
+  // 繪製連結文字（藍色）
+  pager.page.drawText(linkText, {
+    x: linkX,
+    y: linkY,
+    size: linkFontSize,
+    font: font,
+    color: rgb(0, 0.4, 0.8),
+  });
+
+  // 加入可點擊的連結註解
+  pager.page.node.addAnnot(
+    pdfDoc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Link',
+      Rect: [linkX, linkY - 2, linkX + linkWidth, linkY + linkHeight],
+      Border: [0, 0, 0],
+      A: {
+        Type: 'Action',
+        S: 'URI',
+        URI: PDFLib.PDFString.of(detailUrl),
+      },
+    }),
+  );
+
+  pager.y -= 34;
+
+  // Header key/value
+  const headerRows = buildHeaderRows(record);
+
+  drawKeyValueGrid({ pager, font, fontBold, rows: headerRows });
+
+  // 明細
+  const tableData = getTableData(record);
+  const displayNames = tableData?.displayNames || [];
+  const detailColumns = displayNames.map((name) => ({
+    label: name,
+    key: name,
+    align: NUMERIC_COLUMNS.includes(name) ? 'right' : 'left',
+  }));
+
+  const detailRows = (tableData?.rows || []).map((r) => {
+    const row = {};
+    displayNames.forEach((k) => {
+      const v = r[k] || '';
+      row[k] = NUMERIC_COLUMNS.includes(k) ? formatNumber(v) : v;
+    });
+    return row;
+  });
+
+  const detailColW = (() => {
+    const n = Math.max(detailColumns.length, 1);
+    const w = (pager.pageW - pager.marginL - pager.marginR) / n;
+    return Array.from({ length: n }, () => w);
+  })();
+
+  drawTablePdf({
+    pager,
+    title: '明細',
+    columns: detailColumns.length ? detailColumns : [{ label: '無明細', key: 'x', align: 'center' }],
+    rows: detailRows.length ? detailRows : [{ ...detailColumns.reduce((a, c) => ((a[c.key] = ''), a), {}) }],
+    font,
+    fontBold,
+    colWidths: detailColumns.length ? detailColW : [pager.pageW - pager.marginL - pager.marginR],
+    fontSize: 10,
+    headerSize: 10,
+  });
+
+  // 簽核記錄
+  const signTbl = record[F.SIGN_TABLE.CODE];
+  const signRows = (signTbl?.value || []).map((row) => {
+    const v = row.value;
+    return {
+      dt: v[F.SIGN_TABLE.COLS.DATETIME]?.value?.split('T')[0] || '',
+      act: v[F.SIGN_TABLE.COLS.ACTION]?.value || '',
+      who: v[F.SIGN_TABLE.COLS.SIGNER]?.value?.[0]?.name || '',
+    };
+  });
+
+  drawTablePdf({
+    pager,
+    title: F.SIGN_TABLE.CODE,
+    columns: [
+      { label: '日期與時間', key: 'dt', align: 'center' },
+      { label: '動作', key: 'act', align: 'center' },
+      { label: '簽核人員', key: 'who', align: 'center' },
+    ],
+    rows: signRows.length ? signRows : [{ dt: '無簽核資料', act: '', who: '' }],
+    font,
+    fontBold,
+    colWidths: [160, 160, pager.pageW - pager.marginL - pager.marginR - 320],
+    fontSize: 10,
+    headerSize: 10,
+  });
+
+  const footer = `記錄編號：${id}  列印時間：${formatDateTime(new Date())}`;
+
+  pager.page.drawText(footer, {
+    x: pager.marginL,
+    y: 10,
+    size: 8,
+    font,
+    color: rgb(0.35, 0.35, 0.35),
+  });
+
+  return appendAttachments(pdfDoc, record);
+};
+
+// 單筆：回傳 { blob, skipped }；skipped＝沒接上的附件檔名
+const generateRecordPDF = async (record, id) => {
+  const { pdfDoc, font } = await createPdfWithFont();
+  const skipped = await drawRecordInto(pdfDoc, font, record, id);
+  const bytes = await pdfDoc.save();
+  return { blob: new Blob([bytes], { type: 'application/pdf' }), skipped };
+};
+
+// ======================== 取得單筆記錄 ========================
+const fetchRecord = async (app, id) => {
+  window.PR_LOG.debug(`[PDF Batch] API call to fetch record: App=${app}, ID=${id}`);
+  const resp = await kintone.api(kintone.api.url('/k/v1/record', true), 'GET', { app, id: String(id) });
+  window.PR_LOG.debug(`[PDF Batch] Fetch record response status:`, resp ? 'success' : 'failed');
+  return resp.record;
+};
+
+// ======================== 批次下載附件（保留原功能；截圖 png 不影響 UI）========================
+function createSecureLoadingOverlay() {
+  const loadingOverlay = document.createElement('div');
+  loadingOverlay.className = 'loading-overlay';
+
+  const loadingMessage = document.createElement('div');
+  loadingMessage.className = 'loading-message';
+  loadingMessage.innerHTML = `
+      <button class="close-button" id="close-button" title="關閉視窗">×</button>
+      <h3>📦 批次下載</h3>
+      <p>正在下載附件並打包...</p>
+      <div class="progress-bar">
+        <div class="progress-bar-fill" id="progress-fill"></div>
+      </div>
+      <div class="result-message" id="result-message">準備中...</div>
+    `;
+  loadingOverlay.appendChild(loadingMessage);
+  document.body.appendChild(loadingOverlay);
+}
+
+function updateProgress(percentage) {
+  const progressFill = document.getElementById('progress-fill');
+  if (progressFill) progressFill.style.width = `${Math.min(100, Math.max(0, percentage))}%`;
+}
+
+const RESULT_TYPES = ['error', 'warning', 'success'];
+
+function updateResultMessage(message, type) {
+  const el = document.getElementById('result-message');
+  if (!el) return;
+  el.textContent = message;
+  // 顏色在 payment_request.css（.result-message.pr-result--error／warning／success）
+  el.classList.remove('pr-result--error', 'pr-result--warning', 'pr-result--success');
+  if (RESULT_TYPES.includes(type)) el.classList.add(`pr-result--${type}`);
+}
+
+function showCloseButton() {
+  const closeButton = document.getElementById('close-button');
+  if (!closeButton) return;
+  closeButton.classList.add('show');
+  closeButton.onclick = function () {
+    const loadingOverlay = document.querySelector('.loading-overlay');
+    if (loadingOverlay) document.body.removeChild(loadingOverlay);
+  };
+}
+
+/** 壓縮檔裡的下載清單：記錄、附件合計、下載失敗的附件 */
+function generateDownloadReport(records, totalBytes, failed) {
+  const failNote = failed.length ? `\n下載失敗的附件:\n${failed.join('\n')}\n` : '';
+  return `kintone 批次下載清單
+==========================================
+
+下載時間: ${new Date().toLocaleString()}
+處理記錄數: ${records.length}
+附件合計（壓縮前）: ${formatMB(totalBytes)}
+
+記錄清單:
+${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value}`).join('\n')}
+${failNote}==========================================`;
+}
+
+// （附件+截圖。）
+async function generateRecordSummaryImage(record) {
+  // 這段維持你原本 canvas 摘要圖邏輯（為了完整可用），簡化版：不畫明細表格，只列摘要 + 附件清單
+  return new Promise((resolve) => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1800;
+      canvas.height = 1200;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = '#000000';
+      ctx.font = 'bold 28px Arial';
+      ctx.fillText('記錄摘要', 40, 60);
+
+      let y = 110;
+      const recordNumber = record[F.RECORD_NO]?.value || record.$id.value;
+      const status = record[F.STATUS_FIELD]?.value || '未設定';
+      const requestDate = record[F.PAYMENT_DATE]?.value || '未填寫';
+      const applicant = namesOf(record[F.APPLICANT]) || '未填寫';
+      const expenseOwner = namesOf(record[F.EXPENSE_OWNER]) || '未填寫';
+      const paymentMethod = (record[F.PAY_METHOD]?.value || []).join(', ') || '未填寫';
+
+      ctx.font = 'bold 18px Arial';
+      ctx.fillText(`記錄號碼: ${recordNumber}`, 40, y);
+      ctx.fillText(`請款日期: ${requestDate}`, 400, y);
+      y += 30;
+      ctx.fillText(`申請人: ${applicant}`, 40, y);
+      ctx.fillText(`費用所屬人: ${expenseOwner}`, 400, y);
+      y += 30;
+      ctx.fillText(`狀態: ${status}`, 40, y);
+      ctx.fillText(`付款方式: ${paymentMethod}`, 400, y);
+      y += 40;
+
+      const att = record[F.ATTACHMENT]?.value || [];
+      if (att.length) {
+        ctx.font = 'bold 18px Arial';
+        ctx.fillText('附件清單：', 40, y);
+        y += 30;
+        ctx.font = '14px Arial';
+        att.forEach((f, i) => {
+          ctx.fillText(`${i + 1}. ${f.name}`, 60, y);
+          y += 24;
+        });
+      }
+
+      canvas.toBlob((blob) => resolve(blob), 'image/png', 1.0);
+    } catch (e) {
+      console.error('生成摘要圖失敗:', e);
+      resolve(null);
+    }
+  });
+}
+
+async function handleSecureBatchDownload() {
+  try {
+    const JSZip = window.JSZip;
+    if (!JSZip) throw new Error('JSZip 未載入，請確認自定義 library 已加入');
+
+    const recordIds = readRecordIdsFromUI();
+    const currentAppId = kintone.app.getId();
+    const byId = await fetchRecordsByIds(currentAppId, recordIds, [
+      '$id', F.RECORD_NO, F.ATTACHMENT, F.STATUS_FIELD, F.PAYMENT_DATE, F.APPLICANT, F.EXPENSE_OWNER, F.PAY_METHOD,
+    ]);
+    const records = recordIds.map((id) => byId.get(id)).filter(Boolean);
+    if (!records.length) throw new Error('找不到指定的記錄，請檢查記錄號碼是否正確');
+
+    // 壓縮檔整包在記憶體裡產生：開始前先擋附件合計太大的情況
+    const totalBytes = attachmentBytes(records);
+    if (totalBytes > LIMITS.maxZipBytes) {
+      throw new Error(`附件合計約 ${formatMB(totalBytes)}，超過單次上限 ${formatMB(LIMITS.maxZipBytes)}，請縮小範圍分批下載`);
+    }
+    const missing = recordIds.length - records.length;
+    const missingNote = missing ? `\n（有 ${missing} 筆找不到或沒有權限，會略過）` : '';
+    // 同請購庶務：先確認再開進度視窗
+    if (!(await askConfirm(`確定要批次下載 ${records.length} 筆記錄的附件+截圖嗎？\n附件合計約 ${formatMB(totalBytes)}${missingNote}`))) return;
+    createSecureLoadingOverlay();
+
+    const today = new Date();
+    const dateString = today.getFullYear() + String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
+    const mainFolderName = `${dateString}_${DOWNLOAD_FOLDER_NAME}`;
+    const zip = new JSZip();
+
+    const includeScreenshot = true;
+    let processed = 0;
+    let zippedBytes = 0;
+    const failed = [];
+
+    for (const record of records) {
+      const recordNumber = safeFileName(record[F.RECORD_NO]?.value || record.$id.value);
+      const subFolderName = `記錄${recordNumber}`;
+
+      updateResultMessage(`處理記錄 ${recordNumber}...`);
+
+      // 附件
+      const attachments = record[F.ATTACHMENT]?.value || [];
+      for (const attachment of attachments) {
+        const safeName = safeFileName(attachment.name);
+        if (!safeName) continue;
+        let fileBlob;
+        try {
+          fileBlob = await secureFileDownload(attachment.fileKey);
+        } catch (error) {
+          console.error(`下載附件失敗: ${attachment.name}`, error);
+          failed.push(`記錄 ${recordNumber}：${attachment.name}（${error.message}）`);
+          updateResultMessage(`❌ 下載失敗: ${attachment.name} (${error.message})`);
+          continue;
+        }
+        // 欄位上的 size 跟實際不符時的第二道防線：實際下載量也不能超過上限
+        zippedBytes += fileBlob.size;
+        if (zippedBytes > LIMITS.maxZipBytes) {
+          throw new Error(`附件合計超過單次上限 ${formatMB(LIMITS.maxZipBytes)}，請縮小範圍分批下載`);
+        }
+        zip.file(`${subFolderName}/${recordNumber}－${safeName}`, fileBlob);
+        updateResultMessage(`✅ 已下載: ${safeName}`);
+      }
+
+      // 摘要圖
+      if (includeScreenshot) {
+        const summaryImage = await generateRecordSummaryImage(record);
+        if (summaryImage) zip.file(`${subFolderName}/記錄${recordNumber}_摘要資訊.png`, summaryImage);
+      }
+
+      processed++;
+      updateProgress(Math.floor((processed / records.length) * 80));
+    }
+
+    zip.file('下載清單.txt', generateDownloadReport(records, zippedBytes, failed));
+
+    updateResultMessage('打包中...');
+    updateProgress(90);
+
+    const zipBlob = await zip.generateAsync({
+      type: 'blob',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 },
+    });
+
+    const url = window.URL.createObjectURL(zipBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${mainFolderName}.zip`;
+    link.rel = 'noopener noreferrer';
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    updateProgress(100);
+    if (failed.length) {
+      updateResultMessage(`⚠️ 下載完成，但有 ${failed.length} 個附件下載失敗（清單也在壓縮檔的「下載清單.txt」）：\n${failed.join('\n')}`, 'warning');
+    } else {
+      updateResultMessage('🎉 下載完成！', 'success');
+    }
+    showCloseButton();
+  } catch (error) {
+    console.error('批次下載過程發生錯誤:', error);
+    // 進度視窗還沒建立（輸入驗證階段）：沒地方顯示結果，改跳視窗提示（原本按了看起來沒反應）
+    if (!document.getElementById('result-message')) {
+      notify(error.message, 'warning');
+    } else {
+      updateResultMessage(`❌ 錯誤: ${error.message}`, 'error');
+      showCloseButton();
+    }
+  }
+}
+
+// ======================== 提示視窗（全域 SweetAlert，寬度自動）========================
+/** 取代瀏覽器的 alert；icon: 'info'|'warning'|'error'|'success'。載不到 SweetAlert 才退回 alert */
+function notify(text, icon = 'info') {
+  if (typeof Swal === 'undefined') {
+    alert(text);
+    return Promise.resolve();
+  }
+  return Swal.fire({ icon, text, width: 'auto', confirmButtonText: '好', customClass: { htmlContainer: 'pr-notice-text' } });
+}
+
+/** 取代瀏覽器的 confirm；回傳 true／false。載不到 SweetAlert 才退回 confirm */
+async function askConfirm(text) {
+  if (typeof Swal === 'undefined') return confirm(text);
+  const result = await Swal.fire({ icon: 'question', text, width: 'auto', showCancelButton: true, confirmButtonText: '確定', cancelButtonText: '取消', customClass: { htmlContainer: 'pr-notice-text' } });
+  return result.isConfirmed;
+}
+
+// ======================== 批次列印 PDF（PDFLib 版）========================
+async function handleBatchPrintPDF() {
+  try {
+    let recordIds;
+    try {
+      recordIds = readRecordIdsFromUI();
+    } catch (inputError) {
+      return notify(inputError.message, 'warning');
+    }
+    if (!(await askConfirm(`確定要批次列印 ${recordIds.length} 筆記錄嗎？`))) return;
+    await performBatchPrintPDF(recordIds);
+  } catch (error) {
+    console.error('批次列印失敗:', error);
+    await notify('批次列印失敗：' + error.message, 'error');
+  }
+}
+
+async function performBatchPrintPDF(recordIds) {
+  window.PR_LOG.debug('[PDF Batch] Starting performBatchPrintPDF with record IDs:', recordIds);
+  ensurePdfDeps();
+  createLoadingOverlay();
+  const appId = kintone.app.getId();
+  let processed = 0;
+  const failed = [];
+  const skippedAll = [];
+
+  try {
+    // 全部畫進同一份 PDF：明細＋附件＋明細＋附件…（依輸入的記錄順序）；字型只嵌一次、整份只存一次
+    const { pdfDoc: merged, font } = await createPdfWithFont();
+    // 記錄一次查回來（每 100 筆一次），不再一筆一筆查
+    updateResultMessage('讀取記錄...', 'info');
+    const byId = await fetchRecordsByIds(appId, recordIds);
+
+    for (const recordId of recordIds) {
+      window.PR_LOG.debug(`[PDF Batch] Start processing record: ${recordId}`);
+      updateResultMessage(`處理記錄 ${recordId}...`, 'info');
+      updateProgress((processed / recordIds.length) * 100);
+
+      const before = merged.getPageCount();
+      try {
+        const record = byId.get(recordId);
+        if (!record) throw new Error('找不到記錄（可能已刪除或沒有權限）');
+        const skipped = await drawRecordInto(merged, font, record, recordId);
+        skipped.forEach((name) => skippedAll.push(`記錄 ${recordId}：${name}`));
+        processed++;
+        window.PR_LOG.debug(`[PDF Batch] Added record ${recordId} (${merged.getPageCount() - before} pages) to merged PDF.`);
+      } catch (recordError) {
+        console.error(`[PDF Batch] 記錄 ${recordId} 處理失敗:`, recordError);
+        const errMsg = recordError.message || (typeof recordError === 'object' ? JSON.stringify(recordError) : String(recordError));
+        failed.push({ id: recordId, message: errMsg });
+        // 畫到一半失敗：拿掉這筆已加進去的頁，失敗的記錄不放進 PDF
+        while (merged.getPageCount() > before) merged.removePage(merged.getPageCount() - 1);
+      }
+
+    }
+
+    window.PR_LOG.debug(`[PDF Batch] Loop completed. Success = ${processed}, Failed = ${failed.length}`);
+    if (!processed) throw new Error(`全部 ${failed.length} 筆都失敗：\n${failed.map((f) => `記錄 ${f.id}：${f.message}`).join('\n')}`);
+
+    updateResultMessage('正在合併 PDF 檔案...', 'info');
+    updateProgress(95);
+
+    const mergedBytes = await merged.save();
+    saveAs(new Blob([mergedBytes], { type: 'application/pdf' }), `批次列印_${formatDateTime(new Date())}.pdf`);
+
+    updateProgress(100);
+    const skipNote = skippedAll.length ? `\n\n以下附件不是 PDF／圖片或讀取失敗，沒有放進 PDF：\n${skippedAll.join('\n')}` : '';
+    if (failed.length) {
+      const failDetail = failed.map((f) => `記錄 ${f.id}：${f.message}`).join('\n');
+      console.warn('[PDF Batch] Completed with failures:', failDetail);
+      updateResultMessage(`⚠️ 完成，但有 ${failed.length} 筆失敗（未包含在 PDF 內）：\n${failDetail}\n\n成功 ${processed} 筆${skipNote}`, 'warning');
+    } else if (skippedAll.length) {
+      updateResultMessage(`⚠️ 列印完成，共 ${processed} 筆記錄${skipNote}`, 'warning');
+    } else {
+      window.PR_LOG.debug('[PDF Batch] All files printed and downloaded successfully.');
+      updateResultMessage(`✅ 列印完成！共處理 ${processed} 筆記錄`, 'success');
+    }
+    showCloseButton();
+  } catch (error) {
+    console.error('[PDF Batch] 批次列印過程發生致命錯誤:', error);
+    updateResultMessage('批次列印失敗：' + error.message, 'error');
+    showCloseButton();
+  }
+}
+
+const generatePDFFileName = (record, id) => {
+  let company = record[F.COMPANY_NAME]?.value?.trim() || '';
+  company = company?.startsWith('ＮＸ') ? 'NX' : '聯海';
+  // 受款人欄位資料可能夾雜 Tab／換行等控制字元（例如「代號\t姓名」格式），
+  // 這類字元 Windows 檔名不允許，會讓解壓縮工具跳過該檔案而誤以為 ZIP 是空的
+  const payName = (record[F.PAYEE]?.value || '').replace(/[\t\n\r]+/g, ' ').trim();
+  return safeFileName(`交通費請款單${id}_${company}(${payName}).pdf`);
+};
+
+// ======================== UI（維持原樣）========================
+function createLoadingOverlay() {
+  const overlay = document.createElement('div');
+  overlay.className = 'loading-overlay';
+  overlay.id = 'batch-download-overlay';
+  overlay.innerHTML = `
+      <div class="loading-message">
+        <button id="close-button" class="close-button">✕</button>
+        <div class="pr-loading-title">處理中...</div>
+        <div class="progress-bar"><div id="progress-fill" class="progress-bar-fill"></div></div>
+        <div id="result-message" class="result-message">準備中...</div>
+      </div>
+    `;
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+/**
+ * 「🗂 批次動作 ▾」下拉選單（樣式 .pr-export-menu*，同請購庶務請款單）。
+ * 結構：<span.pr-export-menu> ├ <button#batch-actions-button> └ <div.pr-export-menu__panel hidden> 數個 <button.pr-export-menu__item>
+ */
+function buildActionsMenu(items) {
+  const root = document.createElement('span');
+  root.className = 'pr-export-menu';
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.id = 'batch-actions-button';
+  trigger.className = 'batch-print-button pr-export-menu__trigger';
+  trigger.setAttribute('aria-haspopup', 'menu');
+  trigger.setAttribute('aria-expanded', 'false');
+  trigger.textContent = '🗂 批次動作';
+  const caret = document.createElement('span');
+  caret.className = 'pr-export-menu__caret';
+  caret.textContent = '▾';
+  trigger.appendChild(caret);
+
+  const panel = document.createElement('div');
+  panel.className = 'pr-export-menu__panel';
+  panel.setAttribute('role', 'menu');
+  panel.hidden = true;
+  root.append(trigger, panel);
+
+  const isOpen = () => !panel.hidden;
+  const setOpen = (open) => {
+    panel.hidden = !open;
+    root.classList.toggle('is-open', open);
+    trigger.setAttribute('aria-expanded', String(open));
+  };
+
+  items.forEach((item) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pr-export-menu__item';
+    btn.setAttribute('role', 'menuitem');
+    const title = document.createElement('span');
+    title.className = 'pr-export-menu__title';
+    title.textContent = item.title;
+    const desc = document.createElement('span');
+    desc.className = 'pr-export-menu__desc';
+    desc.textContent = item.desc;
+    btn.append(title, desc);
+    btn.addEventListener('click', () => {
+      setOpen(false);
+      Promise.resolve(item.handler()).catch((e) => console.error(`[${item.title}] 執行失敗`, e));
+    });
+    panel.appendChild(btn);
+  });
+
+  trigger.addEventListener('click', () => setOpen(!isOpen()));
+  // 點選單外面、按 Esc、捲動、改視窗大小都收起
+  document.addEventListener('click', (e) => {
+    if (isOpen() && !root.contains(e.target)) setOpen(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isOpen()) {
+      setOpen(false);
+      trigger.focus();
+    }
+  });
+  const closeOnMove = () => {
+    if (isOpen()) setOpen(false);
+  };
+  document.addEventListener('scroll', closeOnMove, true);
+  window.addEventListener('resize', closeOnMove);
+
+  return root;
+}
+
+async function initUI() {
+  try {
+    const headerMenuSpace = kintone.app.getHeaderMenuSpaceElement();
+    if (!headerMenuSpace) throw new Error('找不到標頭菜單空間');
+
+    // 樣式在 payment_request.css（批次下載／列印按鈕、處理中視窗）
+
+    // 容器
+    const container = document.createElement('div');
+    container.id = 'batch-download-container';
+
+    // 範圍輸入群組
+    const rangeGroup = document.createElement('div');
+    rangeGroup.className = 'range-input-group';
+
+    // 輸入模式選擇
+    const modeSelector = document.createElement('div');
+    modeSelector.className = 'input-mode-selector';
+
+    const rangeMode = document.createElement('label');
+    rangeMode.innerHTML = `
+        <input type="radio" name="input-mode" value="range" checked>
+        連續範圍（例如：1 到 10）
+      `;
+
+    const specificMode = document.createElement('label');
+    specificMode.innerHTML = `
+        <input type="radio" name="input-mode" value="specific">
+        指定多筆（例如：20,40,42,48,56）
+      `;
+
+    modeSelector.appendChild(rangeMode);
+    modeSelector.appendChild(specificMode);
+
+    // 範圍輸入
+    const rangeInputs = document.createElement('div');
+    rangeInputs.className = 'range-inputs';
+
+    const startLabel = document.createElement('span');
+    startLabel.className = 'range-input-label';
+    startLabel.textContent = '請輸入要下載的記錄號碼範圍：';
+
+    const startInput = document.createElement('input');
+    startInput.type = 'number';
+    startInput.id = 'range-start';
+    startInput.className = 'range-input';
+    startInput.placeholder = '開始號碼';
+    startInput.min = 1;
+
+    const separator = document.createElement('span');
+    separator.className = 'range-input-separator';
+    separator.textContent = '到';
+
+    const endInput = document.createElement('input');
+    endInput.type = 'number';
+    endInput.id = 'range-end';
+    endInput.className = 'range-input';
+    endInput.placeholder = '結束號碼';
+    endInput.min = 1;
+
+    rangeInputs.appendChild(startLabel);
+    rangeInputs.appendChild(startInput);
+    rangeInputs.appendChild(separator);
+    rangeInputs.appendChild(endInput);
+
+    // 指定輸入
+    const specificInputs = document.createElement('div');
+    specificInputs.className = 'specific-input';
+    specificInputs.id = 'specific-inputs';
+
+    const specificLabel = document.createElement('span');
+    specificLabel.className = 'range-input-label';
+    specificLabel.textContent = '請輸入要下載的記錄號碼（用逗號分隔）：';
+
+    const specificInput = document.createElement('input');
+    specificInput.type = 'text';
+    specificInput.id = 'specific-records';
+    specificInput.className = 'specific-records-input';
+    specificInput.placeholder = '例如：20,40,42,48,56';
+
+    specificInputs.appendChild(specificLabel);
+    specificInputs.appendChild(specificInput);
+
+    // 模式切換事件
+    const modeRadios = modeSelector.querySelectorAll('input[name="input-mode"]');
+    modeRadios.forEach((radio) => {
+      radio.addEventListener('change', function () {
+        // 顯示哪一組輸入框由 payment_request.css 依 .pr-mode-specific 決定
+        rangeGroup.classList.toggle('pr-mode-specific', this.value !== 'range');
+      });
+    });
+
+    // 按鈕容器（水平並排）
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.className = 'buttons-container';
+
+    // Excel 資料轉出按鈕：交通費只有一種轉出，直接點就執行（click 由 批次整理資料.js 綁定）
+    const organizeButton = document.createElement('button');
+    organizeButton.id = 'batch-organize-button';
+    organizeButton.className = 'batch-print-button';
+    organizeButton.textContent = '📊 Excel資料轉出';
+    buttonsContainer.appendChild(organizeButton);
+
+    // 「🗂 批次動作 ▾」下拉選單：批次列印PDF、批次下載附件+截圖（同請購庶務請款單）
+    buttonsContainer.appendChild(
+      buildActionsMenu([
+        { title: '📄 批次列印交通費請款單PDF', desc: '依照輸入的記錄範圍，產生請款單 PDF', handler: handleBatchPrintPDF },
+        { title: '📦 批次下載附件+截圖', desc: '依照輸入的記錄範圍，打包下載附件與截圖', handler: handleSecureBatchDownload },
+        {
+          title: '📋 批次填傳票／入帳完成',
+          desc: '補填傳票編號、傳票日期，並執行「入帳完成」的簽核',
+          // 批次填傳票_入帳完成.js；點擊時才取，不受載入順序影響
+          handler: () => openBatchVoucherDialog(),
+        },
+      ])
+    );
+
+    // 組裝 UI
+    rangeGroup.appendChild(modeSelector);
+    rangeGroup.appendChild(rangeInputs);
+    rangeGroup.appendChild(specificInputs);
+
+    container.appendChild(rangeGroup);
+    container.appendChild(buttonsContainer);
+    headerMenuSpace.appendChild(container);
+  } catch (error) {
+    console.error('初始化失敗:', error);
+    notify('無法在當前環境中啟用批次功能', 'error');
+  }
+}
+
+export { TABLE_CONFIG, NUMERIC_COLUMNS, LIMITS, getTableData, buildHeaderRows, generatePDFFileName, attachmentKind, appendAttachments, safeFileName, attachmentBytes, fetchRecordsByIds };
+
+/** 入口檔 import '…?install' 時呼叫：註冊事件（載入時只定義函式） */
+export const install = () => {
   if (!PDFDocument) {
     // 不 throw，避免阻斷 index.show；在真正產 PDF 時再提示
     console.warn('[PDF] 找不到 PDFLib，請確認已載入 PDFLib library');
@@ -48,1246 +1291,6 @@
     console.info('🔍 ========== 權限診斷結束 ==========');
     console.info(`🔍 💡 若 App ${fontAppId} 無權限，請為該使用者開放 App ${fontAppId} 檢視權限`);
   };
-
-  // ======================== 數量／大小上限 ========================
-  //   壓縮檔整包在瀏覽器記憶體裡產生，附件合計太大會讓分頁當掉 → 開始前先算附件合計，超過 maxZipBytes 就請使用者分批。
-  const LIMITS = {
-    maxRecords: 50, // 單次批次下載／列印的記錄數
-    maxFileSize: 50 * 1024 * 1024, // 單一附件
-    maxZipBytes: 300 * 1024 * 1024, // 批次下載的附件合計（壓縮前）
-    queryChunk: 100, // 批次查詢一次的記錄數（$id in (...)；REST API 的 limit 上限）
-  };
-
-  // ======================== 表格設定 ========================
-  // 明細只有「交通費請款單」子表格一種：[顯示名稱, 子表格欄位代碼]
-  const TABLE_CONFIG = {
-    tableFieldName: F.TRAFFIC_TABLE.CODE,
-    fields: [
-      ['憑證日期', F.TRAFFIC_TABLE.COLS.DATE],
-      ['交通工具', F.TRAFFIC_TABLE.COLS.VEHICLE],
-      ['拜訪客戶', F.TRAFFIC_TABLE.COLS.VISIT_CUSTOMER],
-      ['起訖點', F.TRAFFIC_TABLE.COLS.ROUTE],
-      ['金額', F.TRAFFIC_TABLE.COLS.AMOUNT],
-      ['手續費', F.TRAFFIC_TABLE.COLS.FEE],
-      ['費用歸屬', F.TRAFFIC_TABLE.COLS.EXPENSE],
-      ['憑證種類', F.TRAFFIC_TABLE.COLS.RECEIPT_TYPE],
-      ['發票號碼', F.TRAFFIC_TABLE.COLS.INVOICE_NO],
-      ['賣方統編', F.TRAFFIC_TABLE.COLS.SELLER_TAX_ID],
-      ['格式', F.TRAFFIC_TABLE.COLS.FORMAT],
-      ['稅額', F.TRAFFIC_TABLE.COLS.TAX],
-    ],
-  };
-
-  // 數字欄位（靠右、加千分位）的顯示名稱
-  const NUMERIC_COLUMNS = ['金額', '手續費', '稅額'];
-
-  // ======================== 通用工具 ========================
-  const formatDateTime = (date) => {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    const h = String(date.getHours()).padStart(2, '0');
-    const min = String(date.getMinutes()).padStart(2, '0');
-    return `${y}${m}${d}_${h}${min}`;
-  };
-
-  const formatNumber = (num) => {
-    if (num === undefined || num === null || num === '') return '';
-    const n = Number(String(num).replace(/,/g, ''));
-    if (Number.isNaN(n)) return String(num);
-    return n.toLocaleString('zh-TW');
-  };
-
-  /** 檔名裡 Windows／壓縮檔不允許的字元（路徑符號、控制字元）換成 _；其餘保留（& ' 等是合法檔名字元） */
-  // eslint-disable-next-line no-control-regex -- 刻意比對控制字元
-  const safeFileName = (name) => String(name ?? '').replace(/[/\\:*?"<>|\x00-\x1F\x7F]/g, '_').trim();
-
-  const formatMB = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-
-  /** 附件欄位的檔案大小合計（kintone 的 size 是位元組字串） */
-  const attachmentBytes = (records) =>
-    records.reduce((sum, r) => sum + (r[F.ATTACHMENT]?.value || []).reduce((a, f) => a + (Number(f.size) || 0), 0), 0);
-
-  /**
-   * 依 $id 一次查多筆（每 LIMITS.queryChunk 筆查一次），回傳 Map(id → record)。
-   * @param {number} app
-   * @param {number[]} ids
-   * @param {string[]} [fields] 不給＝全部欄位
-   */
-  const fetchRecordsByIds = async (app, ids, fields) => {
-    const byId = new Map();
-    for (let i = 0; i < ids.length; i += LIMITS.queryChunk) {
-      const chunk = ids.slice(i, i + LIMITS.queryChunk);
-      const params = { app, query: `$id in (${chunk.join(',')}) limit ${LIMITS.queryChunk}` };
-      if (fields) params.fields = fields;
-      const resp = await kintone.api(kintone.api.url('/k/v1/records', true), 'GET', params);
-      (resp?.records || []).forEach((r) => byId.set(Number(r.$id.value), r));
-    }
-    return byId;
-  };
-
-  /** 把使用者輸入的範圍／指定號碼轉成記錄號碼陣列（不合法丟 Error，訊息直接給使用者看） */
-  const readRecordIdsFromUI = () => {
-    const mode = document.querySelector('input[name="input-mode"]:checked')?.value || 'range';
-    let ids;
-    if (mode === 'range') {
-      const start = parseInt(document.getElementById('range-start').value, 10);
-      const end = parseInt(document.getElementById('range-end').value, 10);
-      if (isNaN(start) || isNaN(end)) throw new Error('請輸入有效的號碼範圍');
-      if (start > end) throw new Error('開始號碼不能大於結束號碼');
-      if (end - start + 1 > LIMITS.maxRecords) throw new Error(`一次最多只能處理 ${LIMITS.maxRecords} 筆記錄`);
-      ids = Array.from({ length: end - start + 1 }, (_, i) => start + i);
-    } else {
-      const input = document.getElementById('specific-records').value.trim();
-      if (!input) throw new Error('請輸入記錄號碼');
-      ids = [...new Set(input.split(',').map((id) => parseInt(id.trim(), 10)))].filter((x) => Number.isInteger(x) && x > 0);
-    }
-    if (ids.length === 0) throw new Error('請至少輸入一筆有效的記錄號碼');
-    if (ids.length > LIMITS.maxRecords) throw new Error(`一次最多只能處理 ${LIMITS.maxRecords} 筆記錄`);
-    return ids;
-  };
-
-  // ======================== 檔案下載（附件 / 字型）========================
-  const downloadFile = function (fileKey) {
-    return new Promise(function (resolve, reject) {
-      const url = kintone.api.url('/k/v1/file', true) + '?fileKey=' + fileKey;
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', url, true);
-      xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-      xhr.responseType = 'blob';
-      xhr.onload = function () {
-        if (xhr.status === 200) resolve(xhr.response);
-        else reject(new Error('下載檔案失敗'));
-      };
-      xhr.onerror = function () {
-        reject(new Error('網路錯誤'));
-      };
-      xhr.send();
-    });
-  };
-
-  const blobToArrayBuffer = function (blob) {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.readAsArrayBuffer(blob);
-    });
-  };
-
-  async function secureFileDownload(fileKey) {
-    const downloadUrl = kintone.api.url('/k/v1/file', true) + '?fileKey=' + fileKey;
-    const response = await fetch(downloadUrl, { method: 'GET', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const blob = await response.blob();
-    if (blob.size > LIMITS.maxFileSize) throw new Error('檔案大小超過限制');
-    return blob;
-  }
-
-  // 字型快取（避免每筆都重抓）
-  let _fontBufferCache = null;
-  const fetchFontFromKintone = async function () {
-    if (_fontBufferCache) return _fontBufferCache;
-
-    // 取得指定 App 與 Record 的資料
-    const resp = await kintone.api(kintone.api.url('/k/v1/record', true), 'GET', {
-      app: FONT_CONFIG.FONT_APP_ID,
-      id: FONT_CONFIG.FONT_RECORD_ID,
-    });
-
-    // 從同筆記錄的 FONT_FILE_NAME 欄位讀取檔案名稱
-    const targetFileName = resp.record[FONT_CONFIG.FONT_FILE_NAME]?.value;
-    if (!targetFileName) {
-      throw new Error('找不到 FONT_FILE_NAME 欄位值');
-    }
-
-    // 從附件欄位中尋找對應檔案
-    const attachments = resp.record[FONT_CONFIG.FONT_FIELD_CODE]?.value || [];
-    const fontFile = attachments.find((file) => file.name === targetFileName);
-    if (!fontFile) {
-      throw new Error(`找不到檔案：${targetFileName}`);
-    }
-
-    // 下載檔案並轉成 ArrayBuffer
-    const fontBlob = await downloadFile(fontFile.fileKey);
-    _fontBufferCache = await blobToArrayBuffer(fontBlob);
-    return _fontBufferCache;
-  };
-
-  // ======================== 取得表格資料（明細）========================
-  function getTableData(record) {
-    const { tableFieldName, fields } = TABLE_CONFIG;
-    const tableData = record[tableFieldName]?.value;
-    if (!Array.isArray(tableData) || tableData.length === 0) return null;
-
-    const displayNames = fields.map((f) => f[0]);
-    const rows = tableData.map((row) => {
-      const rowData = {};
-      fields.forEach(([displayName, fieldCode]) => {
-        rowData[displayName] = row.value?.[fieldCode]?.value || '';
-      });
-      return rowData;
-    });
-
-    return { displayNames, rows };
-  }
-
-  // ======================== PDFLib 向量繪製工具 ========================
-  const ensurePdfDeps = () => {
-    if (!window.PDFLib || !PDFDocument) throw new Error('缺少 PDFLib，請先載入 PDFLib library');
-    if (!window.fontkit) throw new Error('缺少 fontkit，請先載入 fontkit library');
-  };
-
-  const measureTextW = (font, size, text) => font.widthOfTextAtSize(String(text ?? ''), size);
-
-  const wrapTextPdf = (font, size, text, maxWidth) => {
-    const s = String(text ?? '');
-    if (!s) return [''];
-
-    const result = [];
-    // 先依換行符拆分
-    const paragraphs = s.split('\n');
-
-    for (const para of paragraphs) {
-      if (!para) {
-        result.push('');
-        continue;
-      }
-      let cur = '';
-      for (const ch of para) {
-        const test = cur + ch;
-        if (measureTextW(font, size, test) > maxWidth && cur) {
-          result.push(cur);
-          cur = ch;
-        } else {
-          cur = test;
-        }
-      }
-      if (cur) result.push(cur);
-    }
-
-    return result.length ? result : [''];
-  };
-
-  const createPager = (pdfDoc, pageW, pageH, margins) => {
-    const state = {
-      pageW,
-      pageH,
-      marginL: margins.l,
-      marginR: margins.r,
-      marginT: margins.t,
-      marginB: margins.b,
-      page: pdfDoc.addPage([pageW, pageH]),
-      y: pageH - margins.t,
-    };
-
-    state.newPage = () => {
-      state.page = pdfDoc.addPage([pageW, pageH]);
-      state.y = pageH - margins.t;
-    };
-
-    state.ensureSpace = (needH) => {
-      if (state.y - needH < state.marginB) state.newPage();
-    };
-
-    return state;
-  };
-
-  const drawCell = ({ page, x, yTop, w, h, border = true, fill = null }) => {
-    const y = yTop - h;
-    page.drawRectangle({
-      x,
-      y,
-      width: w,
-      height: h,
-      color: fill || rgb(1, 1, 1),
-      borderColor: border ? rgb(0, 0, 0) : undefined,
-      borderWidth: border ? 1 : 0,
-    });
-  };
-
-  const drawTextInCell = ({ page, font, size, x, yTop, w, h, text, align = 'left', padding = 4, color = rgb(0, 0, 0) }) => {
-    const maxW = w - padding * 2;
-    const lines = wrapTextPdf(font, size, text, maxW);
-
-    const lineH = size + 2;
-    const maxLinesByHeight = Math.max(1, Math.floor((h - padding * 2) / lineH));
-    const usedLines = lines.slice(0, maxLinesByHeight);
-
-    let y = yTop - padding - size;
-    for (const line of usedLines) {
-      const t = String(line ?? '');
-      let tx = x + padding;
-      if (align === 'center') {
-        const tw = measureTextW(font, size, t);
-        tx = x + (w - tw) / 2;
-      } else if (align === 'right') {
-        const tw = measureTextW(font, size, t);
-        tx = x + w - padding - tw;
-      }
-      page.drawText(t, { x: tx, y, size, font, color });
-      y -= lineH;
-    }
-  };
-
-  const calcRowHeight = ({ columns, colWidths, font, size, row, padding = 4, minH = 18 }) => {
-    const lineH = size + 2;
-    let maxLines = 1;
-
-    columns.forEach((c, i) => {
-      const w = colWidths[i];
-      const lines = wrapTextPdf(font, size, row[c.key], w - padding * 2);
-      maxLines = Math.max(maxLines, lines.length);
-    });
-
-    return Math.max(minH, maxLines * lineH + padding * 2);
-  };
-
-  const drawTablePdf = ({
-    pager,
-    title,
-    columns, // [{label,key,align?}]
-    rows, // array of object
-    font,
-    fontBold,
-    colWidths,
-    fontSize = 10,
-    headerSize = 10,
-    padding = 4,
-  }) => {
-    const x0 = pager.marginL;
-
-    // title
-    if (title) {
-      pager.ensureSpace(22);
-      pager.page.drawText(title, { x: x0, y: pager.y - 16, size: 14, font: fontBold });
-      pager.y -= 22;
-    }
-
-    // header
-    const headerH = 20;
-    pager.ensureSpace(headerH);
-
-    let x = x0;
-    columns.forEach((c, i) => {
-      const w = colWidths[i];
-      drawCell({ page: pager.page, x, yTop: pager.y, w, h: headerH, fill: rgb(0.97, 0.97, 0.97) });
-      drawTextInCell({
-        page: pager.page,
-        font: fontBold,
-        size: headerSize,
-        x,
-        yTop: pager.y,
-        w,
-        h: headerH,
-        text: c.label,
-        align: 'center',
-        padding,
-      });
-      x += w;
-    });
-
-    pager.y -= headerH;
-
-    // body
-    rows.forEach((row, idx) => {
-      const rowH = calcRowHeight({ columns, colWidths, font, size: fontSize, row, padding, minH: 18 });
-      pager.ensureSpace(rowH);
-
-      const fill = idx % 2 === 1 ? rgb(0.99, 0.99, 0.99) : rgb(1, 1, 1);
-
-      x = x0;
-      columns.forEach((c, i) => {
-        const w = colWidths[i];
-        drawCell({ page: pager.page, x, yTop: pager.y, w, h: rowH, fill });
-        drawTextInCell({
-          page: pager.page,
-          font,
-          size: fontSize,
-          x,
-          yTop: pager.y,
-          w,
-          h: rowH,
-          text: row[c.key],
-          align: c.align || 'left',
-          padding,
-        });
-        x += w;
-      });
-
-      pager.y -= rowH;
-    });
-
-    // table bottom spacing
-    pager.y -= 10;
-  };
-
-  // header key/value（兩欄一組）
-  const drawKeyValueGrid = ({ pager, font, fontBold, rows }) => {
-    const usableW = pager.pageW - pager.marginL - pager.marginR;
-    const x0 = pager.marginL;
-
-    // 欄寬：label / value / label / value
-    const wL = 90;
-    const wR = 90;
-    const wV1 = (usableW - wL - wR) / 2;
-    const wV2 = (usableW - wL - wR) / 2;
-    const colW = [wL, wV1, wR, wV2];
-
-    const columns = [
-      { label: '', key: 'l1', align: 'center' },
-      { label: '', key: 'v1', align: 'left' },
-      { label: '', key: 'l2', align: 'center' },
-      { label: '', key: 'v2', align: 'left' },
-    ];
-
-    // 不畫 header，直接畫 body（自己畫）
-    rows.forEach((r, idx) => {
-      const rowH = calcRowHeight({ columns, colWidths: colW, font, size: 11, row: r, padding: 4, minH: 20 });
-      pager.ensureSpace(rowH);
-
-      const yTop = pager.y;
-      let x = x0;
-
-      // label1
-      drawCell({ page: pager.page, x, yTop, w: colW[0], h: rowH, fill: rgb(0.98, 0.98, 0.98) });
-      drawTextInCell({ page: pager.page, font: fontBold, size: 11, x, yTop, w: colW[0], h: rowH, text: r.l1, align: 'center' });
-      x += colW[0];
-
-      // value1
-      drawCell({ page: pager.page, x, yTop, w: colW[1], h: rowH, fill: rgb(1, 1, 1) });
-      drawTextInCell({ page: pager.page, font, size: 11, x, yTop, w: colW[1], h: rowH, text: r.v1, align: 'left' });
-      x += colW[1];
-
-      // label2
-      drawCell({ page: pager.page, x, yTop, w: colW[2], h: rowH, fill: rgb(0.98, 0.98, 0.98) });
-      drawTextInCell({ page: pager.page, font: fontBold, size: 11, x, yTop, w: colW[2], h: rowH, text: r.l2, align: 'center' });
-      x += colW[2];
-
-      // value2
-      drawCell({ page: pager.page, x, yTop, w: colW[3], h: rowH, fill: rgb(1, 1, 1) });
-      drawTextInCell({ page: pager.page, font, size: 11, x, yTop, w: colW[3], h: rowH, text: r.v2, align: 'left' });
-
-      pager.y -= rowH;
-    });
-
-    pager.y -= 12;
-  };
-
-  // ======================== PDF 表頭（請款單主表欄位）========================
-  const PDF_TITLE = '交通費請款單';
-
-  const fmtDate = (d) => (d ? String(d).split('T')[0] : '');
-
-  // USER_SELECT／ORGANIZATION_SELECT 是 [{code,name}]，取顯示名稱串接
-  const namesOf = (field) =>
-    Array.isArray(field?.value)
-      ? field.value
-          .map((o) => o.name)
-          .filter(Boolean)
-          .join(', ')
-      : '';
-
-  // 表頭兩欄一組：[標籤1, 值1, 標籤2, 值2]
-  const buildHeaderRows = (record) => {
-    const get = (code) => record[code]?.value ?? '';
-    const text = (code) => {
-      const v = get(code);
-      return Array.isArray(v) ? v.join(', ') : v;
-    };
-    return [
-      { l1: '交通費請款單號', v1: get(F.RECORD_NO), l2: '請款日期', v2: fmtDate(get(F.PAYMENT_DATE)) },
-      { l1: '公司名稱', v1: get(F.COMPANY_NAME), l2: '預計付款日', v2: fmtDate(get(F.EXPECTED_PAY_DATE)) },
-      { l1: '申請人', v1: namesOf(record[F.APPLICANT]), l2: '申請部門', v2: namesOf(record[F.APPLICANT_ORG]) },
-      { l1: '費用所屬人', v1: namesOf(record[F.EXPENSE_OWNER]), l2: '費用所屬人部門', v2: namesOf(record[F.EXPENSE_OWNER_ORG]) },
-      { l1: '受款人', v1: get(F.PAYEE), l2: '付款方式', v2: text(F.PAY_METHOD) },
-      { l1: '傳票編號', v1: get(F.VOUCHER_NO), l2: '傳票日期', v2: fmtDate(get(F.VOUCHER_DATE)) },
-      { l1: '是否有紙本憑證', v1: get(F.PAPER_RECEIPT), l2: '理由', v2: get(F.REASON) },
-    ];
-  };
-
-  // ======================== 附件接在 PDF 後面 ========================
-  /**
-   * 附件能不能放進 PDF：'pdf'＝整份頁面接上；'jpg'／'png'＝一張圖一頁；null＝不支援（Word、Excel…，略過）
-   * @param {{name?: string, contentType?: string}} file kintone 附件欄位的一個檔案
-   */
-  const attachmentKind = (file) => {
-    const type = String(file?.contentType || '').toLowerCase();
-    const ext = (String(file?.name || '').toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1] || '';
-    if (type === 'application/pdf' || ext === 'pdf') return 'pdf';
-    if (type === 'image/jpeg' || ext === 'jpg' || ext === 'jpeg') return 'jpg';
-    if (type === 'image/png' || ext === 'png') return 'png';
-    return null;
-  };
-
-  /**
-   * 把記錄「附件」欄位的檔案依序接在 pdfDoc 後面。
-   * @returns {Promise<string[]>} 沒接上的檔名（不支援的格式或讀取失敗）
-   */
-  const appendAttachments = async (pdfDoc, record) => {
-    const skipped = [];
-    const files = record[F.ATTACHMENT]?.value || [];
-    for (const file of files) {
-      const kind = attachmentKind(file);
-      if (!kind) {
-        skipped.push(file.name);
-        continue;
-      }
-      try {
-        const bytes = await (await secureFileDownload(file.fileKey)).arrayBuffer();
-        if (kind === 'pdf') {
-          const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
-          const pages = await pdfDoc.copyPages(src, src.getPageIndices());
-          pages.forEach((p) => pdfDoc.addPage(p));
-        } else {
-          const img = kind === 'jpg' ? await pdfDoc.embedJpg(bytes) : await pdfDoc.embedPng(bytes);
-          // A4，依圖片方向選直式／橫式，等比例縮到邊界內、置中
-          const [w, h] = img.width > img.height ? [841.89, 595.28] : [595.28, 841.89];
-          const margin = 24;
-          const scale = Math.min((w - margin * 2) / img.width, (h - margin * 2) / img.height, 1);
-          const dw = img.width * scale;
-          const dh = img.height * scale;
-          const page = pdfDoc.addPage([w, h]);
-          page.drawImage(img, { x: (w - dw) / 2, y: (h - dh) / 2, width: dw, height: dh });
-        }
-      } catch (e) {
-        console.error(`[PDF] 附件接上失敗：${file.name}`, e);
-        skipped.push(file.name);
-      }
-    }
-    return skipped;
-  };
-
-  // ======================== PDF 生成（PDFLib 向量）========================
-  /** 新的 PDF 文件＋嵌入字型（subset=true：檔案會小很多）。批次列印整份只嵌一次。 */
-  const createPdfWithFont = async () => {
-    ensurePdfDeps();
-    const fontBuffer = await fetchFontFromKintone();
-    const pdfDoc = await PDFDocument.create();
-    pdfDoc.registerFontkit(window.fontkit);
-    const font = await pdfDoc.embedFont(fontBuffer, { subset: true });
-    return { pdfDoc, font };
-  };
-
-  /**
-   * 把一筆記錄（明細頁＋附件頁）直接畫進 pdfDoc；批次列印共用同一份文件，不用先存檔再讀回來合併。
-   * @returns {Promise<string[]>} 沒接上的附件檔名
-   */
-  const drawRecordInto = async (pdfDoc, font, record, id) => {
-    const fontBold = font; // 若有粗體字型檔可另 embed
-
-    // A4 landscape (points)
-    const pageW = 841.89;
-    const pageH = 595.28;
-    const pager = createPager(pdfDoc, pageW, pageH, { l: 24, r: 24, t: 24, b: 24 });
-
-    // 標題 + 可點擊連結
-    const appId = kintone.app.getId();
-    const detailUrl = `${location.origin}/k/${appId}/show#record=${id}`;
-
-    // 繪製「交通費請款單」標題
-    pager.page.drawText(PDF_TITLE, {
-      x: pager.marginL,
-      y: pager.y - 22,
-      size: 18,
-      font: fontBold,
-      color: rgb(0, 0, 0),
-    });
-
-    // 計算連結文字位置
-    const titleWidth = fontBold.widthOfTextAtSize(PDF_TITLE, 18);
-    const linkText = '[LINK點選查詢]';
-    const linkFontSize = 10;
-    const linkX = pager.marginL + titleWidth + 10;
-    const linkY = pager.y - 20;
-    const linkWidth = font.widthOfTextAtSize(linkText, linkFontSize);
-    const linkHeight = linkFontSize;
-
-    // 繪製連結文字（藍色）
-    pager.page.drawText(linkText, {
-      x: linkX,
-      y: linkY,
-      size: linkFontSize,
-      font: font,
-      color: rgb(0, 0.4, 0.8),
-    });
-
-    // 加入可點擊的連結註解
-    pager.page.node.addAnnot(
-      pdfDoc.context.obj({
-        Type: 'Annot',
-        Subtype: 'Link',
-        Rect: [linkX, linkY - 2, linkX + linkWidth, linkY + linkHeight],
-        Border: [0, 0, 0],
-        A: {
-          Type: 'Action',
-          S: 'URI',
-          URI: PDFLib.PDFString.of(detailUrl),
-        },
-      }),
-    );
-
-    pager.y -= 34;
-
-    // Header key/value
-    const headerRows = buildHeaderRows(record);
-
-    drawKeyValueGrid({ pager, font, fontBold, rows: headerRows });
-
-    // 明細
-    const tableData = getTableData(record);
-    const displayNames = tableData?.displayNames || [];
-    const detailColumns = displayNames.map((name) => ({
-      label: name,
-      key: name,
-      align: NUMERIC_COLUMNS.includes(name) ? 'right' : 'left',
-    }));
-
-    const detailRows = (tableData?.rows || []).map((r) => {
-      const row = {};
-      displayNames.forEach((k) => {
-        const v = r[k] || '';
-        row[k] = NUMERIC_COLUMNS.includes(k) ? formatNumber(v) : v;
-      });
-      return row;
-    });
-
-    const detailColW = (() => {
-      const n = Math.max(detailColumns.length, 1);
-      const w = (pager.pageW - pager.marginL - pager.marginR) / n;
-      return Array.from({ length: n }, () => w);
-    })();
-
-    drawTablePdf({
-      pager,
-      title: '明細',
-      columns: detailColumns.length ? detailColumns : [{ label: '無明細', key: 'x', align: 'center' }],
-      rows: detailRows.length ? detailRows : [{ ...detailColumns.reduce((a, c) => ((a[c.key] = ''), a), {}) }],
-      font,
-      fontBold,
-      colWidths: detailColumns.length ? detailColW : [pager.pageW - pager.marginL - pager.marginR],
-      fontSize: 10,
-      headerSize: 10,
-    });
-
-    // 簽核記錄
-    const signTbl = record[F.SIGN_TABLE.CODE];
-    const signRows = (signTbl?.value || []).map((row) => {
-      const v = row.value;
-      return {
-        dt: v[F.SIGN_TABLE.COLS.DATETIME]?.value?.split('T')[0] || '',
-        act: v[F.SIGN_TABLE.COLS.ACTION]?.value || '',
-        who: v[F.SIGN_TABLE.COLS.SIGNER]?.value?.[0]?.name || '',
-      };
-    });
-
-    drawTablePdf({
-      pager,
-      title: F.SIGN_TABLE.CODE,
-      columns: [
-        { label: '日期與時間', key: 'dt', align: 'center' },
-        { label: '動作', key: 'act', align: 'center' },
-        { label: '簽核人員', key: 'who', align: 'center' },
-      ],
-      rows: signRows.length ? signRows : [{ dt: '無簽核資料', act: '', who: '' }],
-      font,
-      fontBold,
-      colWidths: [160, 160, pager.pageW - pager.marginL - pager.marginR - 320],
-      fontSize: 10,
-      headerSize: 10,
-    });
-
-    const footer = `記錄編號：${id}  列印時間：${formatDateTime(new Date())}`;
-
-    pager.page.drawText(footer, {
-      x: pager.marginL,
-      y: 10,
-      size: 8,
-      font,
-      color: rgb(0.35, 0.35, 0.35),
-    });
-
-    return appendAttachments(pdfDoc, record);
-  };
-
-  // 單筆：回傳 { blob, skipped }；skipped＝沒接上的附件檔名
-  const generateRecordPDF = async (record, id) => {
-    const { pdfDoc, font } = await createPdfWithFont();
-    const skipped = await drawRecordInto(pdfDoc, font, record, id);
-    const bytes = await pdfDoc.save();
-    return { blob: new Blob([bytes], { type: 'application/pdf' }), skipped };
-  };
-
-  // ======================== 取得單筆記錄 ========================
-  const fetchRecord = async (app, id) => {
-    window.PR_LOG.debug(`[PDF Batch] API call to fetch record: App=${app}, ID=${id}`);
-    const resp = await kintone.api(kintone.api.url('/k/v1/record', true), 'GET', { app, id: String(id) });
-    window.PR_LOG.debug(`[PDF Batch] Fetch record response status:`, resp ? 'success' : 'failed');
-    return resp.record;
-  };
-
-  // ======================== 批次下載附件（保留原功能；截圖 png 不影響 UI）========================
-  function createSecureLoadingOverlay() {
-    const loadingOverlay = document.createElement('div');
-    loadingOverlay.className = 'loading-overlay';
-
-    const loadingMessage = document.createElement('div');
-    loadingMessage.className = 'loading-message';
-    loadingMessage.innerHTML = `
-      <button class="close-button" id="close-button" title="關閉視窗">×</button>
-      <h3>📦 批次下載</h3>
-      <p>正在下載附件並打包...</p>
-      <div class="progress-bar">
-        <div class="progress-bar-fill" id="progress-fill"></div>
-      </div>
-      <div class="result-message" id="result-message">準備中...</div>
-    `;
-    loadingOverlay.appendChild(loadingMessage);
-    document.body.appendChild(loadingOverlay);
-  }
-
-  function updateProgress(percentage) {
-    const progressFill = document.getElementById('progress-fill');
-    if (progressFill) progressFill.style.width = `${Math.min(100, Math.max(0, percentage))}%`;
-  }
-
-  const RESULT_TYPES = ['error', 'warning', 'success'];
-
-  function updateResultMessage(message, type) {
-    const el = document.getElementById('result-message');
-    if (!el) return;
-    el.textContent = message;
-    // 顏色在 payment_request.css（.result-message.pr-result--error／warning／success）
-    el.classList.remove('pr-result--error', 'pr-result--warning', 'pr-result--success');
-    if (RESULT_TYPES.includes(type)) el.classList.add(`pr-result--${type}`);
-  }
-
-  function showCloseButton() {
-    const closeButton = document.getElementById('close-button');
-    if (!closeButton) return;
-    closeButton.classList.add('show');
-    closeButton.onclick = function () {
-      const loadingOverlay = document.querySelector('.loading-overlay');
-      if (loadingOverlay) document.body.removeChild(loadingOverlay);
-    };
-  }
-
-  /** 壓縮檔裡的下載清單：記錄、附件合計、下載失敗的附件 */
-  function generateDownloadReport(records, totalBytes, failed) {
-    const failNote = failed.length ? `\n下載失敗的附件:\n${failed.join('\n')}\n` : '';
-    return `kintone 批次下載清單
-==========================================
-
-下載時間: ${new Date().toLocaleString()}
-處理記錄數: ${records.length}
-附件合計（壓縮前）: ${formatMB(totalBytes)}
-
-記錄清單:
-${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value}`).join('\n')}
-${failNote}==========================================`;
-  }
-
-  // （附件+截圖。）
-  async function generateRecordSummaryImage(record) {
-    // 這段維持你原本 canvas 摘要圖邏輯（為了完整可用），簡化版：不畫明細表格，只列摘要 + 附件清單
-    return new Promise((resolve) => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 1800;
-        canvas.height = 1200;
-        const ctx = canvas.getContext('2d');
-
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        ctx.fillStyle = '#000000';
-        ctx.font = 'bold 28px Arial';
-        ctx.fillText('記錄摘要', 40, 60);
-
-        let y = 110;
-        const recordNumber = record[F.RECORD_NO]?.value || record.$id.value;
-        const status = record[F.STATUS_FIELD]?.value || '未設定';
-        const requestDate = record[F.PAYMENT_DATE]?.value || '未填寫';
-        const applicant = namesOf(record[F.APPLICANT]) || '未填寫';
-        const expenseOwner = namesOf(record[F.EXPENSE_OWNER]) || '未填寫';
-        const paymentMethod = (record[F.PAY_METHOD]?.value || []).join(', ') || '未填寫';
-
-        ctx.font = 'bold 18px Arial';
-        ctx.fillText(`記錄號碼: ${recordNumber}`, 40, y);
-        ctx.fillText(`請款日期: ${requestDate}`, 400, y);
-        y += 30;
-        ctx.fillText(`申請人: ${applicant}`, 40, y);
-        ctx.fillText(`費用所屬人: ${expenseOwner}`, 400, y);
-        y += 30;
-        ctx.fillText(`狀態: ${status}`, 40, y);
-        ctx.fillText(`付款方式: ${paymentMethod}`, 400, y);
-        y += 40;
-
-        const att = record[F.ATTACHMENT]?.value || [];
-        if (att.length) {
-          ctx.font = 'bold 18px Arial';
-          ctx.fillText('附件清單：', 40, y);
-          y += 30;
-          ctx.font = '14px Arial';
-          att.forEach((f, i) => {
-            ctx.fillText(`${i + 1}. ${f.name}`, 60, y);
-            y += 24;
-          });
-        }
-
-        canvas.toBlob((blob) => resolve(blob), 'image/png', 1.0);
-      } catch (e) {
-        console.error('生成摘要圖失敗:', e);
-        resolve(null);
-      }
-    });
-  }
-
-  async function handleSecureBatchDownload() {
-    try {
-      const JSZip = window.JSZip;
-      if (!JSZip) throw new Error('JSZip 未載入，請確認自定義 library 已加入');
-
-      const recordIds = readRecordIdsFromUI();
-      const currentAppId = kintone.app.getId();
-      const byId = await fetchRecordsByIds(currentAppId, recordIds, [
-        '$id', F.RECORD_NO, F.ATTACHMENT, F.STATUS_FIELD, F.PAYMENT_DATE, F.APPLICANT, F.EXPENSE_OWNER, F.PAY_METHOD,
-      ]);
-      const records = recordIds.map((id) => byId.get(id)).filter(Boolean);
-      if (!records.length) throw new Error('找不到指定的記錄，請檢查記錄號碼是否正確');
-
-      // 壓縮檔整包在記憶體裡產生：開始前先擋附件合計太大的情況
-      const totalBytes = attachmentBytes(records);
-      if (totalBytes > LIMITS.maxZipBytes) {
-        throw new Error(`附件合計約 ${formatMB(totalBytes)}，超過單次上限 ${formatMB(LIMITS.maxZipBytes)}，請縮小範圍分批下載`);
-      }
-      const missing = recordIds.length - records.length;
-      const missingNote = missing ? `\n（有 ${missing} 筆找不到或沒有權限，會略過）` : '';
-      // 同請購庶務：先確認再開進度視窗
-      if (!(await askConfirm(`確定要批次下載 ${records.length} 筆記錄的附件+截圖嗎？\n附件合計約 ${formatMB(totalBytes)}${missingNote}`))) return;
-      createSecureLoadingOverlay();
-
-      const today = new Date();
-      const dateString = today.getFullYear() + String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
-      const mainFolderName = `${dateString}_${DOWNLOAD_FOLDER_NAME}`;
-      const zip = new JSZip();
-
-      const includeScreenshot = true;
-      let processed = 0;
-      let zippedBytes = 0;
-      const failed = [];
-
-      for (const record of records) {
-        const recordNumber = safeFileName(record[F.RECORD_NO]?.value || record.$id.value);
-        const subFolderName = `記錄${recordNumber}`;
-
-        updateResultMessage(`處理記錄 ${recordNumber}...`);
-
-        // 附件
-        const attachments = record[F.ATTACHMENT]?.value || [];
-        for (const attachment of attachments) {
-          const safeName = safeFileName(attachment.name);
-          if (!safeName) continue;
-          let fileBlob;
-          try {
-            fileBlob = await secureFileDownload(attachment.fileKey);
-          } catch (error) {
-            console.error(`下載附件失敗: ${attachment.name}`, error);
-            failed.push(`記錄 ${recordNumber}：${attachment.name}（${error.message}）`);
-            updateResultMessage(`❌ 下載失敗: ${attachment.name} (${error.message})`);
-            continue;
-          }
-          // 欄位上的 size 跟實際不符時的第二道防線：實際下載量也不能超過上限
-          zippedBytes += fileBlob.size;
-          if (zippedBytes > LIMITS.maxZipBytes) {
-            throw new Error(`附件合計超過單次上限 ${formatMB(LIMITS.maxZipBytes)}，請縮小範圍分批下載`);
-          }
-          zip.file(`${subFolderName}/${recordNumber}－${safeName}`, fileBlob);
-          updateResultMessage(`✅ 已下載: ${safeName}`);
-        }
-
-        // 摘要圖
-        if (includeScreenshot) {
-          const summaryImage = await generateRecordSummaryImage(record);
-          if (summaryImage) zip.file(`${subFolderName}/記錄${recordNumber}_摘要資訊.png`, summaryImage);
-        }
-
-        processed++;
-        updateProgress(Math.floor((processed / records.length) * 80));
-      }
-
-      zip.file('下載清單.txt', generateDownloadReport(records, zippedBytes, failed));
-
-      updateResultMessage('打包中...');
-      updateProgress(90);
-
-      const zipBlob = await zip.generateAsync({
-        type: 'blob',
-        compression: 'DEFLATE',
-        compressionOptions: { level: 6 },
-      });
-
-      const url = window.URL.createObjectURL(zipBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${mainFolderName}.zip`;
-      link.rel = 'noopener noreferrer';
-
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      updateProgress(100);
-      if (failed.length) {
-        updateResultMessage(`⚠️ 下載完成，但有 ${failed.length} 個附件下載失敗（清單也在壓縮檔的「下載清單.txt」）：\n${failed.join('\n')}`, 'warning');
-      } else {
-        updateResultMessage('🎉 下載完成！', 'success');
-      }
-      showCloseButton();
-    } catch (error) {
-      console.error('批次下載過程發生錯誤:', error);
-      // 進度視窗還沒建立（輸入驗證階段）：沒地方顯示結果，改跳視窗提示（原本按了看起來沒反應）
-      if (!document.getElementById('result-message')) {
-        notify(error.message, 'warning');
-      } else {
-        updateResultMessage(`❌ 錯誤: ${error.message}`, 'error');
-        showCloseButton();
-      }
-    }
-  }
-
-  // ======================== 提示視窗（全域 SweetAlert，寬度自動）========================
-  /** 取代瀏覽器的 alert；icon: 'info'|'warning'|'error'|'success'。載不到 SweetAlert 才退回 alert */
-  function notify(text, icon = 'info') {
-    if (typeof Swal === 'undefined') {
-      alert(text);
-      return Promise.resolve();
-    }
-    return Swal.fire({ icon, text, width: 'auto', confirmButtonText: '好', customClass: { htmlContainer: 'pr-notice-text' } });
-  }
-
-  /** 取代瀏覽器的 confirm；回傳 true／false。載不到 SweetAlert 才退回 confirm */
-  async function askConfirm(text) {
-    if (typeof Swal === 'undefined') return confirm(text);
-    const result = await Swal.fire({ icon: 'question', text, width: 'auto', showCancelButton: true, confirmButtonText: '確定', cancelButtonText: '取消', customClass: { htmlContainer: 'pr-notice-text' } });
-    return result.isConfirmed;
-  }
-
-  // ======================== 批次列印 PDF（PDFLib 版）========================
-  async function handleBatchPrintPDF() {
-    try {
-      let recordIds;
-      try {
-        recordIds = readRecordIdsFromUI();
-      } catch (inputError) {
-        return notify(inputError.message, 'warning');
-      }
-      if (!(await askConfirm(`確定要批次列印 ${recordIds.length} 筆記錄嗎？`))) return;
-      await performBatchPrintPDF(recordIds);
-    } catch (error) {
-      console.error('批次列印失敗:', error);
-      await notify('批次列印失敗：' + error.message, 'error');
-    }
-  }
-
-  async function performBatchPrintPDF(recordIds) {
-    window.PR_LOG.debug('[PDF Batch] Starting performBatchPrintPDF with record IDs:', recordIds);
-    ensurePdfDeps();
-    createLoadingOverlay();
-    const appId = kintone.app.getId();
-    let processed = 0;
-    const failed = [];
-    const skippedAll = [];
-
-    try {
-      // 全部畫進同一份 PDF：明細＋附件＋明細＋附件…（依輸入的記錄順序）；字型只嵌一次、整份只存一次
-      const { pdfDoc: merged, font } = await createPdfWithFont();
-      // 記錄一次查回來（每 100 筆一次），不再一筆一筆查
-      updateResultMessage('讀取記錄...', 'info');
-      const byId = await fetchRecordsByIds(appId, recordIds);
-
-      for (const recordId of recordIds) {
-        window.PR_LOG.debug(`[PDF Batch] Start processing record: ${recordId}`);
-        updateResultMessage(`處理記錄 ${recordId}...`, 'info');
-        updateProgress((processed / recordIds.length) * 100);
-
-        const before = merged.getPageCount();
-        try {
-          const record = byId.get(recordId);
-          if (!record) throw new Error('找不到記錄（可能已刪除或沒有權限）');
-          const skipped = await drawRecordInto(merged, font, record, recordId);
-          skipped.forEach((name) => skippedAll.push(`記錄 ${recordId}：${name}`));
-          processed++;
-          window.PR_LOG.debug(`[PDF Batch] Added record ${recordId} (${merged.getPageCount() - before} pages) to merged PDF.`);
-        } catch (recordError) {
-          console.error(`[PDF Batch] 記錄 ${recordId} 處理失敗:`, recordError);
-          const errMsg = recordError.message || (typeof recordError === 'object' ? JSON.stringify(recordError) : String(recordError));
-          failed.push({ id: recordId, message: errMsg });
-          // 畫到一半失敗：拿掉這筆已加進去的頁，失敗的記錄不放進 PDF
-          while (merged.getPageCount() > before) merged.removePage(merged.getPageCount() - 1);
-        }
-
-      }
-
-      window.PR_LOG.debug(`[PDF Batch] Loop completed. Success = ${processed}, Failed = ${failed.length}`);
-      if (!processed) throw new Error(`全部 ${failed.length} 筆都失敗：\n${failed.map((f) => `記錄 ${f.id}：${f.message}`).join('\n')}`);
-
-      updateResultMessage('正在合併 PDF 檔案...', 'info');
-      updateProgress(95);
-
-      const mergedBytes = await merged.save();
-      saveAs(new Blob([mergedBytes], { type: 'application/pdf' }), `批次列印_${formatDateTime(new Date())}.pdf`);
-
-      updateProgress(100);
-      const skipNote = skippedAll.length ? `\n\n以下附件不是 PDF／圖片或讀取失敗，沒有放進 PDF：\n${skippedAll.join('\n')}` : '';
-      if (failed.length) {
-        const failDetail = failed.map((f) => `記錄 ${f.id}：${f.message}`).join('\n');
-        console.warn('[PDF Batch] Completed with failures:', failDetail);
-        updateResultMessage(`⚠️ 完成，但有 ${failed.length} 筆失敗（未包含在 PDF 內）：\n${failDetail}\n\n成功 ${processed} 筆${skipNote}`, 'warning');
-      } else if (skippedAll.length) {
-        updateResultMessage(`⚠️ 列印完成，共 ${processed} 筆記錄${skipNote}`, 'warning');
-      } else {
-        window.PR_LOG.debug('[PDF Batch] All files printed and downloaded successfully.');
-        updateResultMessage(`✅ 列印完成！共處理 ${processed} 筆記錄`, 'success');
-      }
-      showCloseButton();
-    } catch (error) {
-      console.error('[PDF Batch] 批次列印過程發生致命錯誤:', error);
-      updateResultMessage('批次列印失敗：' + error.message, 'error');
-      showCloseButton();
-    }
-  }
-
-  const generatePDFFileName = (record, id) => {
-    let company = record[F.COMPANY_NAME]?.value?.trim() || '';
-    company = company?.startsWith('ＮＸ') ? 'NX' : '聯海';
-    // 受款人欄位資料可能夾雜 Tab／換行等控制字元（例如「代號\t姓名」格式），
-    // 這類字元 Windows 檔名不允許，會讓解壓縮工具跳過該檔案而誤以為 ZIP 是空的
-    const payName = (record[F.PAYEE]?.value || '').replace(/[\t\n\r]+/g, ' ').trim();
-    return safeFileName(`交通費請款單${id}_${company}(${payName}).pdf`);
-  };
-
-  // ======================== UI（維持原樣）========================
-  function createLoadingOverlay() {
-    const overlay = document.createElement('div');
-    overlay.className = 'loading-overlay';
-    overlay.id = 'batch-download-overlay';
-    overlay.innerHTML = `
-      <div class="loading-message">
-        <button id="close-button" class="close-button">✕</button>
-        <div class="pr-loading-title">處理中...</div>
-        <div class="progress-bar"><div id="progress-fill" class="progress-bar-fill"></div></div>
-        <div id="result-message" class="result-message">準備中...</div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-    return overlay;
-  }
-
-  /**
-   * 「🗂 批次動作 ▾」下拉選單（樣式 .pr-export-menu*，同請購庶務請款單）。
-   * 結構：<span.pr-export-menu> ├ <button#batch-actions-button> └ <div.pr-export-menu__panel hidden> 數個 <button.pr-export-menu__item>
-   */
-  function buildActionsMenu(items) {
-    const root = document.createElement('span');
-    root.className = 'pr-export-menu';
-
-    const trigger = document.createElement('button');
-    trigger.type = 'button';
-    trigger.id = 'batch-actions-button';
-    trigger.className = 'batch-print-button pr-export-menu__trigger';
-    trigger.setAttribute('aria-haspopup', 'menu');
-    trigger.setAttribute('aria-expanded', 'false');
-    trigger.textContent = '🗂 批次動作';
-    const caret = document.createElement('span');
-    caret.className = 'pr-export-menu__caret';
-    caret.textContent = '▾';
-    trigger.appendChild(caret);
-
-    const panel = document.createElement('div');
-    panel.className = 'pr-export-menu__panel';
-    panel.setAttribute('role', 'menu');
-    panel.hidden = true;
-    root.append(trigger, panel);
-
-    const isOpen = () => !panel.hidden;
-    const setOpen = (open) => {
-      panel.hidden = !open;
-      root.classList.toggle('is-open', open);
-      trigger.setAttribute('aria-expanded', String(open));
-    };
-
-    items.forEach((item) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'pr-export-menu__item';
-      btn.setAttribute('role', 'menuitem');
-      const title = document.createElement('span');
-      title.className = 'pr-export-menu__title';
-      title.textContent = item.title;
-      const desc = document.createElement('span');
-      desc.className = 'pr-export-menu__desc';
-      desc.textContent = item.desc;
-      btn.append(title, desc);
-      btn.addEventListener('click', () => {
-        setOpen(false);
-        Promise.resolve(item.handler()).catch((e) => console.error(`[${item.title}] 執行失敗`, e));
-      });
-      panel.appendChild(btn);
-    });
-
-    trigger.addEventListener('click', () => setOpen(!isOpen()));
-    // 點選單外面、按 Esc、捲動、改視窗大小都收起
-    document.addEventListener('click', (e) => {
-      if (isOpen() && !root.contains(e.target)) setOpen(false);
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && isOpen()) {
-        setOpen(false);
-        trigger.focus();
-      }
-    });
-    const closeOnMove = () => {
-      if (isOpen()) setOpen(false);
-    };
-    document.addEventListener('scroll', closeOnMove, true);
-    window.addEventListener('resize', closeOnMove);
-
-    return root;
-  }
-
-  async function initUI() {
-    try {
-      const headerMenuSpace = kintone.app.getHeaderMenuSpaceElement();
-      if (!headerMenuSpace) throw new Error('找不到標頭菜單空間');
-
-      // 樣式在 payment_request.css（批次下載／列印按鈕、處理中視窗）
-
-      // 容器
-      const container = document.createElement('div');
-      container.id = 'batch-download-container';
-
-      // 範圍輸入群組
-      const rangeGroup = document.createElement('div');
-      rangeGroup.className = 'range-input-group';
-
-      // 輸入模式選擇
-      const modeSelector = document.createElement('div');
-      modeSelector.className = 'input-mode-selector';
-
-      const rangeMode = document.createElement('label');
-      rangeMode.innerHTML = `
-        <input type="radio" name="input-mode" value="range" checked>
-        連續範圍（例如：1 到 10）
-      `;
-
-      const specificMode = document.createElement('label');
-      specificMode.innerHTML = `
-        <input type="radio" name="input-mode" value="specific">
-        指定多筆（例如：20,40,42,48,56）
-      `;
-
-      modeSelector.appendChild(rangeMode);
-      modeSelector.appendChild(specificMode);
-
-      // 範圍輸入
-      const rangeInputs = document.createElement('div');
-      rangeInputs.className = 'range-inputs';
-
-      const startLabel = document.createElement('span');
-      startLabel.className = 'range-input-label';
-      startLabel.textContent = '請輸入要下載的記錄號碼範圍：';
-
-      const startInput = document.createElement('input');
-      startInput.type = 'number';
-      startInput.id = 'range-start';
-      startInput.className = 'range-input';
-      startInput.placeholder = '開始號碼';
-      startInput.min = 1;
-
-      const separator = document.createElement('span');
-      separator.className = 'range-input-separator';
-      separator.textContent = '到';
-
-      const endInput = document.createElement('input');
-      endInput.type = 'number';
-      endInput.id = 'range-end';
-      endInput.className = 'range-input';
-      endInput.placeholder = '結束號碼';
-      endInput.min = 1;
-
-      rangeInputs.appendChild(startLabel);
-      rangeInputs.appendChild(startInput);
-      rangeInputs.appendChild(separator);
-      rangeInputs.appendChild(endInput);
-
-      // 指定輸入
-      const specificInputs = document.createElement('div');
-      specificInputs.className = 'specific-input';
-      specificInputs.id = 'specific-inputs';
-
-      const specificLabel = document.createElement('span');
-      specificLabel.className = 'range-input-label';
-      specificLabel.textContent = '請輸入要下載的記錄號碼（用逗號分隔）：';
-
-      const specificInput = document.createElement('input');
-      specificInput.type = 'text';
-      specificInput.id = 'specific-records';
-      specificInput.className = 'specific-records-input';
-      specificInput.placeholder = '例如：20,40,42,48,56';
-
-      specificInputs.appendChild(specificLabel);
-      specificInputs.appendChild(specificInput);
-
-      // 模式切換事件
-      const modeRadios = modeSelector.querySelectorAll('input[name="input-mode"]');
-      modeRadios.forEach((radio) => {
-        radio.addEventListener('change', function () {
-          // 顯示哪一組輸入框由 payment_request.css 依 .pr-mode-specific 決定
-          rangeGroup.classList.toggle('pr-mode-specific', this.value !== 'range');
-        });
-      });
-
-      // 按鈕容器（水平並排）
-      const buttonsContainer = document.createElement('div');
-      buttonsContainer.className = 'buttons-container';
-
-      // Excel 資料轉出按鈕：交通費只有一種轉出，直接點就執行（click 由 批次整理資料.js 綁定）
-      const organizeButton = document.createElement('button');
-      organizeButton.id = 'batch-organize-button';
-      organizeButton.className = 'batch-print-button';
-      organizeButton.textContent = '📊 Excel資料轉出';
-      buttonsContainer.appendChild(organizeButton);
-
-      // 「🗂 批次動作 ▾」下拉選單：批次列印PDF、批次下載附件+截圖（同請購庶務請款單）
-      buttonsContainer.appendChild(
-        buildActionsMenu([
-          { title: '📄 批次列印交通費請款單PDF', desc: '依照輸入的記錄範圍，產生請款單 PDF', handler: handleBatchPrintPDF },
-          { title: '📦 批次下載附件+截圖', desc: '依照輸入的記錄範圍，打包下載附件與截圖', handler: handleSecureBatchDownload },
-          {
-            title: '📋 批次填傳票／入帳完成',
-            desc: '補填傳票編號、傳票日期，並執行「入帳完成」的簽核',
-            // 批次填傳票_入帳完成.js；點擊時才取，不受載入順序影響
-            handler: () => (window.PR_BATCH_VOUCHER ? window.PR_BATCH_VOUCHER.openDialog() : notify('批次填傳票功能尚未載入，請重新整理頁面後再試', 'error')),
-          },
-        ])
-      );
-
-      // 組裝 UI
-      rangeGroup.appendChild(modeSelector);
-      rangeGroup.appendChild(rangeInputs);
-      rangeGroup.appendChild(specificInputs);
-
-      container.appendChild(rangeGroup);
-      container.appendChild(buttonsContainer);
-      headerMenuSpace.appendChild(container);
-    } catch (error) {
-      console.error('初始化失敗:', error);
-      notify('無法在當前環境中啟用批次功能', 'error');
-    }
-  }
-
-  window.PR_BATCH_PDF = Object.freeze({ TABLE_CONFIG, NUMERIC_COLUMNS, LIMITS, getTableData, buildHeaderRows, generatePDFFileName, attachmentKind, appendAttachments, safeFileName, attachmentBytes, fetchRecordsByIds });
 
   // ======================== 事件註冊（依你的要求放最下方）========================
   window.PR_KT.on('app.record.index.show', function (event) {
@@ -1356,4 +1359,4 @@ ${failNote}==========================================`;
 
     return event;
   });
-})();
+};

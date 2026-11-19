@@ -7,6 +7,10 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
+const { loadInto } = require('./lib/esm_loader.cjs');
+const { stubSigningDeps } = require('./lib/signing_deps.cjs');
+/** 簽核人員相依模組的替身（見 tests/lib/signing_deps.cjs） */
+let deps;
 
 const rootDir = path.join(__dirname, '..');
 const readSrc = (name) => fs.readFileSync(path.join(rootDir, name), 'utf8');
@@ -79,10 +83,10 @@ const loadSigning = () => {
   // eslint-disable-next-line no-eval
   eval(readSrc('payment_request_config.js'));
   env.C = global.window.PR_CONFIG;
-  // eslint-disable-next-line no-eval
-  eval(readSrc('費用歸屬部門限制.js'));
-  // eslint-disable-next-line no-eval
-  eval(readSrc('signing_personnel_manager.js'));
+  // 簽核人員 import 的其他模組：預設「沒載入」的替身，測試中途用 deps.set／deps.reset 換
+  deps = stubSigningDeps(null, { real: ['費用歸屬部門限制.js'] });
+  loadInto(null, '費用歸屬部門限制.js');
+  loadInto(null, 'signing_personnel_manager.js');
   const ACC = env.C.REF_FIELDS.ACCOUNTING_MAP;
   env.accountingRecord = { [ACC.APPLY_UNIT]: { value: 'U' }, [ACC.ACCOUNTING_UNIT]: { value: 'ACC_TPE' }, [ACC.ACCOUNTING_STAFF]: { value: [] }, [ACC.PERMISSION_USER]: { value: [] } };
   return { env, handlers };
@@ -177,11 +181,11 @@ const manualOn = () => env.live[F.MANUAL_FLOW].value.length > 0;
 
   await check('排除群組的申請人新增：不自動勾手動設定簽核流程，照簽核流程主檔排人（要用再自己勾）', async () => {
     env.groups = { APPLICANT: ['費用歸屬不限部門'] };
-    global.window.PR_COST_SCOPE._reset(); // 模擬重新開頁（同一申請人的群組結果會快取）
+    loadInto(null, '費用歸屬部門限制.js', { install: false }).COST_SCOPE._reset(); // 模擬重新開頁（同一申請人的群組結果會快取）
     const enterCalls = [];
-    global.window.PR_MANUAL_SIGNERS = { signersOf: () => [null, null, null], enter: (r, opts) => enterCalls.push(opts), leave: () => {} };
+    deps.set('MANUAL_SIGNERS', { signersOf: () => [null, null, null], enter: (r, opts) => enterCalls.push(opts), leave: () => {} });
     await run({ orgName: NAME, title: '一般', eventType: CREATE });
-    delete global.window.PR_MANUAL_SIGNERS;
+    deps.reset('MANUAL_SIGNERS');
     assert.strictEqual(manualOn(), false);
     assert.deepStrictEqual(enterCalls, []);
     assert.deepStrictEqual(filledSlots(), SLOTS);
@@ -190,11 +194,11 @@ const manualOn = () => env.live[F.MANUAL_FLOW].value.length > 0;
 
   await check('排除群組的申請人複製手動設定的單：維持手動、不排人、不提示', async () => {
     env.groups = { APPLICANT: ['費用歸屬不限部門'] };
-    global.window.PR_COST_SCOPE._reset();
+    loadInto(null, '費用歸屬部門限制.js', { install: false }).COST_SCOPE._reset();
     const leaveCalls = [];
-    global.window.PR_MANUAL_SIGNERS = { signersOf: () => [null, null, null], enter: () => {}, leave: (r) => leaveCalls.push(r) };
+    deps.set('MANUAL_SIGNERS', { signersOf: () => [null, null, null], enter: () => {}, leave: (r) => leaveCalls.push(r) });
     await run({ orgName: NAME, title: '一般', eventType: CREATE, manual: true });
-    delete global.window.PR_MANUAL_SIGNERS;
+    deps.reset('MANUAL_SIGNERS');
     assert.strictEqual(manualOn(), true);
     assert.deepStrictEqual(leaveCalls, []);
     assert.strictEqual(approvalCall(), undefined, '手動模式不排人');
@@ -203,11 +207,11 @@ const manualOn = () => env.live[F.MANUAL_FLOW].value.length > 0;
 
   await check('不在群組的申請人複製手動設定的單：取消勾選、清掉手動簽核人、提示，改回照簽核流程主檔排人', async () => {
     env.groups = {};
-    global.window.PR_COST_SCOPE._reset();
+    loadInto(null, '費用歸屬部門限制.js', { install: false }).COST_SCOPE._reset();
     const leaveCalls = [];
-    global.window.PR_MANUAL_SIGNERS = { signersOf: () => [null, null, null], enter: () => {}, leave: (r) => leaveCalls.push(r) };
+    deps.set('MANUAL_SIGNERS', { signersOf: () => [null, null, null], enter: () => {}, leave: (r) => leaveCalls.push(r) });
     await run({ orgName: NAME, title: '一般', eventType: CREATE, manual: true });
-    delete global.window.PR_MANUAL_SIGNERS;
+    deps.reset('MANUAL_SIGNERS');
     assert.strictEqual(manualOn(), false);
     assert.strictEqual(leaveCalls.length, 1, '手動簽核人交給 leave 清掉');
     assert.ok(env.alerts.some((m) => m.includes('已改回系統自動排簽核人員')));

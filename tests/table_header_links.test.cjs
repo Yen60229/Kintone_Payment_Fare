@@ -10,6 +10,7 @@
 const assert = require('assert');
 const vm = require('vm');
 const { createRunner, readSrc } = require('./lib/pr_env.cjs');
+const { loadInto } = require('./lib/esm_loader.cjs');
 
 const { check, done } = createRunner('table_header_links.test.cjs');
 
@@ -105,8 +106,8 @@ const load = (headers = []) => {
     console: { log: () => {}, warn: () => {}, error: () => {} },
   };
   vm.createContext(sandbox);
-  vm.runInContext(readSrc(FILE), sandbox, { filename: FILE });
-  return { api: sandbox.window.PR_TABLE_HEADER_LINKS, handlers, timers, state, document };
+  const api = loadInto(sandbox, FILE);
+  return { api, handlers, timers, state, document };
 };
 
 const plain = (value) => JSON.parse(JSON.stringify(value)); // vm 跨 realm 物件，轉一手才能 deepStrictEqual

@@ -21,7 +21,7 @@ const setup = () => {
   env.load('payment_request_config.js');
   env.load('發票號碼寫入獨立欄位檢查.js');
   env.load('交通費明細規則.js');
-  return { env, R: env.window.PR_TRAFFIC_RULES, C: env.window.PR_CONFIG };
+  return { env, R: env.import('交通費明細規則.js').TRAFFIC_RULES, C: env.window.PR_CONFIG };
 };
 
 const { env: env0, C } = setup();

@@ -9,6 +9,7 @@
 const path = require('path');
 const fs = require('fs');
 const vm = require('vm');
+const { loaderOf, isEsm } = require('./esm_loader.cjs');
 
 const rootDir = path.join(__dirname, '..', '..');
 const readSrc = (name) => fs.readFileSync(path.join(rootDir, name), 'utf8');
@@ -165,8 +166,12 @@ const createEnv = ({ appId = 749, loginCode = '24136', api, swalAnswer } = {}) =
     getComputedStyle: () => ({ display: '', visibility: '' }),
   };
   vm.createContext(sandbox);
+  // 和 esm_loader 的 loadInto／stubInto(env.context, …) 共用同一份模組快取
+  const importModule = loaderOf(sandbox);
 
   const env = {
+    /** vm 沙箱（給 stubInto／stubSigningDeps 用） */
+    context: sandbox,
     window: sandbox.window,
     document: documentStub,
     spaces,
@@ -187,8 +192,21 @@ const createEnv = ({ appId = 749, loginCode = '24136', api, swalAnswer } = {}) =
     setQuerySelector: (fn) => {
       overrides.querySelector = fn;
     },
-    /** 載入（執行）專案根目錄的一支 js */
-    load: (file) => vm.runInContext(readSrc(file), sandbox, { filename: file }),
+    /**
+     * 載入（執行）專案根目錄的一支 js（和入口檔一樣）：
+     *   傳統 script → 直接執行；ES module → 執行後呼叫 install()（註冊事件），回傳 exports
+     */
+    load: (file) => {
+      const src = readSrc(file);
+      if (!isEsm(src)) return vm.runInContext(src, sandbox, { filename: file });
+      const exports = importModule(file);
+      if (typeof exports.install === 'function') exports.install();
+      return exports;
+    },
+    /** 只 import 一支 ES module、不呼叫 install()（測「載入時不碰畫面、不註冊事件」或只測純函式） */
+    import: (file) => importModule(file),
+    /** 指定某支 ES module 的 exports 用替身（要在載入使用端之前；例：stub('payment_request_main.js', { COST_CENTER })） */
+    stub: (file, exports) => importModule.stub(file, exports),
     /** 執行一段程式碼（例：把 config 的某個值換掉再載入） */
     run: (code, filename = 'inline.js') => vm.runInContext(code, sandbox, { filename }),
     /** 觸發事件：依註冊順序執行所有監聽該事件的處理程式，回傳最後的 event */

@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：使用者主檔快取.js（window.PR_USERS）
+// 測試：使用者主檔快取.js（ES module；過渡期 install() 另掛 window.PR_USERS）
 //   一、fetchAll：/v1/users.json 一次 100 筆分頁，抓到不足一頁為止；停用帳號也回傳（由使用端過濾）
 //   二、loadAll：同一頁面共用同一個 Promise（同時呼叫只打一次 API）、抓過就用快取、失敗清掉下次重抓
 //   三、受款人選擇員工＋手動簽核人視窗同一頁面一起開：/v1/users.json 只抓一輪
@@ -28,8 +28,9 @@ const setup = ({ users = usersOf(250), fail = () => false } = {}) => {
       return Promise.resolve({ users: users.slice(params.offset, params.offset + params.size) });
     },
   });
-  env.load('使用者主檔快取.js');
-  return { env, U: env.window.PR_USERS, calls };
+  const U = env.load('使用者主檔快取.js');
+  assert.strictEqual(env.window.PR_USERS, undefined, '不再掛 window.PR_USERS');
+  return { env, U, calls };
 };
 
 check('fetchAll：一次 100 筆分頁抓到不足一頁為止；停用帳號也回傳', async () => {
@@ -105,10 +106,10 @@ check('受款人選擇員工＋手動簽核人視窗同一頁面一起開：/v1/
   env.run('this.Swal = window.Swal;');
   env.load('payment_request_config.js');
   env.load('手動簽核人設定.js');
-  env.load('受款人填寫設定.js');
+  const payee = env.load('受款人填寫設定.js');
 
-  env.window.PR_MANUAL_SIGNERS.openDialog({ initial: [], applicant: { code: 'ME' }, accounting: [] });
-  assert.strictEqual(env.window.PR_PAYEE.openUserPicker({ title: '選擇員工', keyword: '人12', onPick() {} }), true);
+  env.import('手動簽核人設定.js').MANUAL_SIGNERS.openDialog({ initial: [], applicant: { code: 'ME' }, accounting: [] });
+  assert.strictEqual(payee.openUserPicker({ title: '選擇員工', keyword: '人12', onPick() {} }), true);
   await settle();
   assert.strictEqual(fired.length, 2);
   assert.deepStrictEqual(
@@ -120,25 +121,27 @@ check('受款人選擇員工＋手動簽核人視窗同一頁面一起開：/v1/
   assert.strictEqual(env.logs.error.length, 0, env.logs.error.join('|'));
 
   // 再開一次：都用快取
-  env.window.PR_PAYEE.openUserPicker({ title: '選擇員工', onPick() {} });
-  env.window.PR_MANUAL_SIGNERS.openDialog({ initial: [], applicant: { code: 'ME' }, accounting: [] });
+  payee.openUserPicker({ title: '選擇員工', onPick() {} });
+  env.import('手動簽核人設定.js').MANUAL_SIGNERS.openDialog({ initial: [], applicant: { code: 'ME' }, accounting: [] });
   await settle();
   assert.strictEqual(calls.length, 2);
 });
 
-check('使用端不再自己打 /v1/users.json，改用 PR_USERS', () => {
+check('使用端不再自己打 /v1/users.json，改用使用者主檔快取的 loadAll()', () => {
   ['受款人填寫設定.js', '手動簽核人設定.js'].forEach((f) => {
     const src = readSrc(f);
     assert.ok(!/kintone\.api\(\s*kintone\.api\.url\(\s*['"]\/v1\/users\.json/.test(src), `${f} 不應直接打 /v1/users.json`);
     assert.ok(!/USERS_API/.test(src), `${f} 不應自己定義 USERS_API`);
-    assert.ok(src.includes('window.PR_USERS.loadAll()'), `${f} 要用 PR_USERS.loadAll()`);
+    const imported = /^import \{[^}]*\bloadAll\b[^}]*\} from '\.\/使用者主檔快取\.js';/m.test(src) && /\bloadAll\(\)/.test(src);
+    assert.ok(imported || src.includes('window.PR_USERS.loadAll()'), `${f} 要用使用者主檔快取的 loadAll()`);
   });
 });
 
 check('入口檔：使用者主檔快取排在手動簽核人與受款人前面（桌面版、手機版）', () => {
   ['src/index.js', 'src/mobile.js'].forEach((entry) => {
     const src = readSrc(entry);
-    const at = (f) => src.indexOf(`import '../${f}';`);
+    // 傳統 script 是 import '../x.js';，ES module 是 import '../x.js?install';
+    const at = (f) => src.search(new RegExp(`import '\\.\\./${f.replace('.', '\\.')}(\\?install)?';`));
     assert.ok(at('使用者主檔快取.js') >= 0, `${entry} 沒有接使用者主檔快取`);
     assert.ok(at('使用者主檔快取.js') < at('手動簽核人設定.js'), entry);
     assert.ok(at('使用者主檔快取.js') < at('受款人填寫設定.js'), entry);

@@ -1,4 +1,4 @@
-function adjustTransferButtonsPosition() {
+export function adjustTransferButtonsPosition() {
   // 延遲執行以確保按鈕已經渲染
   setTimeout(() => {
     // 找到所有動作按鈕的 span 標籤
@@ -23,7 +23,10 @@ function adjustTransferButtonsPosition() {
   }, 500);
 }
 
-window.PR_KT.on(['app.record.detail.show'], (event) => {
-  adjustTransferButtonsPosition();
-  return event;
-});
+/** 入口檔 import '…?install' 時呼叫：註冊事件（載入時只定義函式） */
+export const install = () => {
+  window.PR_KT.on(['app.record.detail.show'], (event) => {
+    adjustTransferButtonsPosition();
+    return event;
+  });
+};

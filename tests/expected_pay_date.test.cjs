@@ -8,6 +8,7 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
+const { loadInto } = require('./lib/esm_loader.cjs');
 
 const rootDir = path.join(__dirname, '..');
 const readSrc = (name) => fs.readFileSync(path.join(rootDir, name), 'utf8');
@@ -36,12 +37,10 @@ global.kintone = {
 
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
-// eslint-disable-next-line no-eval
-eval(readSrc('預計付款日.js'));
+const M = loadInto(null, '預計付款日.js');
 
 const C = global.window.PR_CONFIG;
 const F = C.FIELDS;
-const M = global.window.PR_EXPECTED_PAY_DATE;
 console.warn = () => {};
 
 // 2026 年行事曆的一小段（取自 App 620 實際資料）：除夕～春節補假、和平紀念日補假
@@ -235,7 +234,7 @@ const check = async (label, fn) => {
 
   await check('載入順序：src/index.js 有接線', () => {
     const index = readSrc('src/index.js');
-    assert.ok(index.includes("import '../預計付款日.js';"));
+    assert.ok(/import '\.\.\/預計付款日\.js(\?install)?';/.test(index));
     assert.ok(index.indexOf('payment_request_config.js') < index.indexOf('預計付款日.js'));
   });
 

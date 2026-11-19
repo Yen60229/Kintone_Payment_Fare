@@ -12,11 +12,14 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
+const { createModuleLoader } = require('./lib/esm_loader.cjs');
 
 const rootDir = path.join(__dirname, '..');
 const fileName = '帳號權限設定.js';
 const readSrc = (name) => fs.readFileSync(path.join(rootDir, name), 'utf8');
 const src = readSrc(fileName);
+// ES module：每次重新載入（新的模組實例）並 install()，和入口檔一樣
+const runModule = () => createModuleLoader(null)(fileName).install();
 
 const registered = [];
 const shown = {};
@@ -112,8 +115,7 @@ global.kintone = {
 
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
-// eslint-disable-next-line no-eval
-eval(src);
+runModule();
 
 const C = global.window.PR_CONFIG;
 const F = C.FIELDS;
@@ -177,8 +179,7 @@ const recordOf = (payee) => ({
     const fresh = [];
     const realOn = global.kintone.events.on;
     global.kintone.events.on = (types, handler) => fresh.push({ types: [].concat(types), handler });
-    // eslint-disable-next-line no-eval
-    eval(src);
+    runModule();
     await new Promise((resolve) => setImmediate(resolve));
     global.kintone.events.on = realOn;
     const change = { type: SUBTABLE_CHANGE[0], record: { [SUBTABLE]: { type: 'SUBTABLE', value: [{ value: { 稅額: { value: '' } } }] } } };
@@ -296,8 +297,7 @@ const recordOf = (payee) => ({
     const fresh = [];
     const realOn = global.kintone.events.on;
     global.kintone.events.on = (types, handler) => fresh.push({ types: [].concat(types), handler });
-    // eslint-disable-next-line no-eval
-    eval(src);
+    runModule();
     global.kintone.events.on = realOn;
     const handlerOf = (type) => fresh.find((r) => r.types.includes(type)).handler;
     apiFail = true;
@@ -335,8 +335,7 @@ const recordOf = (payee) => ({
     const errors = [];
     console.error = (...a) => errors.push(a.join(' '));
     try {
-      // eslint-disable-next-line no-eval
-      eval(src);
+      runModule();
       global.kintone.events.on = realOn;
       await withVoucherRules(async () => {
         swalCalls.length = 0;

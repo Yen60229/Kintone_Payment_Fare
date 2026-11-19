@@ -21,13 +21,11 @@ global.kintone = {
 
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
-// eslint-disable-next-line no-eval
-eval(readSrc('發票號碼寫入獨立欄位檢查.js'));
+const { buildInvoiceAgg } = require('./lib/esm_loader.cjs').loadInto(null, '發票號碼寫入獨立欄位檢查.js');
 
 const C = global.window.PR_CONFIG;
 const F = C.FIELDS;
 const T = F.TRAFFIC_TABLE;
-const { buildInvoiceAgg } = global.window.PR_INVOICE_AGG;
 
 let passed = 0;
 const check = (label, fn) => {

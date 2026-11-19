@@ -52,15 +52,17 @@ const setup = ({ groups = {}, groupFail = false, orgFail = false, validCodes = O
     },
   });
   env.load('payment_request_config.js');
-  env.load('費用歸屬部門限制.js');
   // 費用歸屬主檔快取（main 提供）的替身
-  env.window.PR_COST_CENTER = {
-    ensureLoaded: () => Promise.resolve(),
-    getValidCodes: () => new Set(validCodes),
-    getDeptsOfCode: () => DEPTS_OF_CODE,
-    getDeptNames: () => ORG_NAMES,
-  };
-  return { env, calls, S: env.window.PR_COST_SCOPE, C: env.window.PR_CONFIG };
+  env.stub('payment_request_main.js', {
+    COST_CENTER: {
+      ensureLoaded: () => Promise.resolve(),
+      getValidCodes: () => new Set(validCodes),
+      getDeptsOfCode: () => DEPTS_OF_CODE,
+      getDeptNames: () => ORG_NAMES,
+    },
+  });
+  env.load('費用歸屬部門限制.js');
+  return { env, calls, S: env.import('費用歸屬部門限制.js').COST_SCOPE, C: env.window.PR_CONFIG };
 };
 
 const { C } = setup();

@@ -18,6 +18,9 @@ const kintoneGlobals = {
   html2canvas: 'readonly',
 };
 
+// 直接上傳原始檔到 kintone（不經打包）的檔：維持傳統 script（tests/build_targets 的 RAW_UPLOAD 同一份名單）
+const RAW_UPLOAD = ['payment_request_config.js', '欄位標籤說明圖示.js', '交通費明細規則主檔檢查.js'];
+
 const bugRules = {
   ...js.configs.recommended.rules,
   'no-unused-vars': ['warn', { args: 'none', caughtErrors: 'none', ignoreRestSiblings: true }],
@@ -45,10 +48,20 @@ export default [
       'form_snapshots/**',
     ],
   },
-  // 上傳到 kintone 的原始檔（傳統 script，每支自己包 IIFE）
+  // 打包進 bundle 的模組（ES module；還沒遷移的 IIFE 檔用 module 解析也沒問題）
   {
-    files: ['*.js', 'plugins/*/src/js/**/*.js'],
-    ignores: ['vite.config.js'],
+    files: ['*.js'],
+    ignores: ['vite.config.js', ...RAW_UPLOAD],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: { ...globals.browser, ...kintoneGlobals },
+    },
+    rules: bugRules,
+  },
+  // 直接上傳原始檔、不經打包的檔（傳統 script，每支自己包 IIFE；不能 import／export）
+  {
+    files: [...RAW_UPLOAD, 'plugins/*/src/js/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'script',

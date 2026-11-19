@@ -10,10 +10,10 @@
 //   重算方式：用 tests/lib/pr_env.cjs 的 vm 沙箱載入原始模組（不複製邏輯）
 //     payment_request_config.js、費用歸屬部門限制.js、signing_personnel_manager.js、部長上一階主管.js
 //   每筆記錄複製一份、把狀態清空（讓「只在可編輯狀態重算」的檢查放行），再依存檔時的順序呼叫：
-//     PR_SIGNING_CHAIN.applyOnSave → applyAccountingOnSave → PR_DIRECTOR_UPLINE.apply → PR_COST_SCOPE.validate
+//     SIGNING_CHAIN.applyOnSave → applyAccountingOnSave → DIRECTOR_UPLINE.apply → COST_SCOPE.validate（各模組 export）
 //   比對六格簽核人、主管／次長人數、會計單位、會計單位承辦人、權限開放人員；規則錯誤（掛帳單位跨部、
 //   申請人與費用所屬人不同部門、非排除群組勾手動、部門不是費用所屬人的）另列一列。
-//   PR_COST_CENTER（費用歸屬主檔快取，原本在 payment_request_main）在這裡用同樣的查詢重建，避免載入整支畫面程式。
+//   COST_CENTER（費用歸屬主檔快取，payment_request_main export）在這裡用同樣的查詢重建成替身，避免載入整支畫面程式。
 //
 //   只讀不寫：只送 GET，不呼叫任何更新 API。
 //
@@ -187,10 +187,10 @@ const createAuditSandbox = (api, appId) => {
   env.load(MODULES[0]);
   const C = env.window.PR_CONFIG;
 
-  // PR_COST_CENTER：與 payment_request_main 的 loadCostCenterMaps 同一個查詢與對照方式
+  // COST_CENTER 替身：與 payment_request_main 的 loadCostCenterMaps 同一個查詢與對照方式
   let loaded = null;
   const maps = { validCodes: new Set(), deptsOfCode: {}, deptNames: {} };
-  env.window.PR_COST_CENTER = Object.freeze({
+  const COST_CENTER = Object.freeze({
     ensureLoaded: () => {
       if (!loaded) {
         const CC = C.REF_FIELDS.COST_CENTER;
@@ -218,6 +218,8 @@ const createAuditSandbox = (api, appId) => {
     getDeptsOfCode: () => maps.deptsOfCode,
     getDeptNames: () => maps.deptNames,
   });
+  // 費用歸屬部門限制、簽核人員 import main：換成替身，不載入整支畫面程式（COMPANY_NAME 只在畫面事件用到，給空的）
+  env.stub('payment_request_main.js', { COST_CENTER, COMPANY_NAME: Object.freeze({ apply() {} }) });
 
   MODULES.slice(1).forEach((file) => env.load(file));
   return { env, C };
@@ -264,7 +266,6 @@ const compareFields = (C) => [
  */
 const auditRecord = async ({ env, C }, record) => {
   const F = C.FIELDS;
-  const w = env.window;
   if (record[C.VOID_FIELD]?.value?.length > 0) return [];
 
   const clone = JSON.parse(JSON.stringify(record));
@@ -275,10 +276,11 @@ const auditRecord = async ({ env, C }, record) => {
   const findings = [];
   const ruleErrors = [];
   // 與 payment_request_submit 存檔時相同的呼叫；依序執行（簽核格只會被其中一支寫）
-  ruleErrors.push(...(await w.PR_SIGNING_CHAIN.applyOnSave(clone)));
-  ruleErrors.push(...(await w.PR_SIGNING_CHAIN.applyAccountingOnSave(clone)));
-  ruleErrors.push(...(await w.PR_DIRECTOR_UPLINE.apply(clone)));
-  ruleErrors.push(...(await w.PR_COST_SCOPE.validate(clone)));
+  const { SIGNING_CHAIN } = env.import('signing_personnel_manager.js');
+  ruleErrors.push(...(await SIGNING_CHAIN.applyOnSave(clone)));
+  ruleErrors.push(...(await SIGNING_CHAIN.applyAccountingOnSave(clone)));
+  ruleErrors.push(...(await env.import('部長上一階主管.js').DIRECTOR_UPLINE.apply(clone)));
+  ruleErrors.push(...(await env.import('費用歸屬部門限制.js').COST_SCOPE.validate(clone)));
 
   ruleErrors.forEach((msg) => findings.push({ kind: '規則', field: '', actual: '', expected: '', note: plain(msg) }));
 
@@ -324,7 +326,7 @@ const runAudit = async ({ api, appId, query = '' }) => {
       id: record.$id?.value || '',
       recordNo: record[F.RECORD_NO]?.value || '',
       status,
-      editable: env.window.PR_SIGNING_CHAIN.isEditableStatus(status) ? '是' : '否',
+      editable: env.import('signing_personnel_manager.js').SIGNING_CHAIN.isEditableStatus(status) ? '是' : '否',
       applicant: userText(record[F.APPLICANT]?.value),
       owner: userText(record[F.EXPENSE_OWNER]?.value),
       ownerOrg: userText(record[F.EXPENSE_OWNER_ORG]?.value),

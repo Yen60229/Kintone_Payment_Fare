@@ -44,7 +44,7 @@ const check = (label, fn) => {
 
 console.log('signing_chain_plan.test.cjs');
 
-const fnSrc = extract(/  const planSigningChain = \(managerData, fieldsToUpdate\) => \{[\s\S]*?\n  \};/, 'planSigningChain');
+const fnSrc = extract(/const planSigningChain = \(managerData, fieldsToUpdate\) => \{[\s\S]*?\n\};/, 'planSigningChain');
 const planSigningChain = new Function(`${fnSrc}\n  return planSigningChain;`)();
 
 const U = (code) => [{ code, name: code }];
