@@ -8,3 +8,6 @@ node_modules/
 
 # 掃描工具的詳細輸出（node tests/scan_hardcoded.cjs --json）
 tests/scan_hardcoded.report.json
+
+# 簽核人員稽核報表（npm run audit:signers；含員工與簽核資料，不進版控）
+tools/audit/out/

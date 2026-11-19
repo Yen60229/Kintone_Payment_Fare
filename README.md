@@ -26,6 +26,15 @@ kintone **交通費請款單（測試區 App 749）** 的自訂 JavaScript 原�
 | 交通費轉出欄位對應 | `APPS.SAP_MAPPING` |
 | 交通費明細規則主檔（交通工具／憑證種類規則；讀不到退回 config）。另外在這個 App 上傳存檔檢查，見下方「App 752」 | `APPS.TRAFFIC_RULE_MASTER` |
 | PDF 字型 | `APPS.PDF_FONT` |
+| 發票登記（發票號碼值不可重複；由 plug-in 使用，見下方「發票登記 plug-in」） | 757（設定在 plug-in，不在 `APPS`） |
+
+---
+
+## 發票登記 plug-in
+
+跨 App 發票號碼重複檢查＋登記（擋同時存檔）改由 plug-in 負責，專案在 [`plugins/invoice-registry/`](plugins/invoice-registry/README.md)：
+打包 `npm run pack`（在該資料夾）→ `dist/invoice-registry-plugin.zip`，由 kintone 系統管理員上傳，再到 749 的 plug-in 設定。
+749 自己的 submit 仍會先查 749 內的重複（訊息併在驗證視窗）；plug-in 在它之後跑。測試已併進本專案的 `npm test`。
 
 ---
 
@@ -36,7 +45,7 @@ kintone **交通費請款單（測試區 App 749）** 的自訂 JavaScript 原�
 npm test && bash tests/syntax.test.sh && npm run scan
 ```
 - `npm test`：31 支測試（共 626 項斷言）。
-- `bash tests/syntax.test.sh`：對根目錄所有 `*.js` 跑 `node --check`（目前 29 檔）。
+- `bash tests/syntax.test.sh`：對根目錄所有 `*.js` 跑 `node --check`（目前 32 檔）。
 - `npm run scan`：統計剩餘的 App ID／狀態／選項／欄位代碼硬編碼（目前 12 處）。
 
 ### 檢查流程管理設定

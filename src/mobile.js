@@ -28,6 +28,7 @@ import '../payment_request_submit_20260506.js';
 import '../費用歸屬部門限制_20261022.js';
 import '../signing_personnel_manager_20260506.js';
 import '../部長上一階主管_20261116.js';
+import '../使用者主檔快取.js';
 import '../手動簽核人設定_20261102.js';
 import '../申請人部門帶入_20261022.js';
 import '../交通費明細規則_20261022.js';

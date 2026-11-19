@@ -23,7 +23,7 @@ function adjustTransferButtonsPosition() {
   }, 500);
 }
 
-kintone.events.on(['app.record.detail.show'], (event) => {
+window.PR_KT.on(['app.record.detail.show'], (event) => {
   adjustTransferButtonsPosition();
   return event;
 });

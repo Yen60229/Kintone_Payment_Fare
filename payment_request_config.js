@@ -85,6 +85,30 @@
         attempt();
       });
     },
+    /**
+     * 分頁讀出符合條件的全部記錄：用「$id > 上一頁最後一筆」往下翻，不用 cursor
+     * （cursor 整個網域同時最多 10 個，月底大家同時開單會建不起來，連帶擋住存檔）。
+     * @param {{ app: number, fields?: string[], query?: string, pageSize?: number, maxPages?: number }} p
+     *   query 只放條件，不要加 order by／limit；fields 會自動補 $id（翻頁要用）
+     * @returns {Promise<Object[]>}
+     */
+    fetchAllRecords: async ({ app, fields, query = '', pageSize = 500, maxPages = 100 }) => {
+      const url = kintone.api.url('/k/v1/records', true);
+      const params = { app };
+      if (fields) params.fields = [...new Set(['$id', ...fields])];
+      const records = [];
+      let lastId = 0;
+      for (let page = 0; page < maxPages; page++) {
+        const cond = query ? `(${query}) and $id > ${lastId}` : `$id > ${lastId}`;
+        // eslint-disable-next-line no-await-in-loop
+        const resp = await kintone.api(url, 'GET', { ...params, query: `${cond} order by $id asc limit ${pageSize}` });
+        const list = resp.records || [];
+        records.push(...list);
+        if (list.length < pageSize) return records;
+        lastId = list[list.length - 1].$id.value;
+      }
+      throw new Error(`App ${app} 符合條件的記錄超過 ${pageSize * maxPages} 筆，沒有讀完`);
+    },
   });
   window.PR_KT = PR_KT;
 

@@ -868,7 +868,7 @@
     formatDate,
   });
 
-  kintone.events.on('app.record.index.show', function (event) {
+  window.PR_KT.on('app.record.index.show', function (event) {
     waitForButtonAndBind();
     return event;
   });

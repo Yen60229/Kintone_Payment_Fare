@@ -1,0 +1,7 @@
+node_modules/
+dist/
+# 私鑰：決定 plug-in ID，弄丟就只能當成新的 plug-in 重裝。不要進 git，另外備份。
+private.ppk
+*.ppk
+# 補登記報表（含發票號碼，不進 git）
+out/

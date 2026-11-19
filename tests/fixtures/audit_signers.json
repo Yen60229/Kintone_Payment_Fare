@@ -1,0 +1,224 @@
+{
+  "_comment": "tools/audit/audit_signers.cjs 的假資料（不連線）。1 一致、2 簽核人被改、3 掛帳單位跨部、4 非排除群組勾手動、5 作廢、6 對照表部長、7 部門不是費用所屬人的",
+  "records": [
+    {
+      "$id": { "type": "__ID__", "value": "1" },
+      "交通費請款單號": { "type": "RECORD_NUMBER", "value": "TR-0001" },
+      "狀態": { "type": "STATUS", "value": "報銷人填單" },
+      "表單作廢": { "type": "CHECK_BOX", "value": [] },
+      "手動設定簽核流程": { "type": "CHECK_BOX", "value": [] },
+      "申請人": { "type": "USER_SELECT", "value": [{ "code": "U001", "name": "員工甲" }] },
+      "申請人部門": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "ORG_A1", "name": "測試一課" }] },
+      "費用所屬人": { "type": "USER_SELECT", "value": [{ "code": "U001", "name": "員工甲" }] },
+      "費用所屬人部門": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "ORG_A1", "name": "測試一課" }] },
+      "單位主管1": { "type": "USER_SELECT", "value": [{ "code": "M1", "name": "課長甲" }] },
+      "單位主管2": { "type": "USER_SELECT", "value": [] },
+      "單位主管3": { "type": "USER_SELECT", "value": [] },
+      "單位次長": { "type": "USER_SELECT", "value": [{ "code": "D1", "name": "次長甲" }] },
+      "單位次長1": { "type": "USER_SELECT", "value": [] },
+      "單位部長_支店長": { "type": "USER_SELECT", "value": [{ "code": "H1", "name": "部長甲" }] },
+      "部門主管簽核人數": { "type": "DROP_DOWN", "value": "1人" },
+      "部門次長簽核人數": { "type": "DROP_DOWN", "value": "1人" },
+      "會計單位": { "type": "GROUP_SELECT", "value": [{ "code": "ACC_TPE", "name": "ACC_TPE" }] },
+      "會計單位承辦人": { "type": "USER_SELECT", "value": [{ "code": "A1", "name": "會計甲" }] },
+      "權限開放人員": { "type": "USER_SELECT", "value": [{ "code": "P1", "name": "權限甲" }] },
+      "交通費請款單": { "type": "SUBTABLE", "value": [{ "id": "11", "value": { "費用歸屬": { "type": "SINGLE_LINE_TEXT", "value": "CC100" } } }] }
+    },
+    {
+      "$id": { "type": "__ID__", "value": "2" },
+      "交通費請款單號": { "type": "RECORD_NUMBER", "value": "TR-0002" },
+      "狀態": { "type": "STATUS", "value": "部長確認中" },
+      "表單作廢": { "type": "CHECK_BOX", "value": [] },
+      "手動設定簽核流程": { "type": "CHECK_BOX", "value": [] },
+      "申請人": { "type": "USER_SELECT", "value": [{ "code": "U001", "name": "員工甲" }] },
+      "申請人部門": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "ORG_A1", "name": "測試一課" }] },
+      "費用所屬人": { "type": "USER_SELECT", "value": [{ "code": "U001", "name": "員工甲" }] },
+      "費用所屬人部門": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "ORG_A1", "name": "測試一課" }] },
+      "單位主管1": { "type": "USER_SELECT", "value": [] },
+      "單位主管2": { "type": "USER_SELECT", "value": [] },
+      "單位主管3": { "type": "USER_SELECT", "value": [] },
+      "單位次長": { "type": "USER_SELECT", "value": [{ "code": "D1", "name": "次長甲" }] },
+      "單位次長1": { "type": "USER_SELECT", "value": [] },
+      "單位部長_支店長": { "type": "USER_SELECT", "value": [{ "code": "X9", "name": "自己人" }] },
+      "部門主管簽核人數": { "type": "DROP_DOWN", "value": "0人" },
+      "部門次長簽核人數": { "type": "DROP_DOWN", "value": "1人" },
+      "會計單位": { "type": "GROUP_SELECT", "value": [{ "code": "ACC_TPE", "name": "ACC_TPE" }] },
+      "會計單位承辦人": { "type": "USER_SELECT", "value": [{ "code": "A1", "name": "會計甲" }] },
+      "權限開放人員": { "type": "USER_SELECT", "value": [{ "code": "P1", "name": "權限甲" }] },
+      "交通費請款單": { "type": "SUBTABLE", "value": [{ "id": "21", "value": { "費用歸屬": { "type": "SINGLE_LINE_TEXT", "value": "CC100" } } }] }
+    },
+    {
+      "$id": { "type": "__ID__", "value": "3" },
+      "交通費請款單號": { "type": "RECORD_NUMBER", "value": "TR-0003" },
+      "狀態": { "type": "STATUS", "value": "草稿（未送出）" },
+      "表單作廢": { "type": "CHECK_BOX", "value": [] },
+      "手動設定簽核流程": { "type": "CHECK_BOX", "value": [] },
+      "申請人": { "type": "USER_SELECT", "value": [{ "code": "U001", "name": "員工甲" }] },
+      "申請人部門": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "ORG_A1", "name": "測試一課" }] },
+      "費用所屬人": { "type": "USER_SELECT", "value": [{ "code": "U001", "name": "員工甲" }] },
+      "費用所屬人部門": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "ORG_A1", "name": "測試一課" }] },
+      "單位主管1": { "type": "USER_SELECT", "value": [{ "code": "M1", "name": "課長甲" }] },
+      "單位主管2": { "type": "USER_SELECT", "value": [] },
+      "單位主管3": { "type": "USER_SELECT", "value": [] },
+      "單位次長": { "type": "USER_SELECT", "value": [{ "code": "D1", "name": "次長甲" }] },
+      "單位次長1": { "type": "USER_SELECT", "value": [] },
+      "單位部長_支店長": { "type": "USER_SELECT", "value": [{ "code": "H1", "name": "部長甲" }] },
+      "部門主管簽核人數": { "type": "DROP_DOWN", "value": "1人" },
+      "部門次長簽核人數": { "type": "DROP_DOWN", "value": "1人" },
+      "會計單位": { "type": "GROUP_SELECT", "value": [{ "code": "ACC_TPE", "name": "ACC_TPE" }] },
+      "會計單位承辦人": { "type": "USER_SELECT", "value": [{ "code": "A1", "name": "會計甲" }] },
+      "權限開放人員": { "type": "USER_SELECT", "value": [{ "code": "P1", "name": "權限甲" }] },
+      "交通費請款單": { "type": "SUBTABLE", "value": [{ "id": "31", "value": { "費用歸屬": { "type": "SINGLE_LINE_TEXT", "value": "CC200" } } }] }
+    },
+    {
+      "$id": { "type": "__ID__", "value": "4" },
+      "交通費請款單號": { "type": "RECORD_NUMBER", "value": "TR-0004" },
+      "狀態": { "type": "STATUS", "value": "報銷人填單" },
+      "表單作廢": { "type": "CHECK_BOX", "value": [] },
+      "手動設定簽核流程": { "type": "CHECK_BOX", "value": ["手動設定簽核流程"] },
+      "申請人": { "type": "USER_SELECT", "value": [{ "code": "U004", "name": "員工丁" }] },
+      "申請人部門": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "ORG_A1", "name": "測試一課" }] },
+      "費用所屬人": { "type": "USER_SELECT", "value": [{ "code": "U004", "name": "員工丁" }] },
+      "費用所屬人部門": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "ORG_A1", "name": "測試一課" }] },
+      "單位主管1": { "type": "USER_SELECT", "value": [] },
+      "單位主管2": { "type": "USER_SELECT", "value": [] },
+      "單位主管3": { "type": "USER_SELECT", "value": [] },
+      "單位次長": { "type": "USER_SELECT", "value": [] },
+      "單位次長1": { "type": "USER_SELECT", "value": [] },
+      "單位部長_支店長": { "type": "USER_SELECT", "value": [] },
+      "部門主管簽核人數": { "type": "DROP_DOWN", "value": "0人" },
+      "部門次長簽核人數": { "type": "DROP_DOWN", "value": "0人" },
+      "會計單位": { "type": "GROUP_SELECT", "value": [] },
+      "會計單位承辦人": { "type": "USER_SELECT", "value": [{ "code": "A1", "name": "會計甲" }] },
+      "權限開放人員": { "type": "USER_SELECT", "value": [{ "code": "P1", "name": "權限甲" }] },
+      "交通費請款單": { "type": "SUBTABLE", "value": [] }
+    },
+    {
+      "$id": { "type": "__ID__", "value": "5" },
+      "交通費請款單號": { "type": "RECORD_NUMBER", "value": "TR-0005" },
+      "狀態": { "type": "STATUS", "value": "表單作廢" },
+      "表單作廢": { "type": "CHECK_BOX", "value": ["表單作廢"] },
+      "手動設定簽核流程": { "type": "CHECK_BOX", "value": [] },
+      "費用所屬人": { "type": "USER_SELECT", "value": [{ "code": "U001", "name": "員工甲" }] },
+      "費用所屬人部門": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "ORG_A1", "name": "測試一課" }] },
+      "單位部長_支店長": { "type": "USER_SELECT", "value": [{ "code": "X9", "name": "自己人" }] }
+    },
+    {
+      "$id": { "type": "__ID__", "value": "6" },
+      "交通費請款單號": { "type": "RECORD_NUMBER", "value": "TR-0006" },
+      "狀態": { "type": "STATUS", "value": "報銷人填單" },
+      "表單作廢": { "type": "CHECK_BOX", "value": [] },
+      "手動設定簽核流程": { "type": "CHECK_BOX", "value": [] },
+      "申請人": { "type": "USER_SELECT", "value": [{ "code": "U006", "name": "部長己" }] },
+      "申請人部門": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "ORG_LT", "name": "汽車貨運部" }] },
+      "費用所屬人": { "type": "USER_SELECT", "value": [{ "code": "U006", "name": "部長己" }] },
+      "費用所屬人部門": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "ORG_LT", "name": "汽車貨運部" }] },
+      "單位主管1": { "type": "USER_SELECT", "value": [] },
+      "單位主管2": { "type": "USER_SELECT", "value": [] },
+      "單位主管3": { "type": "USER_SELECT", "value": [] },
+      "單位次長": { "type": "USER_SELECT", "value": [] },
+      "單位次長1": { "type": "USER_SELECT", "value": [] },
+      "單位部長_支店長": { "type": "USER_SELECT", "value": [{ "code": "H9", "name": "上階主管" }] },
+      "部門主管簽核人數": { "type": "DROP_DOWN", "value": "0人" },
+      "部門次長簽核人數": { "type": "DROP_DOWN", "value": "0人" },
+      "會計單位": { "type": "GROUP_SELECT", "value": [{ "code": "ACC_LT", "name": "ACC_LT" }] },
+      "會計單位承辦人": { "type": "USER_SELECT", "value": [{ "code": "A2", "name": "會計乙" }] },
+      "權限開放人員": { "type": "USER_SELECT", "value": [{ "code": "P2", "name": "權限乙" }] },
+      "交通費請款單": { "type": "SUBTABLE", "value": [] }
+    },
+    {
+      "$id": { "type": "__ID__", "value": "7" },
+      "交通費請款單號": { "type": "RECORD_NUMBER", "value": "TR-0007" },
+      "狀態": { "type": "STATUS", "value": "報銷人填單" },
+      "表單作廢": { "type": "CHECK_BOX", "value": [] },
+      "手動設定簽核流程": { "type": "CHECK_BOX", "value": [] },
+      "申請人": { "type": "USER_SELECT", "value": [{ "code": "U001", "name": "員工甲" }] },
+      "申請人部門": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "ORG_A1", "name": "測試一課" }] },
+      "費用所屬人": { "type": "USER_SELECT", "value": [{ "code": "U001", "name": "員工甲" }] },
+      "費用所屬人部門": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "ORG_B1", "name": "測試二部一課" }] },
+      "單位主管1": { "type": "USER_SELECT", "value": [] },
+      "單位主管2": { "type": "USER_SELECT", "value": [] },
+      "單位主管3": { "type": "USER_SELECT", "value": [] },
+      "單位次長": { "type": "USER_SELECT", "value": [] },
+      "單位次長1": { "type": "USER_SELECT", "value": [] },
+      "單位部長_支店長": { "type": "USER_SELECT", "value": [{ "code": "H1", "name": "部長甲" }] },
+      "部門主管簽核人數": { "type": "DROP_DOWN", "value": "0人" },
+      "部門次長簽核人數": { "type": "DROP_DOWN", "value": "0人" },
+      "會計單位": { "type": "GROUP_SELECT", "value": [] },
+      "會計單位承辦人": { "type": "USER_SELECT", "value": [] },
+      "權限開放人員": { "type": "USER_SELECT", "value": [] },
+      "交通費請款單": { "type": "SUBTABLE", "value": [] }
+    }
+  ],
+  "apps": {
+    "APPROVAL_FLOW": [
+      {
+        "$id": { "type": "__ID__", "value": "1" },
+        "簽核流程名稱": { "type": "SINGLE_LINE_TEXT", "value": "測試一課" },
+        "簽核所屬單位": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "ORG_A1", "name": "測試一課" }] },
+        "使用狀況": { "type": "DROP_DOWN", "value": "使用中" },
+        "請購單位主管1": { "type": "USER_SELECT", "value": [{ "code": "M1", "name": "課長甲" }] },
+        "請購單位主管2": { "type": "USER_SELECT", "value": [] },
+        "請購單位主管3": { "type": "USER_SELECT", "value": [] },
+        "請購單位次長": { "type": "USER_SELECT", "value": [{ "code": "D1", "name": "次長甲" }] },
+        "請購單位次長1": { "type": "USER_SELECT", "value": [] },
+        "請購單位部長": { "type": "USER_SELECT", "value": [{ "code": "H1", "name": "部長甲" }] }
+      }
+    ],
+    "ACCOUNTING_MAP": [
+      {
+        "$id": { "type": "__ID__", "value": "1" },
+        "申請單位": { "type": "SINGLE_LINE_TEXT", "value": "測試一課" },
+        "請款會計單位": { "type": "SINGLE_LINE_TEXT", "value": "ACC_TPE" },
+        "請款會計人員": { "type": "USER_SELECT", "value": [{ "code": "A1", "name": "會計甲" }] },
+        "權限開放人員": { "type": "USER_SELECT", "value": [{ "code": "P1", "name": "權限甲" }] }
+      },
+      {
+        "$id": { "type": "__ID__", "value": "2" },
+        "申請單位": { "type": "SINGLE_LINE_TEXT", "value": "汽車貨運部" },
+        "請款會計單位": { "type": "SINGLE_LINE_TEXT", "value": "ACC_LT" },
+        "請款會計人員": { "type": "USER_SELECT", "value": [{ "code": "A2", "name": "會計乙" }] },
+        "權限開放人員": { "type": "USER_SELECT", "value": [{ "code": "P2", "name": "權限乙" }] }
+      }
+    ],
+    "COST_CENTER": [
+      {
+        "$id": { "type": "__ID__", "value": "1" },
+        "CostCenter": { "type": "SINGLE_LINE_TEXT", "value": "CC100" },
+        "中文名稱": { "type": "SINGLE_LINE_TEXT", "value": "測試一" },
+        "使用狀況": { "type": "DROP_DOWN", "value": "使用中" },
+        "所屬部門": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "DEPT_A", "name": "測試事業部" }] }
+      },
+      {
+        "$id": { "type": "__ID__", "value": "2" },
+        "CostCenter": { "type": "SINGLE_LINE_TEXT", "value": "CC200" },
+        "中文名稱": { "type": "SINGLE_LINE_TEXT", "value": "測試二" },
+        "使用狀況": { "type": "DROP_DOWN", "value": "使用中" },
+        "所屬部門": { "type": "ORGANIZATION_SELECT", "value": [{ "code": "DEPT_B", "name": "測試二部" }] }
+      }
+    ]
+  },
+  "userOrgs": {
+    "U001": [{ "organization": { "code": "ORG_A1", "name": "測試一課" }, "title": null }],
+    "U004": [{ "organization": { "code": "ORG_A1", "name": "測試一課" }, "title": null }],
+    "U006": [{ "organization": { "code": "ORG_LT", "name": "汽車貨運部" }, "title": { "code": "T_DIR", "name": "部長" } }]
+  },
+  "userGroups": {
+    "U001": [],
+    "U004": [],
+    "U006": []
+  },
+  "groupUsers": {
+    "BH_LT_部長": [
+      { "code": "U006", "name": "部長己" },
+      { "code": "H9", "name": "上階主管" }
+    ]
+  },
+  "organizations": [
+    { "code": "DEPT_A", "parentCode": null },
+    { "code": "ORG_A1", "parentCode": "DEPT_A" },
+    { "code": "DEPT_B", "parentCode": null },
+    { "code": "ORG_B1", "parentCode": "DEPT_B" },
+    { "code": "ORG_LT", "parentCode": null }
+  ]
+}

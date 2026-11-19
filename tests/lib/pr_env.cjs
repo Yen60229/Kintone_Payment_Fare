@@ -189,6 +189,8 @@ const createEnv = ({ appId = 749, loginCode = '24136', api, swalAnswer } = {}) =
     },
     /** 載入（執行）專案根目錄的一支 js */
     load: (file) => vm.runInContext(readSrc(file), sandbox, { filename: file }),
+    /** 執行一段程式碼（例：把 config 的某個值換掉再載入） */
+    run: (code, filename = 'inline.js') => vm.runInContext(code, sandbox, { filename }),
     /** 觸發事件：依註冊順序執行所有監聽該事件的處理程式，回傳最後的 event */
     fire: async (type, event) => {
       const ev = { type, ...event };

@@ -1,0 +1,38 @@
+<section class="nx-ir">
+  <h2 class="nx-ir__title">發票登記設定</h2>
+  <p class="nx-ir__hint">
+    存檔時把發票號碼登記到發票登記 App（發票號碼值不可重複），已被其他單據登記的號碼擋下，兩張單同時存同一張發票也擋得住。
+    判斷重複只看發票登記 App，不查其他請款單；多個請款 App 共用同一個發票登記 App，各自裝這個 plug-in 即可。
+    每個請款 App 都要有「發票號碼記錄」欄位（格式「 / A / B / 」）。
+  </p>
+
+  <h3 class="nx-ir__h3">發票登記 App</h3>
+  <div class="nx-ir__grid">
+    <label class="nx-ir__label" for="nx-ir-registry">App ID<span class="nx-ir__req">*</span></label>
+    <input class="nx-ir__input" id="nx-ir-registry" type="text" inputmode="numeric" placeholder="757" />
+    <label class="nx-ir__label" for="nx-ir-ttl">自己沒存成的登記，幾分鐘後可重用</label>
+    <input class="nx-ir__input" id="nx-ir-ttl" type="text" inputmode="numeric" placeholder="10" />
+  </div>
+  <details class="nx-ir__details">
+    <summary>發票登記 App 的欄位代碼（預設值可不改）</summary>
+    <div class="nx-ir__grid" id="nx-ir-fields"></div>
+  </details>
+
+  <h3 class="nx-ir__h3">本 App</h3>
+  <div class="nx-ir__grid">
+    <label class="nx-ir__label" for="nx-ir-self-invoice">發票號碼記錄欄位<span class="nx-ir__req">*</span></label>
+    <select class="nx-ir__input" id="nx-ir-self-invoice"></select>
+    <label class="nx-ir__label" for="nx-ir-self-status">作廢判斷：狀態欄位</label>
+    <select class="nx-ir__input" id="nx-ir-self-status"></select>
+    <label class="nx-ir__label" for="nx-ir-self-void">作廢的狀態值（逗號分隔）</label>
+    <input class="nx-ir__input" id="nx-ir-self-void" type="text" placeholder="表單作廢" />
+    <label class="nx-ir__label" for="nx-ir-self-voidcheck">作廢判斷：核取方塊（有勾＝作廢）</label>
+    <select class="nx-ir__input" id="nx-ir-self-voidcheck"></select>
+  </div>
+
+  <p class="nx-ir__error" id="nx-ir-error" role="alert"></p>
+  <div class="nx-ir__actions">
+    <button class="nx-ir__btn nx-ir__btn--sub" id="nx-ir-cancel" type="button">取消</button>
+    <button class="nx-ir__btn" id="nx-ir-save" type="button">儲存</button>
+  </div>
+</section>

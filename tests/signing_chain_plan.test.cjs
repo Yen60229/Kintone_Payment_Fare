@@ -139,7 +139,7 @@ check('不看費用所屬人是誰：只收主管資料與欄位對應兩個參�
   assert.deepStrictEqual(planSigningChain(data, MANAGER_FIELDS_MAPPING).fieldsToShow, FULL_CHAIN);
 });
 
-check('原始檔不再有「往上一階」、搬到主管3、存檔重排等舊機制', () => {
+check('原始檔不再有「往上一階」、搬到主管3、舊版（723）存檔重排等舊機制（2026-11-18 起存檔重算改走 PR_SIGNING_CHAIN.applyOnSave）', () => {
   [
     'ALLOWED_TYPES',
     'CHAIN_MODE',
@@ -148,7 +148,6 @@ check('原始檔不再有「往上一階」、搬到主管3、存檔重排等舊
     'planSubmitChain',
     'applyChainForSubmit',
     'alignRight',
-    'PR_SIGNING',
     'signingContextCache',
     'loadSigningContext',
     'getSigningContext',
@@ -156,6 +155,7 @@ check('原始檔不再有「往上一階」、搬到主管3、存檔重排等舊
     'handleTypeChange',
     'withTimeout',
   ].forEach((name) => assert.ok(!signingSrc.includes(name), `不應再出現 ${name}`));
+  assert.ok(!/window.PR_SIGNINGs*=/.test(signingSrc), '不應再出現舊的 window.PR_SIGNING');
 });
 
 console.log(`\n${passed} assertions passed.`);

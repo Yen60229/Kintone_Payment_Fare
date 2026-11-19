@@ -116,34 +116,61 @@
   // 工具函數區塊
   // =========================
 
-  /**
-   * 更新簽核人數
-   * @param {Object} record - Kintone record 物件
-   * @param {string} field - 欄位名稱
-   * @param {number} count - 人數
-   */
-  function updateSigningCount(record, field, count) {
-    record[field].value = `${count}人`;
-    KT.record().setFieldShown(field, count > 0);
-  }
+  // ── 只改 record、不碰畫面的部分（存檔時 PR_SIGNING_CHAIN.applyOnSave 也用同一套）──────────
+
+  /** 一格簽核欄位寫成指定的人並鎖住 */
+  const setSlot = (record, field, users) => {
+    if (record[field]) {
+      record[field].value = users;
+      record[field].disabled = true;
+    } else {
+      record[field] = { value: users, type: 'USER_SELECT', disabled: true };
+    }
+  };
+
+  /** 人數欄位的值（「3人」→ 3） */
+  const countOf = (record, field) => parseInt(record[field]?.value, 10) || 0;
 
   /**
    * 依各格目前有沒有人重算主管／次長人數（2026-11-16）。
    * 費用所屬人或部門一變就重算，不沿用上一位的人數（流程管理靠人數決定從哪一關開始）。
    */
-  function recountSigning(record) {
+  function recountOnRecord(record) {
     const filled = (fields) => fields.filter((field) => record[field]?.value?.length > 0).length;
-    if (record[COUNT_FIELDS.manager]) updateSigningCount(record, COUNT_FIELDS.manager, filled(MANAGER_FIELDS));
-    if (record[COUNT_FIELDS.deputy]) updateSigningCount(record, COUNT_FIELDS.deputy, filled(DEPUTY_FIELDS));
+    if (record[COUNT_FIELDS.manager]) record[COUNT_FIELDS.manager].value = `${filled(MANAGER_FIELDS)}人`;
+    if (record[COUNT_FIELDS.deputy]) record[COUNT_FIELDS.deputy].value = `${filled(DEPUTY_FIELDS)}人`;
+  }
+
+  /** 簽核格全部清空、人數歸 0人 */
+  function clearSlots(record) {
+    getEnabledFields().forEach((field) => {
+      if (record[field]) record[field].value = [];
+    });
+    recountOnRecord(record);
+  }
+
+  // ── 畫面 ──────────────────────────────────────────────────────────────────
+
+  /** 畫面上：簽核格有人才顯示，人數大於 0 才顯示 */
+  function syncSigningShown(record) {
+    getEnabledFields().forEach((field) => KT.record().setFieldShown(field, record[field]?.value?.length > 0));
+    Object.values(COUNT_FIELDS).forEach((field) => {
+      if (record[field]) KT.record().setFieldShown(field, countOf(record, field) > 0);
+    });
+  }
+
+  /** 重算人數並同步顯示 */
+  function recountSigning(record) {
+    recountOnRecord(record);
+    Object.values(COUNT_FIELDS).forEach((field) => {
+      if (record[field]) KT.record().setFieldShown(field, countOf(record, field) > 0);
+    });
   }
 
   /** 簽核格全部清空隱藏、人數歸 0人（排不出人、查詢失敗、換費用所屬人時用） */
   function resetSigningSlots(record) {
-    getEnabledFields().forEach((field) => {
-      if (record[field]) record[field].value = [];
-      KT.record().setFieldShown(field, false);
-    });
-    recountSigning(record);
+    clearSlots(record);
+    syncSigningShown(record);
   }
 
   /** 非同步回來後清空畫面上的簽核格（手動模式不動） */
@@ -260,7 +287,7 @@
    * 簽核流程主檔有值的欄位全部保留，由低層級到高層級：
    *   單位主管1 → 單位主管2 → 單位主管3 → 單位次長 → 單位次長1 → 單位部長_支店長
    * 同一人出現在好幾格時只留最上面那格（主檔的主管3 與次長1 常是同一位次長，不讓他連簽兩關）。
-   * 費用所屬人本人那一層與以下，之後由 clearSigningFieldsByTitle 依職稱清掉。
+   * 費用所屬人本人那一層與以下，之後由 clearByTitle 依職稱清掉。
    *
    * @param {Object} managerData - 簽核流程主檔回傳的那筆記錄
    * @param {Array}  fieldsToUpdate - MANAGER_FIELDS_MAPPING 或 MANAGER_FIELDS_SPECIAL
@@ -285,9 +312,8 @@
 
     return { fieldHasValue, fieldsToShow, usersOf };
   };
-
   /**
-   * 設定簽核人員欄位
+   * 把簽核流程主檔排出的人寫進簽核格（只改 record）。
    *
    * 簽核層級結構：
    *   A1: 單位主管1
@@ -297,194 +323,89 @@
    *   C:  單位次長1
    *   D:  單位部長_支店長
    *
-   * 決定「要排哪幾位主管」的判斷本身是純函式 planSigningChain，
-   * 本函式只負責把結果寫進 record 並設定顯示狀態。
-   *
-   * @param {Object} managerData - 主管資料（來源 API 回傳）
    * @param {Object} record - Kintone record 物件
-   * @param {boolean} isSpecialDepartment - 是否為特殊部門（六大簽核流程）
-   * @returns {Object} 更新後的 record
+   * @param {Object} managerData - 簽核流程主檔的那一筆
+   * @param {boolean} isSpecialDepartment - 是否為特殊部門（六大簽核流程，只排部長）
+   * @returns {Object} record
    */
-  function updateSigningFields(managerData, record, isSpecialDepartment) {
+  function writeChain(record, managerData, isSpecialDepartment) {
     const fieldsToUpdate = isSpecialDepartment ? MANAGER_FIELDS_SPECIAL : MANAGER_FIELDS_MAPPING;
-
-    const { fieldHasValue, fieldsToShow, usersOf } = planSigningChain(managerData, fieldsToUpdate);
-
+    const { usersOf } = planSigningChain(managerData, fieldsToUpdate);
     fieldsToUpdate.forEach(({ displayField }) => {
-      const shouldShow = fieldsToShow.includes(displayField);
-      const users = fieldHasValue[displayField] ? usersOf[displayField] : [];
-
-      if (shouldShow && users.length > 0) {
-        // 顯示欄位並設定值
-        record[displayField] = {
-          value: users.map((user) => ({
-            code: user.code,
-            name: user.name,
-          })),
-          type: 'USER_SELECT',
-          disabled: true,
-        };
-        KT.record().setFieldShown(displayField, true);
-      } else {
-        // 隱藏欄位並清空值
-        record[displayField] = {
-          value: [],
-          type: 'USER_SELECT',
-          disabled: true,
-        };
-        KT.record().setFieldShown(displayField, false);
-      }
+      setSlot(
+        record,
+        displayField,
+        usersOf[displayField].map((user) => ({ code: user.code, name: user.name })),
+      );
     });
-
     return record;
   }
 
   /**
-   * 根據費用所屬人職位清空對應簽核欄位
-   * @param {Object} updateRecord - 更新的 record 物件
-   * @param {string} title - 職位名稱
+   * 依費用所屬人職稱清掉本人那一層與以下，再依各格實際有沒有人重算人數（只改 record）。
+   * @param {Object} record - Kintone record 物件
+   * @param {string} title - 職稱
    * @param {string} userCode - 費用所屬人的使用者代碼
    */
-  function clearSigningFieldsByTitle(updateRecord, title, userCode) {
+  function clearByTitle(record, title, userCode) {
+    const hasOwner = (field) => record[field]?.value?.some((user) => user.code === userCode);
+    const clear = (fields) => fields.forEach((field) => setSlot(record, field, []));
     // 本人也排在次長格（課長兼次長、中心長排在次長格…）：照次長處理，簽核從他上面那一層開始，不會自己簽自己
-    const isInDeputySlot = DEPUTY_FIELDS.some((field) => updateRecord.record[field]?.value?.some((user) => user.code === userCode));
+    const isInDeputySlot = DEPUTY_FIELDS.some(hasOwner);
     // 本人就排在部長格（職稱不一定是部長，例如事業部長）：照部長處理，部長格也清掉，不會自己簽自己
-    const isInDirectorSlot = updateRecord.record[DIRECTOR_FIELD]?.value?.some((user) => user.code === userCode);
+    const isInDirectorSlot = hasOwner(DIRECTOR_FIELD);
     const effectiveTitle = isInDirectorSlot ? '部長' : isInDeputySlot && title !== '部長' && title !== '支店長' ? '次長' : title;
 
     switch (effectiveTitle) {
-      case '課長':
-        console.log('開始處理課長身份');
-        console.log('使用者 code:', userCode);
-
-        let matchedLevel = -1; // 用來記錄匹配到的主管層級
-
-        // 先找出使用者是哪一個層級的主管
-        for (let i = 1; i <= 3; i++) {
-          const managerField = `單位主管${i}`;
-          if (APPROVAL_FIELDS[managerField]?.enabled && updateRecord.record[managerField].value?.some((user) => user.code === userCode)) {
-            matchedLevel = i;
-            console.log(`找到匹配的主管層級: ${matchedLevel}`);
-            break;
-          }
-        }
-
-        // 如果找到匹配的層級，清空該層級及以下層級的主管欄位
-        if (matchedLevel > 0) {
-          let clearedCount = 0; // 記錄清空的主管數量
-
-          // 清空所有較低層級的主管欄位（包含當前層級）
-          for (let i = 1; i <= matchedLevel; i++) {
-            const managerField = `單位主管${i}`;
-
-            if (APPROVAL_FIELDS[managerField]?.enabled && updateRecord.record[managerField].value.length > 0) {
-              clearedCount++;
-            }
-
-            // 清空欄位值
-            if (APPROVAL_FIELDS[managerField]?.enabled) {
-              updateRecord.record[managerField] = {
-                value: [],
-                type: 'USER_SELECT',
-                disabled: true,
-              };
-
-              // 隱藏欄位
-              KT.record().setFieldShown(managerField, false);
-            }
-          }
-
-          // 更新主管簽核人數
-          const currentCount = parseInt(updateRecord.record[COUNT_FIELDS.manager].value.charAt(0));
-          console.log('當前主管人數:', currentCount);
-
-          if (!isNaN(currentCount) && currentCount > 0) {
-            const newCount = Math.max(0, currentCount - clearedCount);
-            updateSigningCount(updateRecord.record, COUNT_FIELDS.manager, newCount);
-            console.log('更新後主管人數:', newCount);
-          }
-        }
+      case '課長': {
+        // 本人在哪一格主管，清掉那一格與以下
+        const level = MANAGER_FIELDS.findIndex(hasOwner);
+        if (level >= 0) clear(MANAGER_FIELDS.slice(0, level + 1));
         break;
-
+      }
       case '次長':
-      case '室長':
-        console.log('開始處理次長/室長身份');
-        // 課長欄位清空與隱藏
-        MANAGER_FIELDS.forEach((field) => {
-          updateRecord.record[field] = {
-            value: [],
-            type: 'USER_SELECT',
-            disabled: true,
-          };
-          KT.record().setFieldShown(field, false);
-        });
-        updateSigningCount(updateRecord.record, COUNT_FIELDS.manager, 0);
-
-        // 處理次長欄位 - 採用階層式邏輯
-        let matchedDeputyLevel = -1;
-
-        // 檢查是單位次長還是單位次長1
+      case '室長': {
+        // 課長全清；本人在哪一格次長（取最上面那格），清掉那一格與以下
+        clear(MANAGER_FIELDS);
+        let level = -1;
         DEPUTY_FIELDS.forEach((field, index) => {
-          if (updateRecord.record[field].value?.some((user) => user.code === userCode)) {
-            matchedDeputyLevel = index;
-            console.log(`找到匹配的次長層級: ${field}`);
-          }
+          if (hasOwner(field)) level = index;
         });
-
-        // 如果找到匹配的層級，清空該層級及以下層級的次長欄位
-        if (matchedDeputyLevel >= 0) {
-          let clearedDeputyCount = 0;
-
-          // 清空所有較低層級的次長欄位（包含當前層級）
-          for (let i = 0; i <= matchedDeputyLevel; i++) {
-            const field = DEPUTY_FIELDS[i];
-
-            if (updateRecord.record[field].value.length > 0) {
-              clearedDeputyCount++;
-            }
-
-            // 清空欄位值
-            updateRecord.record[field] = {
-              value: [],
-              type: 'USER_SELECT',
-              disabled: true,
-            };
-
-            KT.record().setFieldShown(field, false);
-          }
-
-          // 更新次長簽核人數
-          const currentDeputyCount = parseInt(updateRecord.record[COUNT_FIELDS.deputy].value);
-          console.log('目前次長人數:', currentDeputyCount);
-
-          if (!isNaN(currentDeputyCount) && currentDeputyCount > 0) {
-            const newCount = Math.max(0, currentDeputyCount - clearedDeputyCount);
-            updateSigningCount(updateRecord.record, COUNT_FIELDS.deputy, newCount);
-            console.log('更新後次長人數:', newCount);
-          }
-        }
+        if (level >= 0) clear(DEPUTY_FIELDS.slice(0, level + 1));
         break;
-
+      }
       case '部長':
       case '支店長':
         // 部長格是本人才清；部長格是別人（上一層部長）就留著讓他簽
-        [...MANAGER_FIELDS, ...DEPUTY_FIELDS, ...(isInDirectorSlot ? [DIRECTOR_FIELD] : [])].forEach((field) => {
-          updateRecord.record[field] = {
-            value: [],
-            type: 'USER_SELECT',
-            disabled: true,
-          };
-          KT.record().setFieldShown(field, false);
-        });
-        // 設定簽核人數為 0
-        updateSigningCount(updateRecord.record, COUNT_FIELDS.manager, 0);
-        updateSigningCount(updateRecord.record, COUNT_FIELDS.deputy, 0);
+        clear([...MANAGER_FIELDS, ...DEPUTY_FIELDS, ...(isInDirectorSlot ? [DIRECTOR_FIELD] : [])]);
+        break;
+      default:
         break;
     }
 
     // 人數一律依清完後各格實際有沒有人重算（職稱沒對到上面任何一種、或格子本來就空著，也不會留錯的人數）
-    recountSigning(updateRecord.record);
-    KT.record().set(updateRecord);
+    recountOnRecord(record);
+  }
+
+  /**
+   * 依查到的簽核流程主檔排好整條簽核鏈（只改 record；畫面與存檔共用）。
+   *   台中支店長等（isSpecificDirector）或主檔查不到 → 全部清空、人數 0人；
+   *   六大簽核流程只排部長，部長就是本人時才依職稱清；其他依職稱清掉本人那層與以下。
+   * @param {Object} record
+   * @param {Object|null} managerData 簽核流程主檔的那一筆
+   * @param {{ title: string, isSpecialDepartment: boolean, isSpecificDirector: boolean }} owner classifyOwner 的結果
+   * @param {string} ownerCode 費用所屬人代碼
+   * @returns {Object} record
+   */
+  function fillChain(record, managerData, { title, isSpecialDepartment, isSpecificDirector }, ownerCode) {
+    // 先全部清掉：六大簽核流程只寫部長格，其他格不能留著上一位（或舊單）的人
+    clearSlots(record);
+    if (isSpecificDirector || !managerData) return record;
+    writeChain(record, managerData, isSpecialDepartment);
+    const isOwnerDirector = record[DIRECTOR_FIELD]?.value?.some((user) => user.code === ownerCode);
+    if (!isSpecialDepartment || isOwnerDirector) clearByTitle(record, title, ownerCode);
+    recountOnRecord(record);
+    return record;
   }
 
   /**
@@ -514,66 +435,151 @@
     };
   };
 
+  /**
+   * 查簽核流程主檔（APPS.APPROVAL_FLOW）的那一筆；查不到回 null。
+   * @param {{ approvalQuery: string, isSpecialDepartment: boolean }} owner classifyOwner 的結果
+   * @returns {Promise<Object|null>}
+   */
+  const fetchManagerData = ({ approvalQuery, isSpecialDepartment }) => {
+    const apiFields = (isSpecialDepartment ? MANAGER_FIELDS_SPECIAL : MANAGER_FIELDS_MAPPING).map((field) => field.apiField);
+    return kintone
+      .api(kintone.api.url('/k/v1/records', true), 'GET', { app: APPS.APPROVAL_FLOW, fields: [AF.FLOW_NAME, ...apiFields], query: approvalQuery })
+      .then((resp) => resp?.records?.[0] || null);
+  };
+
+  // ── 存檔時重算（2026-11-18）──────────────────────────────────────────────
+  //   畫面上的排人是改費用所屬人／部門時非同步做的：改完馬上按儲存、或簽核流程主檔事後改過、
+  //   或複製舊單，存進去的都會是舊的人。存檔時一律依目前的費用所屬人／部門再排一次，寫進 record。
+  //   不處理：表單作廢、手動設定簽核流程、送出後（不在可編輯狀態）、對照表裡的部長（PR_DIRECTOR_UPLINE.apply 負責）。
+
+  /** 這個狀態還能重算：新增（沒有狀態）、報銷人填單、草稿與駁回（和部長上一階主管同一組狀態） */
+  const isEditableStatus = (status) =>
+    !status || C.DIRECTOR_UPLINE.EDITABLE_STATUSES.includes(status) || String(status).endsWith(C.DIRECTOR_UPLINE.REJECT_SUFFIX);
+
+  /**
+   * 存檔時呼叫：依目前的費用所屬人／費用所屬人部門重排簽核人員並寫進 record。
+   * 查不到資料、部門不是費用所屬人的單位 → 回錯誤訊息擋存檔（不讓舊的簽核人員被存進去）。
+   * @param {Object} record event.record
+   * @returns {Promise<string[]>}
+   */
+  const applyOnSave = async (record) => {
+    if (record?.[C.VOID_FIELD]?.value?.length > 0) return [];
+    if (isManualSigningMode(record)) return [];
+    if (!isEditableStatus(record?.[F.STATUS_FIELD]?.value)) return [];
+    const ownerUser = record?.[F.EXPENSE_OWNER]?.value?.[0];
+    const ownerOrg = record?.[F.EXPENSE_OWNER_ORG]?.value?.[0];
+    if (!ownerUser?.code || !ownerOrg?.code) return []; // 沒填由必填檢查擋，這裡不重複報錯
+
+    try {
+      const resp = await kintone.api(kintone.api.url(USER_API, true), 'GET', { code: ownerUser.code });
+      const orgs = resp?.organizationTitles || [];
+      const matchedIndex = orgs.findIndex((org) => org.organization?.code === ownerOrg.code);
+      if (matchedIndex === -1) {
+        return [`「${F.EXPENSE_OWNER_ORG}」${ownerOrg.name || ownerOrg.code} **不是費用所屬人的所屬單位**，無法安排簽核人員\n※ 請重新選一次「${F.EXPENSE_OWNER}」，系統會重新帶入部門`];
+      }
+      const owner = classifyOwner(ownerOrg.name, orgs, matchedIndex);
+      // 對照表裡的部長：上一階主管由 PR_DIRECTOR_UPLINE.apply 寫入，這裡不動
+      if (window.PR_DIRECTOR_UPLINE?.groupOf(orgs[matchedIndex].organization.name, owner.title)) return [];
+      const managerData = owner.isSpecificDirector ? null : await fetchManagerData(owner);
+      fillChain(record, managerData, owner, ownerUser.code);
+      return [];
+    } catch (err) {
+      console.error('[簽核人員] 存檔時重排簽核人員失敗:', err);
+      return [`**無法安排簽核人員**（讀不到費用所屬人的單位或簽核流程主檔）\n※ 請稍後再按一次儲存；仍無法存檔請聯絡系統管理員`];
+    }
+  };
+
+  /**
+   * 存檔時呼叫：依目前的費用所屬人部門重帶會計單位／會計承辦人／權限開放人員（和簽核人員同一個理由：
+   * 畫面上是改部門時非同步帶的，改完馬上存、舊單、會計對應主檔事後改過，存進去的都會是舊的）。
+   * 手動設定簽核流程也要帶（會計承辦人、權限開放人員），會計單位照舊維持空白；手動會計承辦人不在這裡動。
+   * 查不到對應 → 非手動擋存檔（流程管理要靠會計單位送件）；手動不擋。
+   * @param {Object} record event.record
+   * @returns {Promise<string[]>}
+   */
+  const applyAccountingOnSave = async (record) => {
+    if (record?.[C.VOID_FIELD]?.value?.length > 0) return [];
+    if (!isEditableStatus(record?.[F.STATUS_FIELD]?.value)) return [];
+    const orgName = record?.[F.EXPENSE_OWNER_ORG]?.value?.[0]?.name;
+    if (!orgName) return [];
+    try {
+      const accountData = await fetchAccountingData(orgName);
+      if (!accountData) {
+        if (isManualSigningMode(record)) return [];
+        return [`「${F.EXPENSE_OWNER_ORG}」${orgName} **找不到對應的會計單位**\n※ 請確認費用所屬人部門是否正確；仍有問題請洽系統管理員`];
+      }
+      fillAccounting(record, accountData);
+      return [];
+    } catch (err) {
+      console.error('[簽核人員] 存檔時帶入會計單位失敗:', err);
+      return [`**無法取得會計單位**（讀不到會計對應主檔）\n※ 請稍後再按一次儲存；仍無法存檔請聯絡系統管理員`];
+    }
+  };
+
+  // 給 payment_request_submit 存檔時呼叫；fillChain 對外給測試用
+  window.PR_SIGNING_CHAIN = Object.freeze({ applyOnSave, applyAccountingOnSave, fillChain, isEditableStatus });
+
   /** 提示視窗：一律用 SweetAlert；載不到 SweetAlert 才退回瀏覽器的 alert */
   function notify(icon, title, text) {
     if (typeof Swal !== 'undefined') Swal.fire({ icon, title, text, width: 'auto', confirmButtonText: '好' });
     else alert(text ? `${title}\n${text}` : title);
   }
 
+  const accountingParams = (orgName) => ({
+    app: APPS.ACCOUNTING_MAP,
+    fields: [ACC.APPLY_UNIT, ACC.ACCOUNTING_UNIT, ACC.ACCOUNTING_STAFF, ACC.PERMISSION_USER],
+    query: `${ACC.APPLY_UNIT} in ("${orgName}")`,
+  });
+
+  /** 查會計對應主檔（APPS.ACCOUNTING_MAP）申請單位＝orgName 的那一筆；查不到回 null */
+  const fetchAccountingData = (orgName) =>
+    new Promise((resolve, reject) => {
+      kintone.api(kintone.api.url('/k/v1/records', true), 'GET', accountingParams(orgName), resolve, reject);
+    }).then((resp) => resp?.records?.[0] || null);
+
+  const toUsers = (list) => (list || []).map((u) => ({ code: u.code || u, name: u.name || u }));
+
   /**
-   * 取得會計單位並設定
+   * 會計對應主檔的一筆 → 寫進 record（只改 record，畫面與存檔共用）：
+   *   會計單位（手動設定簽核流程時維持空白：流程管理靠它分辨「送會計」與「送單位會計處理中」）、
+   *   會計承辦人、權限開放人員。
+   * @returns {{ hasAccount: boolean, isManual: boolean, staff: Array }}
+   */
+  function fillAccounting(record, accountData) {
+    const isManual = isManualSigningMode(record);
+    const unit = accountData[ACC.ACCOUNTING_UNIT]?.value;
+    const hasAccount = unit?.length > 0;
+    if (!isManual) {
+      record[F.ACCOUNTING_UNIT] = { value: hasAccount ? [{ code: unit, name: unit }] : [], type: 'GROUP_SELECT', disabled: true };
+    }
+    const staff = toUsers(accountData[ACC.ACCOUNTING_STAFF]?.value);
+    record[F.ACCOUNTING_STAFF] = { value: staff, type: 'USER_SELECT' };
+    // 左側是請款單主表的欄位（F），右側是會計對應主檔的欄位（ACC）——同名但不同 App
+    record[F.PERMISSION_STAFF] = { value: toUsers(accountData[ACC.PERMISSION_USER]?.value), type: 'USER_SELECT' };
+    return { hasAccount, isManual, staff };
+  }
+
+  /**
+   * 取得會計單位並設定到畫面
    * @param {string} orgName - 費用所屬人部門名稱
    */
   function setAccountingUnit(orgName) {
-    const params_acc = {
-      app: APPS.ACCOUNTING_MAP,
-      fields: [ACC.APPLY_UNIT, ACC.ACCOUNTING_UNIT, ACC.ACCOUNTING_STAFF, ACC.PERMISSION_USER],
-      query: `${ACC.APPLY_UNIT} in ("${orgName}")`,
-    };
-
-    // 呼叫 API 取得會計單位帶入簽核流程
+    // 用回呼寫法：API 一回來就同步寫畫面（不多繞 Promise）
     kintone.api(
       kintone.api.url('/k/v1/records', true),
       'GET',
-      params_acc,
+      accountingParams(orgName),
       // 別的處理程式還在跑時 get() 會被擋，KT.whenIdle 等它跑完再寫
       (resp) => KT.whenIdle(() => {
-        if (!resp.records || resp.records.length === 0) {
+        const accountData = resp?.records?.[0];
+        if (!accountData) {
           notify('warning', '找不到對應的會計單位', '請確認費用所屬人部門是否正確；仍有問題請洽系統管理員。');
           return;
         }
 
-        const AccountData = resp.records[0];
+        // API 回來時使用者可能剛勾選手動，所以看寫入當下的畫面資料，不看呼叫當時的狀態
         const updateRecord = KT.record().get();
-        // 手動設定簽核流程時，會計單位要維持空白（流程管理靠它分辨「送會計」與「送單位會計處理中」）。
-        // API 回來時使用者可能剛勾選手動，所以看寫入當下的畫面資料，不看呼叫當時的狀態。
-        const isManual = isManualSigningMode(updateRecord.record);
-        const has_account = AccountData[ACC.ACCOUNTING_UNIT]?.value?.length > 0;
-        const has_account_member = AccountData[ACC.ACCOUNTING_STAFF]?.value?.length > 0;
-        const has_permission_user = AccountData[ACC.PERMISSION_USER]?.value?.length > 0;
-
-        if (!isManual) {
-          updateRecord.record[F.ACCOUNTING_UNIT] = {
-            value: has_account
-              ? [
-                  {
-                    code: AccountData[ACC.ACCOUNTING_UNIT].value,
-                    name: AccountData[ACC.ACCOUNTING_UNIT].value,
-                  },
-                ]
-              : [],
-            type: 'GROUP_SELECT',
-            disabled: true,
-          };
-        }
-
-        const staff = has_account_member
-          ? AccountData[ACC.ACCOUNTING_STAFF].value.map((member) => ({
-              code: member.code || member,
-              name: member.name || member,
-            }))
-          : [];
-        updateRecord.record[F.ACCOUNTING_STAFF] = { value: staff, type: 'USER_SELECT' };
+        const { hasAccount, isManual, staff } = fillAccounting(updateRecord.record, accountData);
 
         // 手動模式另有「手動會計承辦人」（指定簽核人視窗第 4 格）：還空著才帶這個預設，申請人選過的不蓋掉
         const manualStaffField = updateRecord.record[MANUAL_ACCOUNTING_FIELD];
@@ -583,18 +589,7 @@
           manualStaffField.disabled = true;
         }
 
-        // 左側是請款單主表的欄位（F），右側是會計對應主檔的欄位（ACC）——同名但不同 App
-        updateRecord.record[F.PERMISSION_STAFF] = {
-          value: has_permission_user
-            ? AccountData[ACC.PERMISSION_USER].value.map((user) => ({
-                code: user.code || user,
-                name: user.name || user,
-              }))
-            : [],
-          type: 'USER_SELECT',
-        };
-
-        KT.record().setFieldShown(F.ACCOUNTING_UNIT, has_account && !isManual);
+        KT.record().setFieldShown(F.ACCOUNTING_UNIT, hasAccount && !isManual);
         KT.record().set(updateRecord);
         if (offerManualStaff) window.PR_MANUAL_SIGNERS?.offerAccounting?.(staff);
       }).catch((err) => console.error('[簽核人員] 帶入會計單位失敗:', err)),
@@ -714,7 +709,7 @@
 
       // 使用匹配到的索引取得正確的組織和職位資料
       const owner = classifyOwner(orgName, orgs, matchedIndex);
-      const { title, approvalQuery, isSpecialDepartment, isSpecificDirector } = owner;
+      const { title, approvalQuery, isSpecificDirector } = owner;
 
       // 對照表裡的部長（C.DIRECTOR_UPLINE）：上一階主管由群組決定，不查簽核流程主檔
       const upline = window.PR_DIRECTOR_UPLINE;
@@ -726,84 +721,25 @@
       }
       console.log(`簽核流程查詢：${approvalQuery}`);
 
-      // 動態建立欄位陣列
-      const enabledApiFields = MANAGER_FIELDS_MAPPING.map((field) => field.apiField);
-      const specialApiFields = MANAGER_FIELDS_SPECIAL.map((field) => field.apiField);
-
-      const params = {
-        app: APPS.APPROVAL_FLOW,
-        fields: isSpecialDepartment ? [AF.FLOW_NAME, ...specialApiFields] : [AF.FLOW_NAME, ...enabledApiFields],
-        query: approvalQuery,
-      };
-
-      // 呼叫 API 取得簽核主管資料、身份確認
-      kintone.api(
-        kintone.api.url('/k/v1/records', true),
-        'GET',
-        params,
+      // 查簽核流程主檔 → 排好整條簽核鏈（fillChain，存檔時 applyOnSave 用同一套）→ 寫回畫面
+      fetchManagerData(owner).then(
         // 別的處理程式還在跑時 get() 會被擋，KT.whenIdle 等它跑完再寫
-        (resp) => KT.whenIdle(() => {
-          if (!isLatest()) return;
-          const updateRecord = KT.record().get();
+        (managerData) =>
+          KT.whenIdle(() => {
+            if (!isLatest()) return;
+            const updateRecord = KT.record().get();
 
-          // API 回來前使用者可能已勾選手動設定簽核流程，那就不蓋掉他自選的人
-          if (isManualSigningMode(updateRecord.record)) return;
+            // API 回來前使用者可能已勾選手動設定簽核流程，那就不蓋掉他自選的人
+            if (isManualSigningMode(updateRecord.record)) return;
 
-          console.log('title為', title);
+            if (isSpecificDirector) console.log('台中支店長/營業戰略部長/總務部長/事業本部長，不帶入課/次/部長流程');
+            else if (!managerData) console.log('此費用所屬人部門沒有設定簽核流程');
 
-          // 如果是台中支店長/營業戰略部長/總務部長/事業本部長，不用後續的設定
-          if (isSpecificDirector) {
-            // 清掉上一位費用所屬人留下的人與人數，欄位全部隱藏
-            resetSigningSlots(updateRecord.record);
-            SIGNING_FIELDS_TO_HIDE.forEach((field) => {
-              KT.record().setFieldShown(field, false);
-            });
+            fillChain(updateRecord.record, managerData, owner, ownerCode);
+            syncSigningShown(updateRecord.record);
             KT.record().set(updateRecord);
-            console.log('台中支店長/營業戰略部長/總務部長/事業本部長，不帶入課/次/部長流程');
-            return;
-          }
-
-          if (!resp.records || resp.records.length === 0) {
-            console.log('此費用所屬人部門沒有設定簽核流程');
-            // 不沿用上一位費用所屬人的簽核人員與人數
-            resetSigningSlots(updateRecord.record);
-            KT.record().set(updateRecord);
-            return;
-          }
-
-          const managerData = resp.records[0];
-
-          updateRecord.record = updateSigningFields(managerData, updateRecord.record, isSpecialDepartment);
-          KT.record().set(updateRecord);
-
-          // 計算主管人數
-          let managerCount = 0;
-          MANAGER_FIELDS.forEach((field) => {
-            if (updateRecord.record[field]?.value?.length > 0) managerCount++;
-          });
-
-          // 計算次長人數
-          let deputyCount = 0;
-          DEPUTY_FIELDS.forEach((field) => {
-            if (updateRecord.record[field]?.value?.length > 0) deputyCount++;
-          });
-
-          console.log(`managerCount = ${managerCount}, deputyCount = ${deputyCount}`);
-
-          // 設定簽核人數
-          updateSigningCount(updateRecord.record, COUNT_FIELDS.manager, managerCount);
-          updateSigningCount(updateRecord.record, COUNT_FIELDS.deputy, deputyCount);
-
-          KT.record().set(updateRecord);
-
-          // 六大簽核流程只排部長，不需再運行下方程式；除非那位部長就是本人，要清掉部長格
-          const isOwnerDirector = updateRecord.record[DIRECTOR_FIELD]?.value?.some((user) => user.code === ownerCode);
-          if (isSpecialDepartment && !isOwnerDirector) return;
-
-          // 費用所屬人職位設定 - 單職位與雙職位過濾重複簽核的人員
-          clearSigningFieldsByTitle(updateRecord, title, ownerCode);
-        }).catch((err) => console.error('[簽核人員] 帶入簽核主管失敗:', err)),
-        function (error) {
+          }).catch((err) => console.error('[簽核人員] 帶入簽核主管失敗:', err)),
+        (error) => {
           console.error('API錯誤:', error);
           if (!isLatest()) return;
           resetSigningOnScreen();

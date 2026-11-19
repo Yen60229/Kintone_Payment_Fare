@@ -284,10 +284,14 @@ const fullRow = (F) => {
  */
 const fakeTable = (labels, { editMode = false, rowCount = 1 } = {}) => {
   const cell = (textContent = '') => {
+    const classes = new Set();
     const el = {
       textContent,
       style: {},
       attrs: {},
+      classes,
+      classList: { add: (c) => classes.add(c), remove: (c) => classes.delete(c), contains: (c) => classes.has(c) },
+      getAttribute: (k) => (k in el.attrs ? el.attrs[k] : null),
       setAttribute: (k, v) => (el.attrs[k] = v),
       removeAttribute: (k) => delete el.attrs[k],
     };
@@ -312,6 +316,12 @@ const fakeTable = (labels, { editMode = false, rowCount = 1 } = {}) => {
     return { th: headers[i], tds: rows.map((r) => r.tds[i]) };
   };
   return { container, headers, rows, cells, col, marked: () => cells.filter((c) => c.attrs['data-pr-auto-width']) };
+};
+/** 格子被設的寬度（'128px'）；藏起來＝'hidden'；沒動＝null。寬度用 class（pr-tcol-w-128），不寫 inline style */
+const widthOf = (cell) => {
+  const cls = [...cell.classes].find((c) => c.startsWith('pr-tcol-'));
+  if (!cls) return null;
+  return cls === 'pr-tcol-hidden' ? 'hidden' : `${cls.slice('pr-tcol-w-'.length)}px`;
 };
 const useTables = (env, ...tables) =>
   env.setQuerySelectorAll((sel) => {
@@ -372,7 +382,7 @@ check('列印頁一律調欄寬；新增／編輯畫面不排延遲處理', asyn
   assert.strictEqual(env.timers.some((t) => t.ms === 1000), false);
 });
 
-check('詳細頁：依記錄的值定寬、沒有值的欄藏起來；只設 width／min-width，不設 max-width（內容長只會撐開，不會溢出）', async () => {
+check('詳細頁：依記錄的值定寬、沒有值的欄藏起來；用 pr-tcol- class，不寫 inline style', async () => {
   const { env, F, C } = await loadMain();
   const c = F.TRAFFIC_TABLE.COLS;
   const t = fakeTable(labelsOf(C), { rowCount: 2 });
@@ -384,12 +394,12 @@ check('詳細頁：依記錄的值定寬、沒有值的欄藏起來；只設 wid
   await env.fire('app.record.detail.show', { record: recordWithRows(F, [row1, row2]) });
   env.flushTimers();
   const visit = t.col('拜訪客戶（目的）');
-  assert.strictEqual(visit.th.style.width, `${'台中營業部-綜合物流營業課'.length * 2 * 8 - 8 + 32}px`, '12 個中文 ＋ 1 個「-」');
-  assert.deepStrictEqual(visit.tds.map((td) => td.style.minWidth), [visit.th.style.width, visit.th.style.width]);
-  assert.ok(t.cells.every((cell) => !cell.style.maxWidth), '不設 max-width');
+  assert.strictEqual(widthOf(visit.th), `${'台中營業部-綜合物流營業課'.length * 2 * 8 - 8 + 32}px`, '12 個中文 ＋ 1 個「-」');
+  assert.deepStrictEqual(visit.tds.map(widthOf), [widthOf(visit.th), widthOf(visit.th)]);
+  assert.ok(t.cells.every((cell) => Object.keys(cell.style).length === 0), '不寫 inline style');
   const format = t.col('格式');
-  assert.strictEqual(format.th.style.display, 'none');
-  assert.ok(format.tds.every((td) => td.style.display === 'none'));
+  assert.strictEqual(widthOf(format.th), 'hidden');
+  assert.ok(format.tds.every((td) => widthOf(td) === 'hidden'));
   assert.strictEqual(t.marked().length, t.cells.length, '每一格都有記號（可還原）');
 });
 
@@ -402,9 +412,9 @@ check('依表頭文字對欄位：順序不同也對得上、表頭的必填 * �
   useTables(env, t);
   await env.fire('app.record.detail.show', { record: recordWithRows(F, [fullRow(F)]) });
   env.flushTimers();
-  assert.ok(t.col('憑證日期 *').th.style.width, '去掉 * 後對得上');
-  assert.strictEqual(t.col('金額（含稅）').th.style.width, '128px', '反過來的順序也找到正確的欄');
-  assert.deepStrictEqual(t.col('不明欄位').th.style, {}, '對不到的欄不動');
+  assert.ok(widthOf(t.col('憑證日期 *').th), '去掉 * 後對得上');
+  assert.strictEqual(widthOf(t.col('金額（含稅）').th), '128px', '反過來的順序也找到正確的欄');
+  assert.strictEqual(widthOf(t.col('不明欄位').th), null, '對不到的欄不動');
 });
 
 check('表頭對不上交通費明細的子表格（簽核記錄）整張不動', async () => {
@@ -444,12 +454,30 @@ check('進新增／編輯畫面：把詳細頁調過的格子寬度與隱藏還�
     useTables(env, t);
     await env.fire('app.record.detail.show', { record: recordWithRows(F, [tableRow({ [F.TRAFFIC_TABLE.COLS.ROUTE]: '台北→台中' })]) });
     env.flushTimers();
-    assert.strictEqual(t.col('格式').th.style.display, 'none', '沒有值的欄位在詳細頁藏起來');
-    assert.ok(t.col('起訖點').th.style.width);
+    assert.strictEqual(widthOf(t.col('格式').th), 'hidden', '沒有值的欄位在詳細頁藏起來');
+    assert.ok(widthOf(t.col('起訖點').th));
     await env.fire(`app.record.${type}.show`, { record: baseRecord(F) });
-    assert.ok(t.cells.every((cell) => !cell.style.display && !cell.style.width && !cell.style.minWidth), type);
+    assert.ok(t.cells.every((cell) => cell.classes.size === 0), type);
     assert.strictEqual(t.marked().length, 0, type);
   }
+});
+
+check('欄寬 class：MIN～MAX 每 8px 都在 payment_request.css 有定義；markCell 不寫 inline style', async () => {
+  const { env, C } = await loadMain();
+  const T = env.window.PR_TABLE_LAYOUT;
+  const W = C.TRAFFIC_TABLE_LAYOUT.WIDTH;
+  assert.strictEqual(W.PX_PER_UNIT % 8, 0, '寬度要是 8 的倍數，class 才對得上');
+  assert.strictEqual(W.PADDING_PX % 8, 0);
+  const css = readSrc('payment_request.css');
+  assert.ok(/\.pr-tcol-hidden\s*\{[^}]*display:\s*none/.test(css));
+  for (let px = W.MIN_PX; px <= W.MAX_PX; px += 8) {
+    assert.ok(new RegExp(`\\.pr-tcol-w-${px}\\s*\\{[^}]*width:\\s*${px}px[^}]*min-width:\\s*${px}px`).test(css), `pr-tcol-w-${px}`);
+  }
+  assert.strictEqual(T.widthClass('130px'), 'pr-tcol-w-128', '對齊 8px');
+  assert.strictEqual(T.widthClass('999px'), `pr-tcol-w-${W.MAX_PX}`);
+  assert.strictEqual(T.widthClass(null), 'pr-tcol-hidden');
+  const src = readSrc('payment_request_main_20260521.js');
+  assert.ok(!/cell\.style\./.test(src), '格子不寫 inline style');
 });
 
 check('原始碼：不再從畫面抓文字猜欄寬（getCellValue／processTableByContainer 已刪）', () => {

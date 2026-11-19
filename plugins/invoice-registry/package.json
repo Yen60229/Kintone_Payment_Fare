@@ -1,0 +1,14 @@
+{
+  "name": "kintone-invoice-registry-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "kintone 發票登記 plug-in：以發票登記 App 為準檢查發票號碼重複＋登記（值不可重複）",
+  "scripts": {
+    "test": "node tests/core.test.cjs && node tests/backfill.test.cjs",
+    "backfill": "node scripts/backfill.cjs",
+    "pack": "node scripts/pack.cjs"
+  },
+  "devDependencies": {
+    "@kintone/plugin-packer": "^9.1.2"
+  }
+}

@@ -85,6 +85,25 @@ const loadSavingHint = () => {
     assert.strictEqual(swalState.visible, false);
   });
 
+  await check('按下儲存時先清掉上一次殘留的 PR_SAVE_ERRORS（上一次有程式丟例外、submit 沒取走），不會當成這次的錯誤；沒有 PR_SAVE_ERRORS 也不出錯', () => {
+    const { api } = loadSavingHint();
+    assert.doesNotThrow(() => api.onSubmitStart({}));
+    // 這裡的 window 是提示模組的替身；PR_SAVE_ERRORS 由共用設定檔提供，給一個最小替身
+    const queued = ['上一次留下的錯誤'];
+    const src = readSrc('存檔等待提示_20260923.js');
+    assert.ok(/const onSubmitStart = \(event\) => \{\s*window\.PR_SAVE_ERRORS\?\.take\(\);\s*openSaving\(\);/.test(src), '開提示前先 take() 清空');
+    const fakeWindow = { PR_SAVE_ERRORS: { take: () => queued.splice(0) } };
+    // eslint-disable-next-line no-new-func
+    new Function('window', 'kintone', 'setTimeout', 'clearTimeout', src)(
+      Object.assign(fakeWindow, { PR_KT: { on: () => {} } }),
+      {},
+      () => 0,
+      () => {},
+    );
+    fakeWindow.PR_SAVING_HINT.onSubmitStart({});
+    assert.deepStrictEqual(queued, [], '殘留的訊息被清掉');
+  });
+
   await check('kintone 欄位設定的必填沒填（例如發票/憑證附件）→ 最後一個存檔程式就關提示，不會卡到保險計時', () => {
     const { api, swalState } = loadSavingHint();
     const props = {
@@ -237,10 +256,10 @@ const loadSavingHint = () => {
   });
 
   // ── 3. 互不相依的查詢同時送出 ────────────────────────────────────────────────
-  await check('submit 驗證：費用歸屬代碼、發票、掛帳單位、部長帶入、手動簽核人同時進行，錯誤訊息順序固定（代碼載入 → 表單 → 交通費明細 → 發票 → 掛帳單位 → 部長 → 手動簽核人）', () => {
+  await check('submit 驗證：費用歸屬代碼、發票、掛帳單位、簽核人員重排、會計單位重帶、部長帶入、手動簽核人同時進行，錯誤訊息順序固定（代碼載入 → 表單 → 交通費明細 → 發票 → 掛帳單位 → 簽核人員 → 會計單位 → 部長 → 手動簽核人）', () => {
     const handler = extract(submitSrc, /KT\.on\(\['app\.record\.create\.submit', 'app\.record\.edit\.submit'\][\s\S]*$/, 'submit handler');
-    assert.match(handler, /await Promise\.all\(\[costCentersTask, invoiceTask, scopeTask, directorTask, manualTask\]\)/);
-    const order = ['allErrors.push(costCenters.error)', 'allErrors.push(...validateForm(record', 'trafficRules.validate(record)', 'allErrors.push(...invoiceErrors)', 'allErrors.push(...scopeErrors)', 'allErrors.push(...directorErrors)', 'allErrors.push(...manualErrors)'].map((s) => handler.indexOf(s));
+    assert.match(handler, /await Promise\.all\(\[\s*costCentersTask,\s*invoiceTask,\s*scopeTask,\s*chainTask,\s*accountingTask,\s*directorTask,\s*manualTask,?\s*\]\)/);
+    const order = ['allErrors.push(costCenters.error)', 'allErrors.push(...validateForm(record', 'trafficRules.validate(record)', 'allErrors.push(...invoiceErrors)', 'allErrors.push(...scopeErrors)', 'allErrors.push(...chainErrors)', 'allErrors.push(...accountingErrors)', 'allErrors.push(...directorErrors)', 'allErrors.push(...manualErrors)'].map((s) => handler.indexOf(s));
     assert.ok(handler.indexOf('trafficRules.normalize(record)') < handler.indexOf('checkInvoiceDuplicate(record)'), '發票號碼記錄要先重算再查重複');
     order.forEach((idx) => assert.ok(idx > 0));
     assert.deepStrictEqual([...order].sort((a, b) => a - b), order, '錯誤訊息的加入順序要固定');

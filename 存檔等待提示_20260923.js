@@ -102,7 +102,10 @@
   };
 
   // 第一個存檔程式：本檔在 src/index.js 排在共用設定檔之後、其他模組之前，所以最先執行
+  // 也負責清掉上一次存檔殘留的 PR_SAVE_ERRORS：上一次若有存檔程式丟例外，kintone 會停掉後面的程式，
+  // payment_request_submit 沒機會取走，訊息會留到這一次被當成新的錯誤顯示
   const onSubmitStart = (event) => {
+    window.PR_SAVE_ERRORS?.take();
     openSaving();
     return event;
   };

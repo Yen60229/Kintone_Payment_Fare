@@ -201,7 +201,7 @@
   }
 
   // 處理詳細頁面的顯示
-  kintone.events.on('app.record.detail.show', function (event) {
+  window.PR_KT.on('app.record.detail.show', function (event) {
     // 首次更新
     setTimeout(() => {
       updateAttachmentField(event.record);
@@ -248,7 +248,7 @@
     return event;
   });
 
-  kintone.events.on('app.record.index.show', function (event) {
+  window.PR_KT.on('app.record.index.show', function (event) {
     // 設定延遲確保 DOM 載入完成
     setTimeout(() => {
       event.records.forEach((record, index) => {

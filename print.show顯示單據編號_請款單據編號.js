@@ -10,11 +10,11 @@
 
   const handlePrintShow = (event) => {
     PRINT_HIDDEN_FIELDS.forEach((field) => kintone.app.record.setFieldShown(field, false));
-    document.querySelectorAll(HIDE_SELECTOR).forEach((el) => (el.style.display = 'none'));
+    document.querySelectorAll(HIDE_SELECTOR).forEach((el) => el.classList.add('pr-print-hidden')); // 樣式在 payment_request.css
     return event;
   };
 
-  kintone.events.on(['app.record.print.show'], handlePrintShow);
+  window.PR_KT.on(['app.record.print.show'], handlePrintShow);
 
   window.PR_PRINT_SHOW = Object.freeze({ PRINT_HIDDEN_FIELDS, HIDE_SELECTOR, handlePrintShow });
 })();

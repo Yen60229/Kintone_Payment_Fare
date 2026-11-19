@@ -99,6 +99,7 @@ const setup = ({ loginCode = 'u1', exempt = true, users = USERS, storage } = {})
   env.window.Swal = swal;
   env.load('payment_request_config.js');
   env.window.PR_COST_SCOPE = { applicantCodeOf: (r) => r['申請人']?.value?.[0]?.code, ensureExempt: () => Promise.resolve(exempt), isExempt: () => exempt };
+  env.load('使用者主檔快取.js');
   env.load('手動簽核人設定_20261102.js');
   return { env, M: env.window.PR_MANUAL_SIGNERS, C: env.window.PR_CONFIG, apiCalls, popups, store };
 };
@@ -465,6 +466,7 @@ check('人員名單：分頁抓到最後一頁、抓過就不再抓；抓不到�
   const fs = fakeSwal();
   failing.window.Swal = fs.swal;
   failing.load('payment_request_config.js');
+  failing.load('使用者主檔快取.js');
   failing.load('手動簽核人設定_20261102.js');
   failing.window.PR_MANUAL_SIGNERS.openDialog({ initial: [], applicant: U('ME'), accounting: [] });
   await settle();
@@ -472,6 +474,7 @@ check('人員名單：分頁抓到最後一頁、抓過就不再抓；抓不到�
 
   const noSwal = createEnv();
   noSwal.load('payment_request_config.js');
+  noSwal.load('使用者主檔快取.js');
   noSwal.load('手動簽核人設定_20261102.js');
   assert.strictEqual(await noSwal.window.PR_MANUAL_SIGNERS.openDialog({ initial: [], applicant: null, accounting: [] }), null);
   assert.match(noSwal.logs.error.join('|'), /找不到 SweetAlert/);

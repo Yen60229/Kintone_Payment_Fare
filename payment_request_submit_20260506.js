@@ -42,25 +42,16 @@
    */
   const fetchValidCostCenters = async () => {
     const validSet = new Set();
-    const params = {
+    // 分頁查詢，不用 cursor（見 PR_KT.fetchAllRecords）
+    const records = await KT.fetchAllRecords({
       app: COST_CENTER_APP_ID,
       fields: [REF_CC.CODE],
       query: `${REF_CC.IN_USE} in ("使用中")`,
-      size: 500,
-    };
-
-    const cursor = await kintone.api(kintone.api.url('/k/v1/records/cursor', true), 'POST', params);
-
-    let hasNext = true;
-    while (hasNext) {
-      const resp = await kintone.api(kintone.api.url('/k/v1/records/cursor', true), 'GET', { id: cursor.id });
-      resp.records.forEach((r) => {
-        const code = r[REF_CC.CODE]?.value?.trim();
-        if (code) validSet.add(code);
-      });
-      hasNext = resp.next;
-    }
-
+    });
+    records.forEach((r) => {
+      const code = r[REF_CC.CODE]?.value?.trim();
+      if (code) validSet.add(code);
+    });
     return validSet;
   };
 
@@ -79,73 +70,93 @@
     return fetchValidCostCenters();
   };
 
-  // 發票重複查詢一次最多取回的對方單數
-  const INVOICE_DUP_LIMIT = 100;
+  // 發票重複查詢：候選依 $id 分頁全部讀完（每頁 INVOICE_PAGE_SIZE 筆），不會因為候選太多漏判
+  const INVOICE_PAGE_SIZE = 500;
+  const INVOICE_MAX_PAGES = 20;
 
   const escKintoneStr = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const normInvoice = (s) => String(s).trim().toUpperCase();
+
+  /**
+   * 查 749：這些發票號碼正被哪些有效的單使用（排除已作廢的單與本單）。
+   * 查本 App「發票號碼記錄」欄位（每張發票以分隔字元包住存放）。
+   * kintone 的 like 會忽略符號、只比字詞（例如「@SW!W」會撞到「@SW!WW!W!W!」），查到的只是候選，
+   * 一定要逐一比對完整號碼（不分大小寫）才算；比對不到就不是重複。
+   * @param {string[]} invoices
+   * @param {string|undefined} thisId 本單 $id（新增時沒有）
+   * @returns {Promise<Map<string, string[]>>} 大寫號碼 → 對方單號（沒有單號時用記錄編號）
+   */
+  const findInvoiceOwners = async (invoices, thisId) => {
+    const SEP = C.SEP;
+    const APP_ID = APPS.PAYMENT;
+    const owners = new Map();
+    if (invoices.length === 0) return owners;
+    const invoiceOr = invoices.map((v) => `${F.INVOICE_AGG} like "${escKintoneStr(`${SEP}${v}${SEP}`)}"`).join(' or ');
+    const excludeSelf = thisId ? ` and $id != ${thisId}` : '';
+    // 一併取回對方的單號與發票號碼記錄，才能告訴使用者是哪幾個號碼、撞到哪幾張單
+    const cond = `${F.STATUS_FIELD} not in ("${STATUS.VOID}") and (${invoiceOr})${excludeSelf}`;
+    const wanted = new Set(invoices.map(normInvoice));
+    let lastId = 0;
+    for (let page = 0; page < INVOICE_MAX_PAGES; page++) {
+      const resp = await invoiceCheckApi(
+        '/k/v1/records.json',
+        'GET',
+        { app: APP_ID, query: `${cond} and $id > ${lastId} order by $id asc limit ${INVOICE_PAGE_SIZE}`, fields: ['$id', F.RECORD_NO, F.INVOICE_AGG] },
+        APP_ID,
+      );
+      const hits = resp.records || [];
+      hits.forEach((r) => {
+        const recNo = r[F.RECORD_NO]?.value || r.$id?.value;
+        (r[F.INVOICE_AGG]?.value || '').split(SEP).map(normInvoice).forEach((no) => {
+          if (!wanted.has(no) || !recNo) return;
+          const list = owners.get(no) || [];
+          if (!list.includes(recNo)) list.push(recNo);
+          owners.set(no, list);
+        });
+      });
+      if (hits.length < INVOICE_PAGE_SIZE) return owners;
+      lastId = hits[hits.length - 1].$id.value;
+    }
+    throw new Error(`發票號碼候選超過 ${INVOICE_PAGE_SIZE * INVOICE_MAX_PAGES} 筆，沒有查完`);
+  };
+
+  /** 發票號碼記錄 → 本單的發票號碼（格式「 / A / B / 」，頭尾也有分隔字元，不能先 trim 再切） */
+  const invoicesOfRecord = (record) =>
+    (record[F.INVOICE_AGG]?.value || '')
+      .split(C.SEP)
+      .map((s) => s.trim())
+      .filter(Boolean);
 
   /**
    * 發票號碼重複檢查。回傳要顯示給使用者的錯誤訊息陣列。
-   * 查本 App「發票號碼記錄」欄位（每張發票以分隔字元包住存放），排除已作廢的單與自己。
    * @param {Object} record
    * @returns {Promise<string[]>}
    */
   const checkInvoiceDuplicate = async (record) => {
-    const SEP = C.SEP;
-    const APP_ID = APPS.PAYMENT;
-
-    // 發票號碼記錄的格式是「 / A / B / 」（頭尾也有分隔字元），不能先 trim 再切，否則頭尾的 / 會黏在發票號碼上
-    const agg = record[F.INVOICE_AGG]?.value || '';
-    if (!agg.trim()) return [];
-
-    const invoices = agg
-      .split(SEP)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const invoiceOr = invoices.map((v) => `${F.INVOICE_AGG} like "${escKintoneStr(`${SEP}${v}${SEP}`)}"`).join(' or ');
-
-    const thisId = record.$id?.value;
-    const excludeSelf = thisId ? ` and $id != ${thisId}` : '';
-
-    // 一併取回對方的單號與發票號碼記錄，才能告訴使用者是哪幾個號碼、撞到哪幾張單
-    const query = `${F.STATUS_FIELD} not in ("${STATUS.VOID}") and (${invoiceOr})${excludeSelf} limit ${INVOICE_DUP_LIMIT}`;
-
-    const resp = await invoiceCheckApi(
-      '/k/v1/records.json',
-      'GET',
-      { app: APP_ID, query, fields: ['$id', F.RECORD_NO, F.INVOICE_AGG] },
-      APP_ID,
-    );
-    const hits = resp.records || [];
-    if (hits.length === 0) return [];
-
-    // 比對本單每個號碼出現在對方哪幾張單（同一號碼撞到多張單，單號用「、」併在同一個標籤）。
-    // kintone 的 like 會忽略符號、只比字詞（例如「@SW!W」會撞到「@SW!WW!W!W!」），查到的只是候選，
-    // 一定要逐一比對完整號碼（不分大小寫）才算重複；比對不到就不是重複，不擋存檔。
-    const norm = (s) => String(s).trim().toUpperCase();
-    const lines = [];
-    invoices.forEach((no) => {
-      const nos = [];
-      hits.forEach((r) => {
-        const theirs = (r[F.INVOICE_AGG]?.value || '').split(SEP).map(norm);
-        const recNo = r[F.RECORD_NO]?.value || r.$id?.value;
-        if (theirs.includes(norm(no)) && recNo && !nos.includes(recNo)) nos.push(recNo);
-      });
-      if (nos.length > 0) lines.push(`▸${no}（${F.RECORD_NO} ${nos.join('、')}）`);
-    });
-
+    const invoices = invoicesOfRecord(record);
+    if (invoices.length === 0) return [];
+    const owners = await findInvoiceOwners(invoices, record.$id?.value);
+    // 每個號碼一行；不說是哪張單（權限外的單與其他 App 由管理單位查），訊息與發票登記 plug-in 一致
+    const lines = invoices.filter((no) => owners.has(normInvoice(no))).map((no) => `▸${no}`);
     if (lines.length === 0) return [];
-    return [`發票號碼重複：以下發票號碼已在其他單據出現，請更換後再儲存。\n${lines.join('\n')}`];
+    return [`發票號碼已使用過，請確認後更換；有其他問題請洽管理單位詢問。\n${lines.join('\n')}`];
   };
 
   /**
-   * 驗證費用歸屬代碼是否有效
+   * 驗證費用歸屬代碼是否有效（不分大小寫：畫面帶名稱、部門限制都用大寫比對，存檔也要一致，
+   * 否則主檔是 AJ30、使用者打 aj30 時畫面帶得出名稱、存檔卻被擋）
    */
+  const upperSetCache = new WeakMap();
   const isValidCode = (code, validSet) => {
     if (!validSet || validSet.size === 0) {
       return false;
     }
-    return validSet.has(code);
+    let upper = upperSetCache.get(validSet);
+    if (!upper) {
+      upper = new Set([...validSet].map((c) => String(c).trim().toUpperCase()));
+      upperSetCache.set(validSet, upper);
+    }
+    return upper.has(String(code).trim().toUpperCase());
   };
 
   // =========================================================================
@@ -343,6 +354,11 @@
             return ['掛帳單位檢查失敗：請稍後再試或聯絡系統管理員'];
           })
         : Promise.resolve([]);
+      // 一般簽核人員：依目前的費用所屬人／部門再排一次寫進 record（畫面上是非同步排的，可能還沒排完或是舊的）
+      const signingChain = window.PR_SIGNING_CHAIN;
+      const chainTask = signingChain ? signingChain.applyOnSave(record) : Promise.resolve([]);
+      // 會計單位／會計承辦人／權限開放人員：同理依目前的費用所屬人部門再帶一次
+      const accountingTask = signingChain?.applyAccountingOnSave ? signingChain.applyAccountingOnSave(record) : Promise.resolve([]);
       // 費用所屬人是對照表裡的部長：上一階主管群組成員寫進單位部長_支店長（直接寫進 record；沒人可簽或查不到回錯誤）
       const director = window.PR_DIRECTOR_UPLINE;
       const directorTask = director ? director.apply(record) : Promise.resolve([]);
@@ -354,7 +370,15 @@
             return ['手動簽核人檢查失敗：請稍後再試或聯絡系統管理員'];
           })
         : Promise.resolve([]);
-      const [costCenters, invoiceErrors, scopeErrors, directorErrors, manualErrors] = await Promise.all([costCentersTask, invoiceTask, scopeTask, directorTask, manualTask]);
+      const [costCenters, invoiceErrors, scopeErrors, chainErrors, accountingErrors, directorErrors, manualErrors] = await Promise.all([
+        costCentersTask,
+        invoiceTask,
+        scopeTask,
+        chainTask,
+        accountingTask,
+        directorTask,
+        manualTask,
+      ]);
 
       if (costCenters.error) allErrors.push(costCenters.error);
       else console.log(`✅ 已載入 ${costCenters.set.size} 筆合法費用歸屬代碼`);
@@ -371,11 +395,17 @@
       // 4. 掛帳單位限費用所屬人部內、不可跨部門（排除群組的申請人不檢查）
       allErrors.push(...scopeErrors);
 
-      // 5. 費用所屬人是對照表裡的部長時的上一階主管（單位部長_支店長）
+      // 5. 一般簽核人員（存檔時重排）
+      allErrors.push(...chainErrors);
+      allErrors.push(...accountingErrors);
+
+      // 6. 費用所屬人是對照表裡的部長時的上一階主管（單位部長_支店長）
       allErrors.push(...directorErrors);
 
-      // 6. 手動設定簽核流程的簽核人
+      // 7. 手動設定簽核流程的簽核人
       allErrors.push(...manualErrors);
+
+      // 發票號碼跨 App 重複與同時存檔，由「發票登記」plug-in 在本程式之後檢查並登記（plugins/invoice-registry）
 
       if (allErrors.length > 0) {
         event.error = '儲存失敗';

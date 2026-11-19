@@ -17,7 +17,11 @@ const readSrc = (name) => fs.readFileSync(path.join(rootDir, name), 'utf8');
 const registered = [];
 const shown = {};
 const queried = [];
-const hiddenEls = [{ style: {} }, { style: {} }];
+const fakeEl = () => {
+  const classes = new Set();
+  return { style: {}, classes, classList: { add: (c) => classes.add(c) } };
+};
+const hiddenEls = [fakeEl(), fakeEl()];
 
 global.window = {};
 global.document = {
@@ -74,7 +78,9 @@ check('列印時隱藏空白間隔與標籤欄位（保留 user-js-Expense_Table
   assert.strictEqual(queried[0], P.HIDE_SELECTOR);
   assert.ok(queried[0].includes('.spacer-cybozu:not(#user-js-Expense_Table)'));
   assert.ok(queried[0].includes('.control-label-field-gaia'));
-  hiddenEls.forEach((el) => assert.strictEqual(el.style.display, 'none'));
+  hiddenEls.forEach((el) => assert.ok(el.classes.has('pr-print-hidden'), '用 class 藏，不寫 inline style'));
+  hiddenEls.forEach((el) => assert.deepStrictEqual(el.style, {}));
+  assert.ok(/\.pr-print-hidden\s*\{[^}]*display:\s*none/.test(readSrc('payment_request.css')));
 });
 
 check('原始碼沒有類型、分攤群組、借支明細、寫死的 field-ID 選擇器', () => {

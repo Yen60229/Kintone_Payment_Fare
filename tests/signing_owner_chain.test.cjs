@@ -427,6 +427,191 @@ const NAME = '航空貨物部-台北營業課';
     assert.ok(/F\.EXPENSE_OWNER_ORG/.test(src) && /F\.EXPENSE_OWNER\b/.test(src));
   });
 
+  // ── 存檔時重排（PR_SIGNING_CHAIN.applyOnSave，2026-11-18）──────────────────
+  //   只改傳進來的 record（存檔事件的 event.record），不碰畫面；結果要和畫面上排的一樣。
+  const SAVE = global.window.PR_SIGNING_CHAIN;
+  /** 準備存檔用的 record（簽核格先放上一位留下的舊人），跑 applyOnSave，回傳 { errors, record } */
+  const save = async ({ orgName = NAME, title, master = masterOf(FULL), queryName = orgName, owner = 'OWN', over = {} }) => {
+    env.apiCalls.length = 0;
+    env.master = master ? { [queryName]: master } : {};
+    env.orgs = { [owner]: [{ organization: { code: orgName, name: orgName, primary: true }, title: title === null ? null : { name: title } }] };
+    const record = { ...makeLive({ orgName, owner }), ...over };
+    SLOTS.forEach((f) => (record[f] = { type: 'USER_SELECT', value: [U('OLD')] }));
+    record[COUNT_M].value = '3人';
+    record[COUNT_D].value = '2人';
+    env.live = clone(record); // 畫面上的資料，存檔重排不該動到
+    const before = clone(env.live);
+    const errors = await SAVE.applyOnSave(record);
+    assert.deepStrictEqual(env.live, before, '存檔重排只改 event.record，不 set 畫面');
+    return { errors, record };
+  };
+  const slotsOf = (record) => {
+    const out = {};
+    SLOTS.forEach((f) => (out[f] = record[f].value.map((u) => u.code)));
+    return out;
+  };
+
+  await check('存檔重排：簽核格是上一位留下的舊人 → 依目前的費用所屬人重排、人數重算', async () => {
+    const { errors, record } = await save({ title: '課員' });
+    assert.deepStrictEqual(errors, []);
+    assert.deepStrictEqual(slotsOf(record), { 單位主管1: ['A1'], 單位主管2: ['A2'], 單位主管3: ['A3'], 單位次長: ['D0'], 單位次長1: ['D1'], 單位部長_支店長: ['H'] });
+    assert.deepStrictEqual([record[COUNT_M].value, record[COUNT_D].value], ['3人', '2人']);
+  });
+
+  await check('存檔重排和畫面上排的結果一致（課長／次長／部長／六大流程／沒有職稱）', async () => {
+    const cases = [
+      { title: '課長', master: masterOf({ ...FULL, 單位主管2: 'OWN' }) },
+      { title: '次長', master: masterOf({ ...FULL, 單位次長: 'OWN' }) },
+      { title: '部長', master: masterOf({ ...FULL, 單位部長_支店長: 'OWN' }) },
+      { title: '課長', master: masterOf({ 單位主管3: 'OWN', 單位次長1: 'OWN', 單位部長_支店長: 'H' }) },
+      { title: null },
+      { orgName: '總務部', title: '課長', master: masterOf({ 單位部長_支店長: 'H' }) },
+      { orgName: '總務部', title: '課長', master: masterOf({ 單位部長_支店長: 'OWN' }) },
+    ];
+    for (const c of cases) {
+      await run({ orgName: NAME, master: masterOf(FULL), ...c });
+      const screen = { slots: signers(), counts: counts() };
+      const { errors, record } = await save({ master: masterOf(FULL), ...c });
+      assert.deepStrictEqual(errors, []);
+      assert.deepStrictEqual({ slots: slotsOf(record), counts: [record[COUNT_M].value, record[COUNT_D].value] }, screen, JSON.stringify(c));
+    }
+  });
+
+  await check('存檔重排：主檔查不到流程、台中支店長等 → 全部清空、人數 0人；特定部長不查主檔', async () => {
+    let r = await save({ title: '課員', master: null });
+    assert.deepStrictEqual(r.errors, []);
+    assert.ok(SLOTS.every((f) => r.record[f].value.length === 0));
+    assert.deepStrictEqual([r.record[COUNT_M].value, r.record[COUNT_D].value], ['0人', '0人']);
+    r = await save({ orgName: '台中營業部', title: '支店長' });
+    assert.ok(SLOTS.every((f) => r.record[f].value.length === 0));
+    assert.strictEqual(approvalCall(), undefined, '不用查簽核流程主檔');
+  });
+
+  await check('存檔重排不處理：手動設定簽核流程、表單作廢、送出後的狀態、對照表裡的部長、沒填費用所屬人', async () => {
+    const untouched = (record) => assert.ok(SLOTS.every((f) => record[f].value[0]?.code === 'OLD'));
+    const manual = await save({ title: '課員', over: { [F.MANUAL_FLOW]: { type: 'CHECK_BOX', value: [C.OPTIONS.MANUAL_FLOW.ON] } } });
+    untouched(manual.record);
+    const voided = await save({ title: '課員', over: { [C.VOID_FIELD]: { type: 'CHECK_BOX', value: ['作廢'] } } });
+    untouched(voided.record);
+    const sent = await save({ title: '課員', over: { [F.STATUS_FIELD]: { type: 'STATUS', value: '部長確認中' } } });
+    untouched(sent.record);
+    assert.strictEqual(env.apiCalls.length, 0, '不用查的就不打 API');
+    for (const status of [C.STATUS.APPLY_START, `部長${C.DIRECTOR_UPLINE.REJECT_SUFFIX}`]) {
+      const r = await save({ title: '課員', over: { [F.STATUS_FIELD]: { type: 'STATUS', value: status } } });
+      assert.deepStrictEqual(slotsOf(r.record)['單位主管1'], ['A1'], `${status} 要重排`);
+    }
+    global.window.PR_DIRECTOR_UPLINE = { groupOf: () => 'HQ_部長' };
+    const upline = await save({ title: '部長' });
+    delete global.window.PR_DIRECTOR_UPLINE;
+    untouched(upline.record);
+    assert.strictEqual(approvalCall(), undefined);
+    const noOwner = await save({ title: '課員', owner: null });
+    assert.deepStrictEqual(noOwner.errors, []);
+  });
+
+  await check('存檔重排：費用所屬人部門不是他的單位 → 擋存檔；用組織代碼比對（改名不影響）', async () => {
+    env.orgs = { OWN: [{ organization: { code: 'X', name: '別的部門', primary: true }, title: { name: '課員' } }] };
+    const record = makeLive({ orgName: NAME });
+    const errors = await SAVE.applyOnSave(record);
+    assert.strictEqual(errors.length, 1);
+    assert.ok(errors[0].includes('不是費用所屬人的所屬單位') && errors[0].includes(F.EXPENSE_OWNER), errors[0]);
+    env.master = { 'ORG-CODE-1': masterOf(FULL) };
+    env.orgs = { OWN: [{ organization: { code: 'ORG-CODE-1', name: '新名稱', primary: true }, title: { name: '課員' } }] };
+    const renamed = makeLive({ orgName: '舊名稱' });
+    renamed[F.EXPENSE_OWNER_ORG].value = [{ code: 'ORG-CODE-1', name: '舊名稱' }];
+    assert.deepStrictEqual(await SAVE.applyOnSave(renamed), []);
+    assert.deepStrictEqual(renamed['單位主管1'].value.map((u) => u.code), ['A1']);
+  });
+
+  await check('存檔重排：讀不到單位或主檔 → 擋存檔並提示稍後再試（不讓舊的簽核人員存進去）', async () => {
+    const origApi = global.kintone.api;
+    global.kintone.api = Object.assign(() => Promise.reject(new Error('down')), { url: (p) => p });
+    const errors = await SAVE.applyOnSave(makeLive({ orgName: NAME }));
+    global.kintone.api = origApi;
+    assert.strictEqual(errors.length, 1);
+    assert.ok(errors[0].includes('無法安排簽核人員'), errors[0]);
+  });
+
+  // ── 存檔時重帶會計單位（PR_SIGNING_CHAIN.applyAccountingOnSave，2026-11-18）──────
+  const ACCf = C.REF_FIELDS.ACCOUNTING_MAP;
+  const accRec = (unit, staff = [], perm = []) => ({
+    [ACCf.APPLY_UNIT]: { value: NAME },
+    [ACCf.ACCOUNTING_UNIT]: { value: unit },
+    [ACCf.ACCOUNTING_STAFF]: { value: staff.map(U) },
+    [ACCf.PERMISSION_USER]: { value: perm.map(U) },
+  });
+  /** 會計三欄先放舊值，跑 applyAccountingOnSave，回傳 { errors, record } */
+  const saveAcc = async ({ acc = accRec('ACC_NEW', ['S1'], ['P1']), over = {} } = {}) => {
+    const keep = env.accountingRecord;
+    env.accountingRecord = acc;
+    env.apiCalls.length = 0;
+    const record = { ...makeLive({ orgName: NAME }), ...over };
+    record[F.ACCOUNTING_UNIT].value = [{ code: 'ACC_OLD', name: 'ACC_OLD' }];
+    record[F.ACCOUNTING_STAFF].value = [U('S_OLD')];
+    record[F.PERMISSION_STAFF].value = [U('P_OLD')];
+    env.live = clone(record);
+    const before = clone(env.live);
+    const errors = await SAVE.applyAccountingOnSave(record);
+    env.accountingRecord = keep;
+    assert.deepStrictEqual(env.live, before, '只改 event.record，不 set 畫面');
+    const codes = (f) => record[f].value.map((u) => u.code);
+    return { errors, record, unit: codes(F.ACCOUNTING_UNIT), staff: codes(F.ACCOUNTING_STAFF), perm: codes(F.PERMISSION_STAFF) };
+  };
+
+  await check('存檔重帶會計單位：舊值 → 依目前的費用所屬人部門重帶會計單位、會計承辦人、權限開放人員', async () => {
+    const r = await saveAcc();
+    assert.deepStrictEqual(r.errors, []);
+    assert.deepStrictEqual([r.unit, r.staff, r.perm], [['ACC_NEW'], ['S1'], ['P1']]);
+    const call = env.apiCalls.find((c) => c.params.app === C.APPS.ACCOUNTING_MAP);
+    assert.strictEqual(call.params.query, `${ACCf.APPLY_UNIT} in ("${NAME}")`);
+  });
+
+  await check('存檔重帶會計單位：和畫面上帶的結果一樣（同一個 fillAccounting）', async () => {
+    env.accountingRecord = accRec('ACC_NEW', ['S1'], ['P1']);
+    await run({ orgName: NAME, master: masterOf(FULL), title: '課員' });
+    const screen = [F.ACCOUNTING_UNIT, F.ACCOUNTING_STAFF, F.PERMISSION_STAFF].map((f) => env.live[f].value.map((u) => u.code));
+    const r = await saveAcc();
+    assert.deepStrictEqual([r.unit, r.staff, r.perm], screen);
+  });
+
+  await check('存檔重帶會計單位：手動設定簽核流程 → 會計單位不動（維持原值）、承辦人與權限開放人員照帶', async () => {
+    const r = await saveAcc({ over: { [F.MANUAL_FLOW]: { type: 'CHECK_BOX', value: [C.OPTIONS.MANUAL_FLOW.ON] } } });
+    assert.deepStrictEqual(r.errors, []);
+    assert.deepStrictEqual([r.unit, r.staff, r.perm], [['ACC_OLD'], ['S1'], ['P1']]);
+  });
+
+  await check('存檔重帶會計單位：查不到對應 → 一般擋存檔、手動不擋；API 失敗 → 擋存檔', async () => {
+    const miss = await saveAcc({ acc: null });
+    assert.strictEqual(miss.errors.length, 1);
+    assert.ok(miss.errors[0].includes('找不到對應的會計單位') && miss.errors[0].includes(NAME), miss.errors[0]);
+    assert.deepStrictEqual(miss.unit, ['ACC_OLD'], '查不到時不清空');
+    const manualMiss = await saveAcc({ acc: null, over: { [F.MANUAL_FLOW]: { type: 'CHECK_BOX', value: [C.OPTIONS.MANUAL_FLOW.ON] } } });
+    assert.deepStrictEqual(manualMiss.errors, []);
+    const origApi = global.kintone.api;
+    // 會計對應主檔用回呼的寫法查，失敗走第二個回呼
+    global.kintone.api = Object.assign(
+      (u, m, p, onOk, onErr) => (typeof onErr === 'function' ? onErr(new Error('down')) : Promise.reject(new Error('down'))),
+      { url: (p) => p },
+    );
+    const errors = await SAVE.applyAccountingOnSave(makeLive({ orgName: NAME }));
+    global.kintone.api = origApi;
+    assert.strictEqual(errors.length, 1);
+    assert.ok(errors[0].includes('無法取得會計單位'), errors[0]);
+  });
+
+  await check('存檔重帶會計單位不處理：表單作廢、送出後的狀態、沒有費用所屬人部門（不打 API）', async () => {
+    for (const over of [
+      { [C.VOID_FIELD]: { type: 'CHECK_BOX', value: ['作廢'] } },
+      { [F.STATUS_FIELD]: { type: 'STATUS', value: '部長確認中' } },
+      { [F.EXPENSE_OWNER_ORG]: { type: 'ORGANIZATION_SELECT', value: [] } },
+    ]) {
+      const r = await saveAcc({ over });
+      assert.deepStrictEqual(r.errors, []);
+      assert.deepStrictEqual(r.unit, ['ACC_OLD']);
+      assert.strictEqual(env.apiCalls.length, 0, JSON.stringify(over));
+    }
+  });
+
   console.log = origLog;
   console.log(`\n${passed} assertions passed.`);
 })().catch((err) => {

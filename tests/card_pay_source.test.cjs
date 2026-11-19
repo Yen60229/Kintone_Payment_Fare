@@ -16,6 +16,7 @@ const { check, done } = createRunner('card_pay_source.test.cjs');
 
 const env = createEnv({ api: () => Promise.resolve({ users: [] }) });
 env.load('payment_request_config.js');
+env.load('使用者主檔快取.js');
 env.load('受款人填寫設定_20250902.js');
 env.load('公司卡付款來源_20261116.js');
 const W = env.window;

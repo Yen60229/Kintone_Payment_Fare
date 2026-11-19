@@ -318,9 +318,72 @@ const fakeDoc = () => {
     assert.strictEqual(emptyDoc.pages.length, 0);
   });
 
-  check('批次列印合成一份 PDF（不再打包 ZIP）', () => {
-    assert.ok(pdfSrc.includes('merged.copyPages'));
+  check('批次列印合成一份 PDF（不再打包 ZIP）：每筆直接畫進同一份文件，不先存檔再讀回來合併', () => {
+    assert.ok(pdfSrc.includes('drawRecordInto(merged, font, record, recordId)'));
+    assert.ok(!pdfSrc.includes('merged.copyPages'), '不再 save → load → copyPages');
     assert.ok(!pdfSrc.includes('zip.file(fileName, pdfBlob)'));
+    assert.ok(!/fetchRecord\(appId, recordId\)/.test(pdfSrc.slice(pdfSrc.indexOf('async function performBatchPrintPDF'), pdfSrc.indexOf('const generatePDFFileName'))),'批次列印不再一筆一筆查');
+  });
+
+  // ── 批次查詢：$id in (...) 每 100 筆一次 ──
+  const realApi = global.kintone.api;
+  const apiCalls = [];
+  global.kintone.api = Object.assign(
+    async (url, method, params) => {
+      apiCalls.push({ url, method, params });
+      const ids = params.query.match(/\(([^)]*)\)/)[1].split(',').map(Number);
+      // 假裝 7 號找不到（已刪除／沒權限）
+      return { records: ids.filter((id) => id !== 7).map((id) => ({ $id: { value: String(id) } })) };
+    },
+    { url: (p) => p },
+  );
+  const ids = Array.from({ length: 250 }, (_, i) => i + 1);
+  const byId = await B.fetchRecordsByIds(749, ids, ['$id']);
+  global.kintone.api = realApi;
+  check('fetchRecordsByIds：$id in (...) 每 100 筆查一次、帶 fields；回傳 Map(id → record)，找不到的不在裡面', () => {
+    assert.strictEqual(apiCalls.length, 3);
+    assert.ok(apiCalls.every((c) => c.url === '/k/v1/records' && c.method === 'GET'));
+    assert.strictEqual(apiCalls[0].params.query, `$id in (${ids.slice(0, 100).join(',')}) limit 100`);
+    assert.strictEqual(apiCalls[2].params.query, `$id in (${ids.slice(200).join(',')}) limit 100`);
+    assert.deepStrictEqual(apiCalls[0].params.fields, ['$id']);
+    assert.strictEqual(byId.size, 249);
+    assert.strictEqual(byId.has(7), false);
+    assert.strictEqual(byId.get(250).$id.value, '250');
+  });
+
+  check('批次下載：附件合計有上限，開始前先算、下載中再擋一次', () => {
+    assert.ok(B.LIMITS.maxZipBytes > 0);
+    const rec = (...sizes) => ({ [F.ATTACHMENT]: { value: sizes.map((size) => ({ size: String(size) })) } });
+    assert.strictEqual(B.attachmentBytes([rec(100, 200), rec(), {}, rec(5)]), 305);
+    const dl = pdfSrc.slice(pdfSrc.indexOf('async function handleSecureBatchDownload'));
+    assert.ok(/attachmentBytes\(records\)[\s\S]*totalBytes > LIMITS\.maxZipBytes[\s\S]*askConfirm/.test(dl), '超過上限在確認前就擋');
+    assert.ok(/zippedBytes > LIMITS\.maxZipBytes/.test(dl), '實際下載量也擋');
+    assert.ok(/fetchRecordsByIds\(currentAppId, recordIds/.test(dl));
+  });
+
+  check('檔名只換掉不合法的路徑字元：& \' 保留；/ \\ : * ? " < > | 與控制字元換成 _', () => {
+    assert.strictEqual(B.safeFileName("A&B's 收據.pdf"), "A&B's 收據.pdf");
+    assert.strictEqual(B.safeFileName('a/b\\c:d*e?f"g<h>i|j\tk.pdf'), 'a_b_c_d_e_f_g_h_i_j_k.pdf');
+    assert.strictEqual(B.safeFileName(null), '');
+  });
+
+  check('沒有作用的「安全」機制已移除（__token 參數、網域要含 cybozu/kintone、sanitizeInput、假的安全報告）', () => {
+    ['__token', "includes('cybozu')", 'sanitizeInput', 'validateSecurity', 'generateSecurityToken', 'secureKintoneApi', '安全 Token', 'CSRF'].forEach((s) =>
+      assert.ok(!pdfSrc.includes(s), s),
+    );
+  });
+
+  check('處理結果的顏色用 class（pr-result--error／warning／success），不寫 style.color', () => {
+    assert.ok(!pdfSrc.includes('style.color'));
+    assert.ok(!pdfSrc.includes('style.display'), '範圍／指定號碼切換也用 class（pr-mode-specific）');
+    assert.ok(pdfSrc.includes("rangeGroup.classList.toggle('pr-mode-specific'"));
+    const css = readSrc('payment_request.css');
+    ['error', 'warning', 'success'].forEach((t) => assert.ok(css.includes(`.result-message.pr-result--${t} {`), t));
+  });
+
+  check('事件一律走 PR_KT.on（不直接呼叫 kintone.events.on）', () => {
+    assert.ok(!/kintone\.events\.on\(/.test(pdfSrc));
+    assert.ok(pdfSrc.includes("window.PR_KT.on('app.record.index.show'"));
   });
 
   console.log(`${passed} assertions passed.`);

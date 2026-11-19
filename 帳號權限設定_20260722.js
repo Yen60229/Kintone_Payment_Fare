@@ -969,15 +969,15 @@
       .map((prop) => prop.code);
     if (subtableCodes.length === 0) return;
 
-    kintone.events.on(
+    window.PR_KT.on(
       subtableCodes.flatMap((code) => [`app.record.create.change.${code}`, `app.record.edit.change.${code}`]),
       onSubtableChange,
     );
     log('subtable change registered', subtableCodes);
   };
 
-  kintone.events.on(EVENTS_SHOW, onShow);
-  kintone.events.on(EVENTS_SUBMIT, onSubmit);
+  window.PR_KT.on(EVENTS_SHOW, onShow);
+  window.PR_KT.on(EVENTS_SUBMIT, onSubmit);
   registerSubtableChange().catch((error) => {
     console.error('[帳號權限設定] 讀取子表格清單失敗，子表格新增列不會套用編輯權限:', error);
   });

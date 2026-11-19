@@ -10,7 +10,8 @@
     "test": "node scripts/run-tests.cjs",
     "lint": "eslint .",
     "scan": "node tests/scan_hardcoded.cjs",
-    "check:process": "node process_management/check_process.cjs"
+    "check:process": "node process_management/check_process.cjs",
+    "audit:signers": "node tools/audit/audit_signers.cjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

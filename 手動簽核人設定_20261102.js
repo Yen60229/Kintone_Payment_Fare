@@ -11,7 +11,7 @@
   //     三個簽核人與手動會計承辦人鎖住，只能從視窗改，排法規則才不會被繞過。
   //   - 視窗：簽核人每一位一格，第 4 格是會計承辦人（預設帶會計對應主檔的人，可換）；打姓名或帳號就列出符合的人；
   //     第 1 位必填，前一位沒填下一格不能填，同一個人不能排兩次、申請人不能簽自己的單。
-  //     人員名單第一次開視窗時才抓（/v1/users.json）。
+  //     人員名單第一次開視窗時才抓（使用者主檔快取 PR_USERS，/v1/users.json 同一頁面只抓一次）。
   //   - 存檔（payment_request_submit 呼叫 validate）：同上規則再檢查一次，並把實際人數寫進 COUNT_FIELD，
   //     流程管理靠它決定第 1 關之後送到哪。
   //   勾選／取消勾選的處理在 signing_personnel_manager（它決定進不進手動模式），這裡只管人員與視窗。
@@ -120,26 +120,19 @@
     return errors;
   };
 
-  // ── 人員名單（/v1/users.json，第一次開視窗才抓，抓過就留著）────────────────
+  // ── 人員名單（使用者主檔快取 PR_USERS：同一頁面只抓一次、和受款人選擇員工共用；這裡只留整理後的結果）────
 
   let usersPromise = null;
 
-  const fetchAllUsers = async () => {
-    const all = [];
-    for (let offset = 0; ; offset += CFG.USER_PAGE_SIZE) {
-      const resp = await kintone.api(kintone.api.url('/v1/users.json', true), 'GET', { offset, size: CFG.USER_PAGE_SIZE });
-      const page = resp.users || [];
-      all.push(...page.filter((u) => u.valid !== false).map((u) => ({ code: u.code, name: u.name || u.code })));
-      if (page.length < CFG.USER_PAGE_SIZE) return all;
-    }
-  };
-
   const loadUsers = () => {
     if (!usersPromise) {
-      usersPromise = fetchAllUsers().catch((err) => {
-        usersPromise = null; // 下次開視窗再試
-        throw err;
-      });
+      usersPromise = Promise.resolve()
+        .then(() => window.PR_USERS.loadAll())
+        .then((users) => users.filter((u) => u.valid !== false).map((u) => ({ code: u.code, name: u.name || u.code })))
+        .catch((err) => {
+          usersPromise = null; // 下次開視窗再試
+          throw err;
+        });
     }
     return usersPromise;
   };

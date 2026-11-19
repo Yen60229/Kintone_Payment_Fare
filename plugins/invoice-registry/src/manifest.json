@@ -1,0 +1,28 @@
+{
+  "manifest_version": 1,
+  "version": "1.0.0",
+  "type": "APP",
+  "name": {
+    "ja": "発票登録（重複チェック）",
+    "en": "Invoice Registry",
+    "zh": "發票登記（重複檢查）"
+  },
+  "description": {
+    "ja": "保存時に発票登録アプリで発票番号の重複をチェックし登録します（同時保存の重複も防止）。",
+    "en": "On save, checks invoice numbers against a unique-key registry app shared by all claim apps and registers them.",
+    "zh": "存檔時以發票登記 App 為準檢查發票號碼是否用過並登記（發票號碼值不可重複），多個請款 App 共用，兩張單同時存同一張發票也擋得住。"
+  },
+  "icon": "image/icon.png",
+  "desktop": {
+    "js": ["js/core.js", "js/desktop.js"]
+  },
+  "mobile": {
+    "js": ["js/core.js", "js/desktop.js"]
+  },
+  "config": {
+    "html": "html/config.html",
+    "js": ["js/core.js", "js/config.js"],
+    "css": ["css/config.css"],
+    "required_params": ["config"]
+  }
+}

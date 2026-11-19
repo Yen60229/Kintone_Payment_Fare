@@ -31,6 +31,8 @@ import '../費用歸屬部門限制_20261022.js';
 import '../signing_personnel_manager_20260506.js';
 // 費用所屬人是對照表裡的部長：上一階主管群組帶進單位主管3（C.DIRECTOR_UPLINE），由 submit 與簽核人員程式呼叫
 import '../部長上一階主管_20261116.js';
+// 使用者主檔快取（PR_USERS：/v1/users.json 同一頁面只抓一次）：手動簽核人與受款人選擇員工共用，排在兩者前面
+import '../使用者主檔快取.js';
 import '../手動簽核人設定_20261102.js';
 // 申請人部門依申請人帶入：用簽核人員程式提供的 PR_ORG_PICKER，排在它後面
 import '../申請人部門帶入_20261022.js';

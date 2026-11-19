@@ -2,7 +2,7 @@
   'use strict';
 
   // 詳細頁面顯示事件
-  kintone.events.on('app.record.detail.show', (event) => {
+  window.PR_KT.on('app.record.detail.show', (event) => {
     const record = event.record;
     // STATUS.VOID 是比對的狀態值
     if (record[window.PR_CONFIG.FIELDS.STATUS_FIELD]?.value !== window.PR_CONFIG.STATUS.VOID) {

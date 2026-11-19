@@ -180,6 +180,13 @@ check('手機版用到的模組不直接呼叫 kintone.events.on／kintone.app.*
   });
 });
 
+check('打包的模組（含桌面版專用）一律走 PR_KT.on（都排在 config 後面，PR_KT 一定在）', () => {
+  DESKTOP.js.filter((f) => f !== 'payment_request_config.js').forEach((f) => {
+    assert.ok(DESKTOP.js.indexOf(f) > DESKTOP.js.indexOf('payment_request_config.js'), `${f} 要排在 config 後面`);
+    assert.ok(!/kintone\.events\.on\(/.test(readSrc(f)), `${f} 要改用 PR_KT.on`);
+  });
+});
+
 // ── 4. CSS 與 JS 分開 ───────────────────────────────────────────────────────
 const css = readSrc('payment_request.css');
 const ALL_JS = [...DESKTOP.js, ...STANDALONE];

@@ -25,7 +25,7 @@ const rec = ({ code, name = '', dept = null }) => ({
   [CCf.DEPT]: { value: dept ? [dept] : [] },
 });
 
-/** 載入 main，費用歸屬主檔由 records 提供；回傳 env、被呼叫的 api 參數與載入後的結果 */
+/** 載入 main，費用歸屬主檔由 records 提供（pages：每次 GET 依序回一頁）；回傳 env、被呼叫的 api 參數與載入後的結果 */
 const loadWith = async (records, { pages = null } = {}) => {
   const calls = [];
   const pageList = pages || [records];
@@ -34,10 +34,9 @@ const loadWith = async (records, { pages = null } = {}) => {
     appId: 749,
     api: (url, method, params) => {
       calls.push({ url, method, params });
-      if (method === 'POST') return Promise.resolve({ id: 'cursor-1' });
-      const records_ = pageList[pageNo];
+      const records_ = pageList[pageNo] || [];
       pageNo += 1;
-      return Promise.resolve({ records: records_, next: pageNo < pageList.length });
+      return Promise.resolve({ records: records_ });
     },
   });
   env.load('payment_request_config.js');
@@ -49,10 +48,12 @@ const loadWith = async (records, { pages = null } = {}) => {
 
 check('只向費用歸屬主檔要 CODE／NAME／DEPT 三個欄位，且只查「使用中」', async () => {
   const { env, calls, CC } = await loadWith([]);
-  const open = calls.find((c) => c.method === 'POST');
-  assert.strictEqual(open.params.app, env.window.PR_CONFIG.APPS.COST_CENTER);
-  assert.deepStrictEqual([...open.params.fields], [CC.CODE, CC.NAME, CC.DEPT]);
-  assert.strictEqual(open.params.query, `${CC.IN_USE} in ("使用中")`);
+  const get = calls.find((c) => c.method === 'GET');
+  assert.strictEqual(get.url, '/k/v1/records', '一般分頁查詢，不開 cursor');
+  assert.strictEqual(calls.filter((c) => /cursor/.test(c.url)).length, 0);
+  assert.strictEqual(get.params.app, env.window.PR_CONFIG.APPS.COST_CENTER);
+  assert.deepStrictEqual([...get.params.fields], ['$id', CC.CODE, CC.NAME, CC.DEPT]);
+  assert.strictEqual(get.params.query, `(${CC.IN_USE} in ("使用中")) and $id > 0 order by $id asc limit 500`);
 });
 
 check('對外只暴露 ensureLoaded／getValidCodes／getDeptsOfCode／getDeptNames（舊的 getMaps 已拿掉），且物件被凍結', async () => {
@@ -71,9 +72,11 @@ check('代碼集合保留原始大小寫、去掉前後空白、略過空白代�
   assert.deepStrictEqual(validCodes, ['AJ30', 'aj31']);
 });
 
-check('分頁（cursor 多頁）全部讀完', async () => {
-  const { validCodes } = await loadWith(null, { pages: [[rec({ code: 'A1' })], [rec({ code: 'B2' })], [rec({ code: 'C3' })]] });
-  assert.deepStrictEqual(validCodes, ['A1', 'B2', 'C3']);
+check('分頁：滿 500 筆就用最後一筆的 $id 往下翻，不滿 500 筆停止，全部讀完', async () => {
+  const page = (prefix, n, startId) => Array.from({ length: n }, (_, i) => ({ $id: { value: String(startId + i) }, ...rec({ code: `${prefix}${i}` }) }));
+  const { validCodes, calls } = await loadWith(null, { pages: [page('A', 500, 1), page('B', 500, 501), page('C', 3, 1001)] });
+  assert.strictEqual(validCodes.length, 1003);
+  assert.deepStrictEqual(calls.map((c) => c.params.query.match(/\$id > (\d+)/)[1]), ['0', '500', '1000']);
 });
 
 check('同代號多筆記錄、名稱不同 → 採用第一筆非空值，並警告管理者回主檔統一', async () => {
@@ -92,11 +95,11 @@ check('多筆記錄的名稱一致時不警告', async () => {
   assert.strictEqual(env.logs.warn.length, 0);
 });
 
-check('重複呼叫 ensureLoaded 共用同一次載入（只開一次 cursor）', async () => {
+check('重複呼叫 ensureLoaded 共用同一次載入（只查一次）', async () => {
   const { env, calls } = await loadWith([]);
   await env.window.PR_COST_CENTER.ensureLoaded();
   await env.window.PR_COST_CENTER.ensureLoaded();
-  assert.strictEqual(calls.filter((c) => c.method === 'POST').length, 1);
+  assert.strictEqual(calls.length, 1);
 });
 
 check('載入失敗：丟出錯誤，且不快取失敗結果，下次呼叫會重試', async () => {
@@ -105,7 +108,7 @@ check('載入失敗：丟出錯誤，且不快取失敗結果，下次呼叫會�
     appId: 749,
     api: (url, method) => {
       if (fail) return Promise.reject(new Error('boom'));
-      return method === 'POST' ? Promise.resolve({ id: 'c' }) : Promise.resolve({ records: [rec({ code: 'X1' })], next: false });
+      return Promise.resolve({ records: [rec({ code: 'X1' })] });
     },
   });
   env.load('payment_request_config.js');

@@ -97,11 +97,9 @@
   }
 
   // ── 選人視窗（「選擇員工」按鈕用；2026-11-12，和 723 交際費受款人明細員工代墊同一種）──────
-  //   kintone 使用者清單：cybozu.com 共通 API /v1/users.json（每次 100 筆分頁，同一頁面只抓一次），停用的帳號不列。
+  //   kintone 使用者清單：使用者主檔快取 PR_USERS（/v1/users.json，同一頁面只抓一次、和手動簽核人共用），停用的帳號不列。
   //   點一位就把「員工編號 中文姓名」寫進受款人；抓不到清單時提示改用手動輸入。樣式在 payment_request.css 的 .pr-emp-*。
 
-  const USERS_API = '/v1/users.json';
-  const PAGE_SIZE = 100; // /v1/users.json 一次最多 100 筆
   const MAX_LIST = 50; // 視窗一次最多列幾位，再多請使用者多打幾個字
 
   const text = (value) => String(value ?? '').trim();
@@ -155,29 +153,23 @@
   };
 
   /**
-   * 抓全部使用者（分頁到不足一頁為止）。
+   * 抓全部使用者（不經快取；分頁在 PR_USERS.fetchAll）。
    * @param {Function} [api] 預設 kintone.api，測試時注入
    */
-  const fetchAllUsers = async (api = kintone.api) => {
-    const all = [];
-    for (let offset = 0; ; offset += PAGE_SIZE) {
-      // eslint-disable-next-line no-await-in-loop
-      const resp = await api(kintone.api.url(USERS_API, true), 'GET', { offset, size: PAGE_SIZE });
-      const users = resp?.users || [];
-      all.push(...users);
-      if (users.length < PAGE_SIZE) break;
-    }
-    return normalizeUsers(all);
-  };
+  const fetchAllUsers = async (api) => normalizeUsers(await window.PR_USERS.fetchAll(api));
 
-  // 同一頁面只抓一次；失敗就清掉，下次開視窗再試
+  // 名單本身由 PR_USERS（使用者主檔快取）同一頁面只抓一次、和手動簽核人共用；這裡只留整理後的結果。
+  // 失敗就清掉，下次開視窗再試
   let usersPromise = null;
   const loadUsers = () => {
     if (!usersPromise) {
-      usersPromise = fetchAllUsers().catch((err) => {
-        usersPromise = null;
-        throw err;
-      });
+      usersPromise = Promise.resolve()
+        .then(() => window.PR_USERS.loadAll())
+        .then(normalizeUsers)
+        .catch((err) => {
+          usersPromise = null;
+          throw err;
+        });
     }
     return usersPromise;
   };

@@ -158,23 +158,32 @@
   /** 表頭格的文字（去掉必填的 *） */
   const headerLabel = (th) => String(th?.textContent || '').replace(/\*/g, '').trim();
 
-  /** 把格子設成指定寬度（width＝null 就藏起來），並做記號以便還原 */
+  /**
+   * 欄寬對應的 class（樣式在 payment_request.css：.pr-tcol-hidden、.pr-tcol-w-64 ～ .pr-tcol-w-320，每 8px 一個）。
+   * 寬度一律是 8 的倍數（單位數 × PX_PER_UNIT ＋ PADDING_PX）；保險起見再對齊 8px、限制在 MIN～MAX。
+   * @param {string|null} width 例 '128px'；null＝藏起來
+   */
+  const widthClass = (width) => {
+    if (width === null) return 'pr-tcol-hidden';
+    const { MIN_PX, MAX_PX } = TABLE_LAYOUT.WIDTH;
+    const px = Math.min(Math.max(Math.round(parseFloat(width) / 8) * 8, MIN_PX), MAX_PX);
+    return `pr-tcol-w-${px}`;
+  };
+
+  /** 把格子設成指定寬度（width＝null 就藏起來）：加 class，記號的值記下 class 名稱以便還原 */
   const markCell = (cell, width) => {
-    if (width === null) cell.style.display = 'none';
-    else {
-      cell.style.width = width;
-      cell.style.minWidth = width;
-    }
-    cell.setAttribute(AUTO_WIDTH_ATTR, '1');
+    const prev = cell.getAttribute(AUTO_WIDTH_ATTR);
+    if (prev) cell.classList.remove(prev);
+    const cls = widthClass(width);
+    cell.classList.add(cls);
+    cell.setAttribute(AUTO_WIDTH_ATTR, cls);
   };
 
   /** 還原所有被調過的格子 */
   const resetAutoTableWidths = () => {
     document.querySelectorAll(`[${AUTO_WIDTH_ATTR}]`).forEach((cell) => {
-      cell.style.width = '';
-      cell.style.minWidth = '';
-      cell.style.maxWidth = '';
-      cell.style.display = '';
+      const cls = cell.getAttribute(AUTO_WIDTH_ATTR);
+      if (cls) cell.classList.remove(cls);
       cell.removeAttribute(AUTO_WIDTH_ATTR);
     });
   };
@@ -226,7 +235,7 @@
     }, TABLE_DELAY_MS);
   };
 
-  window.PR_TABLE_LAYOUT = Object.freeze({ textUnits, displayText, planTrafficTable, applyTablePlan });
+  window.PR_TABLE_LAYOUT = Object.freeze({ textUnits, displayText, planTrafficTable, applyTablePlan, widthClass });
 
   /**
    * 重新綁定取消按鈕事件
@@ -260,14 +269,12 @@
 
     _costCenterLoadPromise = (async () => {
       const CC = C.REF_FIELDS.COST_CENTER;
-      const params = {
+      // 分頁查詢，不用 cursor（每次開畫面都要讀；cursor 整個網域同時最多 10 個，尖峰時會建不起來）
+      const records = await KT.fetchAllRecords({
         app: COST_CENTER_APP_ID,
         fields: [CC.CODE, CC.NAME, CC.DEPT],
         query: `${CC.IN_USE} in ("使用中")`,
-        size: 500,
-      };
-
-      const cursor = await kintone.api(kintone.api.url('/k/v1/records/cursor', true), 'POST', params);
+      });
 
       const nameMap = {};
       const deptMap = {};
@@ -275,30 +282,25 @@
       const validCodes = new Set(); // 原始大小寫，給存檔驗證用（和 submit 自己查時的比對方式一致）
       const nameConflicts = {};
 
-      let hasNext = true;
-      while (hasNext) {
-        const resp = await kintone.api(kintone.api.url('/k/v1/records/cursor', true), 'GET', { id: cursor.id });
-        resp.records.forEach((r) => {
-          const rawCode = r[CC.CODE]?.value?.trim();
-          if (!rawCode) return;
-          validCodes.add(rawCode);
-          const code = rawCode.toUpperCase();
-          const name = r[CC.NAME]?.value?.trim();
-          // 同代號可建多筆記錄、各屬不同部門（例如總公司代碼由好幾個部共用），所屬部門全部收進來
-          (r[CC.DEPT]?.value || []).forEach((dept) => {
-            if (!dept?.code) return;
-            const depts = (deptMap[code] = deptMap[code] || []);
-            if (!depts.includes(dept.code)) depts.push(dept.code);
-            deptNames[dept.code] = dept.name || dept.code;
-          });
-          // 同代號可建多筆記錄：中文名稱保留第一筆非空值，值不同就點名代號提醒管理者
-          if (name) {
-            if (!nameMap[code]) nameMap[code] = name;
-            else if (nameMap[code] !== name) (nameConflicts[code] = nameConflicts[code] || new Set()).add(name);
-          }
+      records.forEach((r) => {
+        const rawCode = r[CC.CODE]?.value?.trim();
+        if (!rawCode) return;
+        validCodes.add(rawCode);
+        const code = rawCode.toUpperCase();
+        const name = r[CC.NAME]?.value?.trim();
+        // 同代號可建多筆記錄、各屬不同部門（例如總公司代碼由好幾個部共用），所屬部門全部收進來
+        (r[CC.DEPT]?.value || []).forEach((dept) => {
+          if (!dept?.code) return;
+          const depts = (deptMap[code] = deptMap[code] || []);
+          if (!depts.includes(dept.code)) depts.push(dept.code);
+          deptNames[dept.code] = dept.name || dept.code;
         });
-        hasNext = resp.next;
-      }
+        // 同代號可建多筆記錄：中文名稱保留第一筆非空值，值不同就點名代號提醒管理者
+        if (name) {
+          if (!nameMap[code]) nameMap[code] = name;
+          else if (nameMap[code] !== name) (nameConflicts[code] = nameConflicts[code] || new Set()).add(name);
+        }
+      });
 
       NAME_OF_CODE = nameMap;
       VALID_COST_CENTER_CODES = validCodes;

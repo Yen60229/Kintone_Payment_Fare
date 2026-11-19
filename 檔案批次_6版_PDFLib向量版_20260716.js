@@ -49,13 +49,13 @@
     console.log(`🔍 💡 若 App ${fontAppId} 無權限，請為該使用者開放 App ${fontAppId} 檢視權限`);
   };
 
-  // ======================== 安全配置 ========================
-  const SECURITY_CONFIG = {
-    maxRecords: 50,
-    allowedDomains: [window.location.origin],
-    csrfTokenName: 'X-Cybozu-API-Token',
-    maxFileSize: 50 * 1024 * 1024,
-    screenshotTimeout: 5000,
+  // ======================== 數量／大小上限 ========================
+  //   壓縮檔整包在瀏覽器記憶體裡產生，附件合計太大會讓分頁當掉 → 開始前先算附件合計，超過 maxZipBytes 就請使用者分批。
+  const LIMITS = {
+    maxRecords: 50, // 單次批次下載／列印的記錄數
+    maxFileSize: 50 * 1024 * 1024, // 單一附件
+    maxZipBytes: 300 * 1024 * 1024, // 批次下載的附件合計（壓縮前）
+    queryChunk: 100, // 批次查詢一次的記錄數（$id in (...)；REST API 的 limit 上限）
   };
 
   // ======================== 表格設定 ========================
@@ -82,8 +82,6 @@
   const NUMERIC_COLUMNS = ['金額', '手續費', '稅額'];
 
   // ======================== 通用工具 ========================
-  const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
-
   const formatDateTime = (date) => {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -100,49 +98,54 @@
     return n.toLocaleString('zh-TW');
   };
 
-  function sanitizeInput(input) {
-    if (typeof input !== 'string') return '';
-    return input.replace(/[<>'"&]/g, '').trim();
-  }
+  /** 檔名裡 Windows／壓縮檔不允許的字元（路徑符號、控制字元）換成 _；其餘保留（& ' 等是合法檔名字元） */
+  // eslint-disable-next-line no-control-regex -- 刻意比對控制字元
+  const safeFileName = (name) => String(name ?? '').replace(/[/\\:*?"<>|\x00-\x1F\x7F]/g, '_').trim();
 
-  function validateSecurity() {
-    if (!window.kintone || !window.kintone.app) {
-      throw new Error('此功能僅能在 kintone 環境中使用');
+  const formatMB = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+  /** 附件欄位的檔案大小合計（kintone 的 size 是位元組字串） */
+  const attachmentBytes = (records) =>
+    records.reduce((sum, r) => sum + (r[F.ATTACHMENT]?.value || []).reduce((a, f) => a + (Number(f.size) || 0), 0), 0);
+
+  /**
+   * 依 $id 一次查多筆（每 LIMITS.queryChunk 筆查一次），回傳 Map(id → record)。
+   * @param {number} app
+   * @param {number[]} ids
+   * @param {string[]} [fields] 不給＝全部欄位
+   */
+  const fetchRecordsByIds = async (app, ids, fields) => {
+    const byId = new Map();
+    for (let i = 0; i < ids.length; i += LIMITS.queryChunk) {
+      const chunk = ids.slice(i, i + LIMITS.queryChunk);
+      const params = { app, query: `$id in (${chunk.join(',')}) limit ${LIMITS.queryChunk}` };
+      if (fields) params.fields = fields;
+      const resp = await kintone.api(kintone.api.url('/k/v1/records', true), 'GET', params);
+      (resp?.records || []).forEach((r) => byId.set(Number(r.$id.value), r));
     }
-    if (!window.location.hostname.includes('cybozu') && !window.location.hostname.includes('kintone')) {
-      throw new Error('不安全的執行環境');
+    return byId;
+  };
+
+  /** 把使用者輸入的範圍／指定號碼轉成記錄號碼陣列（不合法丟 Error，訊息直接給使用者看） */
+  const readRecordIdsFromUI = () => {
+    const mode = document.querySelector('input[name="input-mode"]:checked')?.value || 'range';
+    let ids;
+    if (mode === 'range') {
+      const start = parseInt(document.getElementById('range-start').value, 10);
+      const end = parseInt(document.getElementById('range-end').value, 10);
+      if (isNaN(start) || isNaN(end)) throw new Error('請輸入有效的號碼範圍');
+      if (start > end) throw new Error('開始號碼不能大於結束號碼');
+      if (end - start + 1 > LIMITS.maxRecords) throw new Error(`一次最多只能處理 ${LIMITS.maxRecords} 筆記錄`);
+      ids = Array.from({ length: end - start + 1 }, (_, i) => start + i);
+    } else {
+      const input = document.getElementById('specific-records').value.trim();
+      if (!input) throw new Error('請輸入記錄號碼');
+      ids = [...new Set(input.split(',').map((id) => parseInt(id.trim(), 10)))].filter((x) => Number.isInteger(x) && x > 0);
     }
-    return true;
-  }
-
-  function generateSecurityToken() {
-    return Array.from(crypto.getRandomValues(new Uint8Array(16)))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-  }
-
-  function validateRecordIds(recordIds) {
-    if (!Array.isArray(recordIds)) throw new Error('無效的記錄號碼格式');
-    if (recordIds.length === 0) throw new Error('請至少選擇一筆記錄');
-    if (recordIds.length > SECURITY_CONFIG.maxRecords) throw new Error(`一次最多只能處理 ${SECURITY_CONFIG.maxRecords} 筆記錄`);
-    for (const id of recordIds) {
-      if (!Number.isInteger(id) || id <= 0) throw new Error(`無效的記錄號碼: ${id}`);
-    }
-    return true;
-  }
-
-  function secureKintoneApi(path, method, params, securityToken) {
-    return new Promise((resolve, reject) => {
-      const secureParams = { ...params, __token: securityToken };
-      kintone.api(
-        kintone.api.url(path, true),
-        method,
-        secureParams,
-        (resp) => (resp && typeof resp === 'object' ? resolve(resp) : reject(new Error('無效的 API 回應'))),
-        (error) => reject(new Error('API 呼叫失敗: ' + (error.message || 'Unknown error'))),
-      );
-    });
-  }
+    if (ids.length === 0) throw new Error('請至少輸入一筆有效的記錄號碼');
+    if (ids.length > LIMITS.maxRecords) throw new Error(`一次最多只能處理 ${LIMITS.maxRecords} 筆記錄`);
+    return ids;
+  };
 
   // ======================== 檔案下載（附件 / 字型）========================
   const downloadFile = function (fileKey) {
@@ -176,7 +179,7 @@
     const response = await fetch(downloadUrl, { method: 'GET', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const blob = await response.blob();
-    if (blob.size > SECURITY_CONFIG.maxFileSize) throw new Error('檔案大小超過限制');
+    if (blob.size > LIMITS.maxFileSize) throw new Error('檔案大小超過限制');
     return blob;
   }
 
@@ -555,15 +558,21 @@
   };
 
   // ======================== PDF 生成（PDFLib 向量）========================
-  // 回傳 { blob, skipped }：明細頁＋附件頁；skipped＝沒接上的附件檔名
-  const generateRecordPDF = async (record, id) => {
+  /** 新的 PDF 文件＋嵌入字型（subset=true：檔案會小很多）。批次列印整份只嵌一次。 */
+  const createPdfWithFont = async () => {
     ensurePdfDeps();
-
-    // 字型（subset=true：檔案會小很多）
     const fontBuffer = await fetchFontFromKintone();
     const pdfDoc = await PDFDocument.create();
     pdfDoc.registerFontkit(window.fontkit);
     const font = await pdfDoc.embedFont(fontBuffer, { subset: true });
+    return { pdfDoc, font };
+  };
+
+  /**
+   * 把一筆記錄（明細頁＋附件頁）直接畫進 pdfDoc；批次列印共用同一份文件，不用先存檔再讀回來合併。
+   * @returns {Promise<string[]>} 沒接上的附件檔名
+   */
+  const drawRecordInto = async (pdfDoc, font, record, id) => {
     const fontBold = font; // 若有粗體字型檔可另 embed
 
     // A4 landscape (points)
@@ -697,10 +706,15 @@
       color: rgb(0.35, 0.35, 0.35),
     });
 
-    const skipped = await appendAttachments(pdfDoc, record);
+    return appendAttachments(pdfDoc, record);
+  };
 
+  // 單筆：回傳 { blob, skipped }；skipped＝沒接上的附件檔名
+  const generateRecordPDF = async (record, id) => {
+    const { pdfDoc, font } = await createPdfWithFont();
+    const skipped = await drawRecordInto(pdfDoc, font, record, id);
     const bytes = await pdfDoc.save();
-    return { blob: new Blob([bytes], { type: 'application/pdf' }), bytes, skipped };
+    return { blob: new Blob([bytes], { type: 'application/pdf' }), skipped };
   };
 
   // ======================== 取得單筆記錄 ========================
@@ -720,12 +734,12 @@
     loadingMessage.className = 'loading-message';
     loadingMessage.innerHTML = `
       <button class="close-button" id="close-button" title="關閉視窗">×</button>
-      <h3>🔒 安全批次下載</h3>
-      <p>正在執行安全驗證與資料處理...</p>
+      <h3>📦 批次下載</h3>
+      <p>正在下載附件並打包...</p>
       <div class="progress-bar">
         <div class="progress-bar-fill" id="progress-fill"></div>
       </div>
-      <div class="result-message" id="result-message">🛡️ 安全系統初始化中...</div>
+      <div class="result-message" id="result-message">準備中...</div>
     `;
     loadingOverlay.appendChild(loadingMessage);
     document.body.appendChild(loadingOverlay);
@@ -736,11 +750,15 @@
     if (progressFill) progressFill.style.width = `${Math.min(100, Math.max(0, percentage))}%`;
   }
 
+  const RESULT_TYPES = ['error', 'warning', 'success'];
+
   function updateResultMessage(message, type) {
     const el = document.getElementById('result-message');
     if (!el) return;
     el.textContent = message;
-    el.style.color = type === 'error' ? '#c53030' : type === 'warning' ? '#d69e2e' : type === 'success' ? '#2d5016' : '#333';
+    // 顏色在 payment_request.css（.result-message.pr-result--error／warning／success）
+    el.classList.remove('pr-result--error', 'pr-result--warning', 'pr-result--success');
+    if (RESULT_TYPES.includes(type)) el.classList.add(`pr-result--${type}`);
   }
 
   function showCloseButton() {
@@ -753,32 +771,19 @@
     };
   }
 
-  function generateSecurityReport(records, securityToken) {
-    const timestamp = new Date().toLocaleString();
-    const userAgent = navigator.userAgent;
-    const domain = window.location.hostname;
-
-    return `kintone 安全批次下載報告
+  /** 壓縮檔裡的下載清單：記錄、附件合計、下載失敗的附件 */
+  function generateDownloadReport(records, totalBytes, failed) {
+    const failNote = failed.length ? `\n下載失敗的附件:\n${failed.join('\n')}\n` : '';
+    return `kintone 批次下載清單
 ==========================================
 
-下載時間: ${timestamp}
-執行環境: ${domain}
-瀏覽器: ${userAgent.substring(0, 100)}...
-安全 Token: ${securityToken.substring(0, 8)}****
+下載時間: ${new Date().toLocaleString()}
 處理記錄數: ${records.length}
-
-安全措施:
-✅ 來源驗證已通過
-✅ CSRF 防護已啟用
-✅ 檔案大小限制已套用
-✅ 輸入驗證已執行
-✅ 權限檢查已完成
+附件合計（壓縮前）: ${formatMB(totalBytes)}
 
 記錄清單:
 ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value}`).join('\n')}
-
-此報告由 kintone 安全下載系統自動產生
-==========================================`;
+${failNote}==========================================`;
   }
 
   // （附件+截圖。）
@@ -838,81 +843,66 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
   }
 
   async function handleSecureBatchDownload() {
-    let securityToken = null;
-
     try {
-      validateSecurity();
-      securityToken = generateSecurityToken();
-
       const JSZip = window.JSZip;
       if (!JSZip) throw new Error('JSZip 未載入，請確認自定義 library 已加入');
 
-      const inputMode = document.querySelector('input[name="input-mode"]:checked')?.value || 'range';
-      let recordIds = [];
-
-      if (inputMode === 'range') {
-        const startId = parseInt(sanitizeInput(document.getElementById('range-start').value), 10);
-        const endId = parseInt(sanitizeInput(document.getElementById('range-end').value), 10);
-        if (isNaN(startId) || isNaN(endId)) throw new Error('請輸入有效的號碼範圍');
-        if (startId > endId) throw new Error('開始號碼必須小於或等於結束號碼');
-        for (let i = startId; i <= endId; i++) recordIds.push(i);
-      } else {
-        const specificInput = sanitizeInput(document.getElementById('specific-records').value);
-        if (!specificInput) throw new Error('請輸入要下載的記錄號碼');
-        recordIds = [...new Set(specificInput.split(',').map((id) => parseInt(id.trim(), 10)))].filter((x) => Number.isInteger(x) && x > 0);
-      }
-
-      validateRecordIds(recordIds);
-      // 同請購庶務：先確認再開進度視窗
-      if (!(await askConfirm(`確定要批次下載 ${recordIds.length} 筆記錄的附件+截圖嗎？`))) return;
-      createSecureLoadingOverlay();
-
+      const recordIds = readRecordIdsFromUI();
       const currentAppId = kintone.app.getId();
-      const queryCondition = recordIds.length === 1 ? `$id = ${recordIds[0]}` : `$id in (${recordIds.join(',')})`;
-
-      const recordsResp = await secureKintoneApi(
-        '/k/v1/records',
-        'GET',
-        {
-          app: currentAppId,
-          query: `${queryCondition} limit ${SECURITY_CONFIG.maxRecords}`,
-          fields: ['$id', F.RECORD_NO, F.ATTACHMENT, F.STATUS_FIELD, F.PAYMENT_DATE, F.APPLICANT, F.EXPENSE_OWNER, F.PAY_METHOD],
-        },
-        securityToken,
-      );
-
-      const records = recordsResp.records || [];
+      const byId = await fetchRecordsByIds(currentAppId, recordIds, [
+        '$id', F.RECORD_NO, F.ATTACHMENT, F.STATUS_FIELD, F.PAYMENT_DATE, F.APPLICANT, F.EXPENSE_OWNER, F.PAY_METHOD,
+      ]);
+      const records = recordIds.map((id) => byId.get(id)).filter(Boolean);
       if (!records.length) throw new Error('找不到指定的記錄，請檢查記錄號碼是否正確');
 
-      updateResultMessage(`✅ 安全驗證通過，找到 ${records.length} 筆記錄`);
+      // 壓縮檔整包在記憶體裡產生：開始前先擋附件合計太大的情況
+      const totalBytes = attachmentBytes(records);
+      if (totalBytes > LIMITS.maxZipBytes) {
+        throw new Error(`附件合計約 ${formatMB(totalBytes)}，超過單次上限 ${formatMB(LIMITS.maxZipBytes)}，請縮小範圍分批下載`);
+      }
+      const missing = recordIds.length - records.length;
+      const missingNote = missing ? `\n（有 ${missing} 筆找不到或沒有權限，會略過）` : '';
+      // 同請購庶務：先確認再開進度視窗
+      if (!(await askConfirm(`確定要批次下載 ${records.length} 筆記錄的附件+截圖嗎？\n附件合計約 ${formatMB(totalBytes)}${missingNote}`))) return;
+      createSecureLoadingOverlay();
 
       const today = new Date();
       const dateString = today.getFullYear() + String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
-      const mainFolderName = `${dateString}_${DOWNLOAD_FOLDER_NAME}_安全下載`;
+      const mainFolderName = `${dateString}_${DOWNLOAD_FOLDER_NAME}`;
       const zip = new JSZip();
 
       const includeScreenshot = true;
       let processed = 0;
+      let zippedBytes = 0;
+      const failed = [];
 
       for (const record of records) {
-        const recordNumber = record[F.RECORD_NO]?.value || record.$id.value;
+        const recordNumber = safeFileName(record[F.RECORD_NO]?.value || record.$id.value);
         const subFolderName = `記錄${recordNumber}`;
 
-        updateResultMessage(`🔒 安全處理記錄 ${recordNumber}...`);
+        updateResultMessage(`處理記錄 ${recordNumber}...`);
 
         // 附件
         const attachments = record[F.ATTACHMENT]?.value || [];
         for (const attachment of attachments) {
+          const safeName = safeFileName(attachment.name);
+          if (!safeName) continue;
+          let fileBlob;
           try {
-            const safeName = sanitizeInput(attachment.name);
-            if (!safeName) continue;
-            const fileBlob = await secureFileDownload(attachment.fileKey);
-            zip.file(`${subFolderName}/${recordNumber}－${safeName}`, fileBlob);
-            updateResultMessage(`✅ 已下載: ${safeName}`);
+            fileBlob = await secureFileDownload(attachment.fileKey);
           } catch (error) {
-            console.error(`安全下載附件失敗: ${attachment.name}`, error);
+            console.error(`下載附件失敗: ${attachment.name}`, error);
+            failed.push(`記錄 ${recordNumber}：${attachment.name}（${error.message}）`);
             updateResultMessage(`❌ 下載失敗: ${attachment.name} (${error.message})`);
+            continue;
           }
+          // 欄位上的 size 跟實際不符時的第二道防線：實際下載量也不能超過上限
+          zippedBytes += fileBlob.size;
+          if (zippedBytes > LIMITS.maxZipBytes) {
+            throw new Error(`附件合計超過單次上限 ${formatMB(LIMITS.maxZipBytes)}，請縮小範圍分批下載`);
+          }
+          zip.file(`${subFolderName}/${recordNumber}－${safeName}`, fileBlob);
+          updateResultMessage(`✅ 已下載: ${safeName}`);
         }
 
         // 摘要圖
@@ -925,9 +915,9 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
         updateProgress(Math.floor((processed / records.length) * 80));
       }
 
-      zip.file('安全下載報告.txt', generateSecurityReport(records, securityToken));
+      zip.file('下載清單.txt', generateDownloadReport(records, zippedBytes, failed));
 
-      updateResultMessage('🔒 安全打包中...');
+      updateResultMessage('打包中...');
       updateProgress(90);
 
       const zipBlob = await zip.generateAsync({
@@ -948,19 +938,21 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       window.URL.revokeObjectURL(url);
 
       updateProgress(100);
-      updateResultMessage('🎉 安全下載完成！所有操作均已通過安全驗證。');
+      if (failed.length) {
+        updateResultMessage(`⚠️ 下載完成，但有 ${failed.length} 個附件下載失敗（清單也在壓縮檔的「下載清單.txt」）：\n${failed.join('\n')}`, 'warning');
+      } else {
+        updateResultMessage('🎉 下載完成！', 'success');
+      }
       showCloseButton();
     } catch (error) {
-      console.error('安全下載過程發生錯誤:', error);
+      console.error('批次下載過程發生錯誤:', error);
       // 進度視窗還沒建立（輸入驗證階段）：沒地方顯示結果，改跳視窗提示（原本按了看起來沒反應）
       if (!document.getElementById('result-message')) {
         notify(error.message, 'warning');
       } else {
-        updateResultMessage(`❌ 安全錯誤: ${error.message}`, 'error');
+        updateResultMessage(`❌ 錯誤: ${error.message}`, 'error');
         showCloseButton();
       }
-    } finally {
-      securityToken = null;
     }
   }
 
@@ -984,27 +976,12 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
   // ======================== 批次列印 PDF（PDFLib 版）========================
   async function handleBatchPrintPDF() {
     try {
-      const mode = document.querySelector('input[name="input-mode"]:checked')?.value || 'range';
-      let recordIds = [];
-
-      if (mode === 'range') {
-        const start = parseInt(document.getElementById('range-start').value, 10);
-        const end = parseInt(document.getElementById('range-end').value, 10);
-        if (isNaN(start) || isNaN(end)) return notify('請輸入有效的號碼範圍', 'warning');
-        if (start > end) return notify('開始號碼不能大於結束號碼', 'warning');
-        if (end - start + 1 > SECURITY_CONFIG.maxRecords) return notify(`單次最多列印 ${SECURITY_CONFIG.maxRecords} 筆記錄`, 'warning');
-        recordIds = Array.from({ length: end - start + 1 }, (_, i) => start + i);
-      } else {
-        const input = document.getElementById('specific-records').value.trim();
-        if (!input) return notify('請輸入要列印的記錄號碼', 'warning');
-        recordIds = input
-          .split(',')
-          .map((id) => parseInt(id.trim(), 10))
-          .filter((id) => !isNaN(id));
-        if (!recordIds.length) return notify('請輸入有效的記錄號碼', 'warning');
-        if (recordIds.length > SECURITY_CONFIG.maxRecords) return notify(`單次最多列印 ${SECURITY_CONFIG.maxRecords} 筆記錄`, 'warning');
+      let recordIds;
+      try {
+        recordIds = readRecordIdsFromUI();
+      } catch (inputError) {
+        return notify(inputError.message, 'warning');
       }
-
       if (!(await askConfirm(`確定要批次列印 ${recordIds.length} 筆記錄嗎？`))) return;
       await performBatchPrintPDF(recordIds);
     } catch (error) {
@@ -1018,36 +995,38 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
     ensurePdfDeps();
     createLoadingOverlay();
     const appId = kintone.app.getId();
-    // 全部合成一份 PDF：明細＋附件＋明細＋附件…（依輸入的記錄順序）
-    const merged = await PDFDocument.create();
     let processed = 0;
     const failed = [];
     const skippedAll = [];
 
     try {
+      // 全部畫進同一份 PDF：明細＋附件＋明細＋附件…（依輸入的記錄順序）；字型只嵌一次、整份只存一次
+      const { pdfDoc: merged, font } = await createPdfWithFont();
+      // 記錄一次查回來（每 100 筆一次），不再一筆一筆查
+      updateResultMessage('讀取記錄...', 'info');
+      const byId = await fetchRecordsByIds(appId, recordIds);
+
       for (const recordId of recordIds) {
         console.log(`[PDF Batch] Start processing record: ${recordId}`);
         updateResultMessage(`處理記錄 ${recordId}...`, 'info');
         updateProgress((processed / recordIds.length) * 100);
 
+        const before = merged.getPageCount();
         try {
-          const record = await fetchRecord(appId, recordId);
-          console.log(`[PDF Batch] Fetched record ${recordId}:`, record);
-          
-          const { bytes, skipped } = await generateRecordPDF(record, recordId);
-          const src = await PDFDocument.load(bytes);
-          const pages = await merged.copyPages(src, src.getPageIndices());
-          pages.forEach((p) => merged.addPage(p));
+          const record = byId.get(recordId);
+          if (!record) throw new Error('找不到記錄（可能已刪除或沒有權限）');
+          const skipped = await drawRecordInto(merged, font, record, recordId);
           skipped.forEach((name) => skippedAll.push(`記錄 ${recordId}：${name}`));
           processed++;
-          console.log(`[PDF Batch] Added record ${recordId} (${pages.length} pages) to merged PDF.`);
+          console.log(`[PDF Batch] Added record ${recordId} (${merged.getPageCount() - before} pages) to merged PDF.`);
         } catch (recordError) {
           console.error(`[PDF Batch] 記錄 ${recordId} 處理失敗:`, recordError);
           const errMsg = recordError.message || (typeof recordError === 'object' ? JSON.stringify(recordError) : String(recordError));
           failed.push({ id: recordId, message: errMsg });
+          // 畫到一半失敗：拿掉這筆已加進去的頁，失敗的記錄不放進 PDF
+          while (merged.getPageCount() > before) merged.removePage(merged.getPageCount() - 1);
         }
 
-        await sleep(150);
       }
 
       console.log(`[PDF Batch] Loop completed. Success = ${processed}, Failed = ${failed.length}`);
@@ -1085,7 +1064,7 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
     // 受款人欄位資料可能夾雜 Tab／換行等控制字元（例如「代號\t姓名」格式），
     // 這類字元 Windows 檔名不允許，會讓解壓縮工具跳過該檔案而誤以為 ZIP 是空的
     const payName = (record[F.PAYEE]?.value || '').replace(/[\t\n\r]+/g, ' ').trim();
-    return `交通費請款單${id}_${company}(${payName}).pdf`.replace(/[\/\\:*?"<>|\x00-\x1F\x7F]/g, '_');
+    return safeFileName(`交通費請款單${id}_${company}(${payName}).pdf`);
   };
 
   // ======================== UI（維持原樣）========================
@@ -1179,8 +1158,6 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
 
   async function initUI() {
     try {
-      validateSecurity();
-
       const headerMenuSpace = kintone.app.getHeaderMenuSpaceElement();
       if (!headerMenuSpace) throw new Error('找不到標頭菜單空間');
 
@@ -1266,13 +1243,8 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
       const modeRadios = modeSelector.querySelectorAll('input[name="input-mode"]');
       modeRadios.forEach((radio) => {
         radio.addEventListener('change', function () {
-          if (this.value === 'range') {
-            rangeInputs.style.display = 'flex';
-            specificInputs.style.display = 'none';
-          } else {
-            rangeInputs.style.display = 'none';
-            specificInputs.style.display = 'flex';
-          }
+          // 顯示哪一組輸入框由 payment_request.css 依 .pr-mode-specific 決定
+          rangeGroup.classList.toggle('pr-mode-specific', this.value !== 'range');
         });
       });
 
@@ -1315,12 +1287,11 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
     }
   }
 
-  window.PR_BATCH_PDF = Object.freeze({ TABLE_CONFIG, NUMERIC_COLUMNS, getTableData, buildHeaderRows, generatePDFFileName, attachmentKind, appendAttachments });
+  window.PR_BATCH_PDF = Object.freeze({ TABLE_CONFIG, NUMERIC_COLUMNS, LIMITS, getTableData, buildHeaderRows, generatePDFFileName, attachmentKind, appendAttachments, safeFileName, attachmentBytes, fetchRecordsByIds });
 
   // ======================== 事件註冊（依你的要求放最下方）========================
-  kintone.events.on('app.record.index.show', function (event) {
+  window.PR_KT.on('app.record.index.show', function (event) {
     try {
-      validateSecurity();
       if (document.getElementById('batch-download-container')) return event;
       initUI();
     } catch (error) {

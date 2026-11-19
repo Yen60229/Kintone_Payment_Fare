@@ -54,6 +54,8 @@ global.kintone = {
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
 // eslint-disable-next-line no-eval
+eval(readSrc('使用者主檔快取.js'));
+// eslint-disable-next-line no-eval
 eval(readSrc('受款人填寫設定_20250902.js'));
 
 const F = global.window.PR_CONFIG.FIELDS;
