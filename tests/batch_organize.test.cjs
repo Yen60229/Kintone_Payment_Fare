@@ -10,6 +10,7 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
+const { loadInto } = require('./lib/esm_loader.cjs');
 
 const rootDir = path.join(__dirname, '..');
 const readSrc = (name) => fs.readFileSync(path.join(rootDir, name), 'utf8');
@@ -24,13 +25,11 @@ global.kintone = {
 
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
-// eslint-disable-next-line no-eval
-eval(readSrc('批次整理資料.js'));
+const B = loadInto(null, '批次整理資料.js');
 
 const C = global.window.PR_CONFIG;
 const F = C.FIELDS;
 const T = F.TRAFFIC_TABLE;
-const B = global.window.PR_BATCH_ORGANIZE;
 const { parseTemplate, resolveToken, applyFilters, evalArithmetic, buildRows, buildSheet, toCell, mapMappingRecord, columnIndex, columnLetters, formatDate } = B;
 const { payeeKey, sortRecordsByPayee, buildBusinessAreaMap, buildDateDialogHtml } = B;
 
@@ -808,7 +807,7 @@ check('buildDateDialogHtml：所有值都做 HTML 跳脫（XSS）', () => {
 
 // ── 10. 其他 ─────────────────────────────────────────────────────────────────
 check('valueToText：整段是日期或日期時間才換格式；開頭是日期的文字照原樣', () => {
-  const { valueToText } = global.window.PR_BATCH_ORGANIZE;
+  const { valueToText } = B;
   assert.strictEqual(valueToText('2026-11-03', 'YYYYMMDD'), '20261103');
   assert.strictEqual(valueToText('2026-11-03T00:00:00Z', 'YYYYMMDD').length, 8);
   assert.strictEqual(valueToText('2026-11-03 拜訪客戶', 'YYYYMMDD'), '2026-11-03 拜訪客戶');

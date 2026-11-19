@@ -100,7 +100,7 @@ check('localStorage 存取丟錯（無痕／封鎖網站資料）→ 不會壞�
 check('打包進 bundle 的模組沒有直接呼叫 console.log／console.debug（註解不算）', () => {
   const modules = readSrc('src/index.js')
     .split(/\r?\n/)
-    .map((l) => /^import '\.\.\/(.+\.js)';$/.exec(l.trim()))
+    .map((l) => /^import '\.\.\/(.+\.js)(?:\?install)?';$/.exec(l.trim()))
     .filter(Boolean)
     .map((m) => m[1])
     .filter((f) => f !== 'payment_request_config.js');

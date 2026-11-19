@@ -225,8 +225,8 @@ check('註冊與載入：按鈕在「批次動作」下拉選單（本檔不註�
   assert.strictEqual(registered.filter((r) => r.name === 'app.record.index.show').length, 0);
   assert.strictEqual(typeof M.openDialog, 'function');
   const idx = readSrc('src/index.js');
-  const iPrev = idx.indexOf("'../批次整理資料.js'");
-  const iMod = idx.indexOf(`'../${MOD}'`);
+  const iPrev = idx.indexOf("'../批次整理資料.js");
+  const iMod = idx.indexOf(`'../${MOD}`);
   assert.ok(iPrev > 0 && iMod > iPrev);
   const batch = readSrc('檔案批次.js');
   assert.ok(batch.includes('📋 批次填傳票／入帳完成') && batch.includes('window.PR_BATCH_VOUCHER.openDialog()'));

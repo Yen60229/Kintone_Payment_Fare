@@ -8,6 +8,7 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
+const { loadInto } = require('./lib/esm_loader.cjs');
 
 const rootDir = path.join(__dirname, '..');
 const fileName = 'print.show顯示單據編號_請款單據編號.js';
@@ -38,11 +39,9 @@ global.kintone = {
 
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
-// eslint-disable-next-line no-eval
-eval(src);
+const P = loadInto(null, fileName);
 
 const F = global.window.PR_CONFIG.FIELDS;
-const P = global.window.PR_PRINT_SHOW;
 
 let passed = 0;
 const check = (label, fn) => {

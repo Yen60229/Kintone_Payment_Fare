@@ -8,6 +8,7 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
+const { loadInto } = require('./lib/esm_loader.cjs');
 
 const rootDir = path.join(__dirname, '..');
 const pdfFile = '檔案批次.js';
@@ -52,13 +53,11 @@ global.document = { getElementById: () => null, createElement: fakeEl };
 console.warn = () => {}; // 測試環境沒有 PDFLib，略過載入警告
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
-// eslint-disable-next-line no-eval
-eval(pdfSrc);
+const B = loadInto(null, pdfFile);
 
 const C = global.window.PR_CONFIG;
 const F = C.FIELDS;
 const T = F.TRAFFIC_TABLE;
-const B = global.window.PR_BATCH_PDF;
 
 let passed = 0;
 const check = (label, fn) => {

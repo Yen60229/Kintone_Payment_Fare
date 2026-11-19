@@ -56,4 +56,27 @@ const createModuleLoader = (context) => {
   return load;
 };
 
-module.exports = { createModuleLoader, isEsm, normalize };
+const loaders = new WeakMap();
+let globalLoader = null;
+/**
+ * 載入一支 ES module 並呼叫 install()（和入口檔的 import '…?install' 一樣），回傳 exports。
+ * 同一個沙箱（或本程序全域）共用同一份模組快取。
+ * @param {Object|null} context vm.createContext 過的沙箱；null＝本程序全域（測試用 global.window／global.kintone 的）
+ * @param {string} file 專案根目錄相對路徑
+ * @param {{ install?: boolean }} [opts] install: false 只載入不註冊
+ */
+const loadInto = (context, file, { install = true } = {}) => {
+  let load;
+  if (context) {
+    if (!loaders.has(context)) loaders.set(context, createModuleLoader(context));
+    load = loaders.get(context);
+  } else {
+    globalLoader = globalLoader || createModuleLoader(null);
+    load = globalLoader;
+  }
+  const exports = load(file);
+  if (install && typeof exports.install === 'function') exports.install();
+  return exports;
+};
+
+module.exports = { createModuleLoader, loadInto, isEsm, normalize };
