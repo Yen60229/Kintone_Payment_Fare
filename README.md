@@ -57,6 +57,18 @@ npm run check:process
 - 從 kintone 下載新版流程設定後，放進 `process_management/exports/` 再跑一次。
 - 目前 749 rev 1795 本身有已知問題，所以會回傳結束代碼 1（見 docs 待決事項）。
 
+### 冒煙測試（Playwright，不連 kintone）
+```bash
+npx playwright install chromium   # 第一次（或升級 @playwright/test 後）才要
+npm run smoke
+```
+- 先把桌面版打包到 `node_modules/.cache/smoke-bundle`（不動 `dist/`），在瀏覽器裡用假的 `kintone`／`Swal`（`tests/smoke/fake_kintone.cjs`）載入，
+  走：新增畫面 show、改費用歸屬（轉大寫＋中文名稱）、存檔驗證失敗跳錯誤視窗、存檔成功。
+- 失敗時的 trace 在 `node_modules/.cache/smoke-results`（`npx playwright show-trace <trace.zip>`）。
+
+### CI（GitHub Actions）
+`.github/workflows/ci.yml`：push／PR 到 `main` 時依序跑 `npm test`、plug-in 測試、`syntax.test.sh`、`scan`、`lint`、`check:process`、`build`、`smoke`，不需要 secret。
+
 ### 打包
 ```bash
 npm run build
