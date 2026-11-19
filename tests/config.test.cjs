@@ -12,11 +12,20 @@ const fs = require('fs');
 const rootDir = path.join(__dirname, '..');
 const src = fs.readFileSync(path.join(rootDir, 'payment_request_config.js'), 'utf8');
 
-const loadConfig = (appId, loginCode = 'x') => {
-  global.window = {};
+// 載入時的 console.warn 收進 lastWarns（App ID 對不到環境時會警告），不印到測試輸出
+let lastWarns = [];
+const loadConfig = (appId, loginCode = 'x', { source = src, forcedEnv } = {}) => {
+  global.window = forcedEnv === undefined ? {} : { PR_ENV: forcedEnv };
   global.kintone = { app: { getId: () => appId }, getLoginUser: () => ({ code: loginCode }) };
-  // eslint-disable-next-line no-eval
-  eval(src);
+  lastWarns = [];
+  const origWarn = console.warn;
+  console.warn = (...a) => lastWarns.push(a.join(' '));
+  try {
+    // eslint-disable-next-line no-eval
+    eval(source);
+  } finally {
+    console.warn = origWarn;
+  }
   return global.window.PR_CONFIG;
 };
 
@@ -35,16 +44,16 @@ const isDeepFrozen = (obj) =>
 console.log('config.test.cjs');
 
 // ── 整體結構 ────────────────────────────────────────────────────────────────
-check('PR_CONFIG 的頂層鍵恰為這 23 個（多了或少了都要有意識地改這裡）', () => {
+check('PR_CONFIG 的頂層鍵恰為這 26 個（多了或少了都要有意識地改這裡）', () => {
   assert.deepStrictEqual(
     Object.keys(c).sort(),
-    ['ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'BATCH_VOUCHER', 'CARD_PAY', 'COST_SCOPE', 'DIRECTOR_UPLINE', 'EXPECTED_PAY_DATE', 'FIELDS', 'INLINE_EDIT', 'MANUAL_SIGNERS', 'OPTIONS', 'REF_FIELDS', 'SEP', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'TRAFFIC_RULES', 'TRAFFIC_TABLE_LAYOUT', 'VOID_FIELD', 'directorUplineGroupOf', 'isAdmin'].sort(),
+    ['ENV', 'ENV_SETTINGS', 'ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'BATCH_VOUCHER', 'CARD_PAY', 'COST_SCOPE', 'DIRECTOR_UPLINE', 'EXPECTED_PAY_DATE', 'FIELDS', 'INLINE_EDIT', 'MANUAL_SIGNERS', 'OPTIONS', 'REF_FIELDS', 'SEP', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'TRAFFIC_RULES', 'TRAFFIC_TABLE_LAYOUT', 'VOID_FIELD', 'directorUplineGroupOf', 'isAdmin'].sort(),
   );
 });
 
 check('PR_CONFIG 與各註冊表皆為凍結物件（不會被其他模組意外改寫）', () => {
   assert.ok(Object.isFrozen(c));
-  ['APPS', 'ACCOUNTING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'TRAFFIC_TABLE_LAYOUT', 'INLINE_EDIT', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'BATCH_VOUCHER', 'OPTIONS', 'TRAFFIC_RULES', 'COST_SCOPE', 'DIRECTOR_UPLINE', 'CARD_PAY', 'MANUAL_SIGNERS'].forEach((key) => {
+  ['ENV_SETTINGS', 'APPS', 'ACCOUNTING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'TRAFFIC_TABLE_LAYOUT', 'INLINE_EDIT', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'BATCH_VOUCHER', 'OPTIONS', 'TRAFFIC_RULES', 'COST_SCOPE', 'DIRECTOR_UPLINE', 'CARD_PAY', 'MANUAL_SIGNERS'].forEach((key) => {
     assert.ok(isDeepFrozen(c[key]), `${key} 應為深層凍結`);
   });
 });
@@ -118,6 +127,97 @@ check('APPS 各值正確；PAYMENT 用 kintone.app.getId() 動態取得（換 Ap
   assert.strictEqual(c.APPS.HOLIDAY_CALENDAR, 620);
   assert.strictEqual(c.APPS.TRAFFIC_PAYMENT, 749);
   assert.strictEqual(loadConfig(752).APPS.TRAFFIC_PAYMENT, 749, '在規則主檔執行時 TRAFFIC_PAYMENT 仍是請款單、PAYMENT 才跟著換');
+  loadConfig(749);
+});
+
+// ── 測試區／正式區（ENV_SETTINGS，執行時依 App ID 判斷）──────────────────────
+/** 物件的「形狀」：葉節點一律記成 'leaf'（null 也算），用來比對兩個環境的鍵是否一致 */
+const shapeOf = (node) =>
+  node !== null && typeof node === 'object' && !Array.isArray(node)
+    ? Object.fromEntries(Object.keys(node).sort().map((k) => [k, shapeOf(node[k])]))
+    : 'leaf';
+const ENV_KEYS = ['ACCOUNTING_MAP', 'ADMIN_USERS', 'APPS', 'DIRECTOR_UPLINE_RULES', 'SUPER_ADMIN'];
+
+check('ENV_SETTINGS 恰為 test／prod，兩環境鍵完全一致；test 全部有值、prod 每個鍵都在（未填＝null）', () => {
+  const envs = c.ENV_SETTINGS;
+  assert.deepStrictEqual(Object.keys(envs).sort(), ['prod', 'test']);
+  assert.deepStrictEqual(Object.keys(envs.test).sort(), ENV_KEYS);
+  assert.deepStrictEqual(shapeOf(envs.prod), shapeOf(envs.test), 'prod 與 test 的設定鍵要一致（少鍵、多鍵都不行）');
+  const appKeys = Object.keys(c.APPS).filter((k) => k !== 'PAYMENT').sort();
+  assert.deepStrictEqual(Object.keys(envs.test.APPS).sort(), appKeys, 'APPS 除了 PAYMENT 以外都依環境');
+  const leaves = (node, p) =>
+    node !== null && typeof node === 'object' && !Array.isArray(node) ? Object.keys(node).flatMap((k) => leaves(node[k], `${p}.${k}`)) : [[p, node]];
+  leaves(envs.test, 'test').forEach(([p, v]) => assert.ok(v !== null && v !== undefined, `${p} 未填`));
+  Object.values(envs.test.APPS).forEach((id) => assert.ok(Number.isInteger(id) && id > 0, `test App ID ${id} 要是正整數`));
+  leaves(envs.prod, 'prod').forEach(([p, v]) => assert.ok(v === null || v !== undefined, `${p} 要有鍵（未填用 null）`));
+});
+
+check('目前環境：749（請款單）、752（規則主檔）→ test；值與 ENV_SETTINGS.test 一致', () => {
+  assert.strictEqual(c.ENV, 'test');
+  assert.strictEqual(c.ADMIN_USERS, c.ENV_SETTINGS.test.ADMIN_USERS);
+  assert.strictEqual(c.SUPER_ADMIN, c.ENV_SETTINGS.test.SUPER_ADMIN);
+  assert.strictEqual(c.DIRECTOR_UPLINE.RULES, c.ENV_SETTINGS.test.DIRECTOR_UPLINE_RULES);
+  Object.entries(c.ENV_SETTINGS.test.APPS).forEach(([k, v]) => assert.strictEqual(c.APPS[k], v, k));
+  const atMaster = loadConfig(752);
+  assert.strictEqual(atMaster.ENV, 'test');
+  assert.deepStrictEqual(lastWarns, []);
+  loadConfig(749);
+});
+
+check('App ID 對不到任何環境 → 退回 test 並警告；window.PR_ENV 可強制指定、亂填就報錯', () => {
+  assert.strictEqual(loadConfig(631).ENV, 'test');
+  assert.strictEqual(lastWarns.length, 1);
+  assert.ok(lastWarns[0].includes('631'));
+  assert.strictEqual(loadConfig(631, 'x', { forcedEnv: 'test' }).ENV, 'test');
+  assert.deepStrictEqual(lastWarns, [], '強制指定不警告');
+  assert.throws(() => loadConfig(749, 'x', { forcedEnv: 'staging' }), /PR_ENV＝「staging」/);
+  loadConfig(749);
+});
+
+check('prod 還沒填完：App ID 對不到 prod（null 不比對）；強制選 prod 或只填一半 → 直接報錯列出未填的鍵', () => {
+  assert.throws(() => loadConfig(749, 'x', { forcedEnv: 'prod' }), (e) => /prod 環境還有未填的值/.test(e.message) && e.message.includes('prod.APPS.COST_CENTER') && e.message.includes('prod.ADMIN_USERS'));
+  // 只填了請款單 App ID：對到 prod，但其他還是 null → 報錯，不帶著錯的設定跑
+  const prodStart = src.indexOf('prod: Object.freeze({');
+  assert.ok(prodStart > 0);
+  const partial = src.slice(0, prodStart) + src.slice(prodStart).replace('TRAFFIC_PAYMENT: null', 'TRAFFIC_PAYMENT: 9009');
+  assert.throws(() => loadConfig(9009, 'x', { source: partial }), /prod 環境還有未填的值/);
+  loadConfig(749);
+});
+
+check('prod 填完：正式區 App ID → 選 prod，APPS／ADMIN_USERS／SUPER_ADMIN／DIRECTOR_UPLINE.RULES 都換成正式值；測試區照舊', () => {
+  const prodStart = src.indexOf('prod: Object.freeze({');
+  const prodEnd = src.indexOf('const CURRENT_APP_ID', prodStart);
+  let n = 9000;
+  const accStart = src.indexOf('ACCOUNTING_MAP: Object.freeze({', prodStart);
+  assert.ok(accStart > prodStart && accStart < prodEnd);
+  const filledBlock = (
+    src.slice(prodStart, accStart) +
+    // 會計群組：填成 PROD_<代號>
+    src.slice(accStart, prodEnd).replace(/([^\s{,]+): null(?=,)/g, (all, key) => `${key}: 'PROD_${key}'`)
+  )
+    .replace(/(\b[A-Z_]+): null(?=,)/g, (all, key) => {
+      if (key === 'ADMIN_USERS') return "ADMIN_USERS: Object.freeze(['P001'])";
+      if (key === 'SUPER_ADMIN') return "SUPER_ADMIN: 'P001'";
+      if (key === 'DIRECTOR_UPLINE_RULES') return "DIRECTOR_UPLINE_RULES: Object.freeze([Object.freeze({ org: '正式部', title: '部長', group: 'PROD_部長' })])";
+      n += 1;
+      return `${key}: ${n}`;
+    });
+  assert.ok(!/: null/.test(filledBlock), '替身應把 prod 的 null 全填掉');
+  const filled = src.slice(0, prodStart) + filledBlock + src.slice(prodEnd);
+  const p = loadConfig(9009, 'P001', { source: filled }); // TRAFFIC_PAYMENT 是第 9 個 App 鍵 → 9009
+  assert.strictEqual(p.ENV, 'prod');
+  assert.deepStrictEqual(lastWarns, []);
+  assert.strictEqual(p.APPS.PAYMENT, 9009);
+  assert.strictEqual(p.APPS.TRAFFIC_PAYMENT, 9009);
+  assert.strictEqual(p.APPS.COST_CENTER, 9001);
+  assert.deepStrictEqual([...p.ADMIN_USERS], ['P001']);
+  assert.strictEqual(p.isAdmin(), true);
+  assert.strictEqual(p.isAdmin('24136'), false, '測試區管理員在正式區不是管理員');
+  assert.strictEqual(p.directorUplineGroupOf('正式部', '部長'), 'PROD_部長');
+  assert.strictEqual(p.directorUplineGroupOf('台中營業部', '部長'), null);
+  assert.deepStrictEqual({ ...p.ACCOUNTING.MAP }, { TPE: 'PROD_TPE', TPE海運: 'PROD_TPE海運', CKS: 'PROD_CKS', KHH: 'PROD_KHH', TEPZ: 'PROD_TEPZ', NEXT: 'PROD_NEXT' });
+  assert.strictEqual(loadConfig(9008, 'x', { source: filled }).ENV, 'prod', '正式區規則主檔（TRAFFIC_RULE_MASTER）也判斷成 prod');
+  assert.strictEqual(loadConfig(749, 'x', { source: filled }).ENV, 'test', 'prod 填了之後測試區照舊');
   loadConfig(749);
 });
 

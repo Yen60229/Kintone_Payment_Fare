@@ -2,7 +2,7 @@
   'use strict';
 
   // =============================================================================
-  // 交通費請款單（測試區 App 749）共用設定檔 —— 單一事實來源
+  // 交通費請款單 共用設定檔 —— 單一事實來源（測試區／正式區的差異只在 ENV_SETTINGS，執行時自動判斷）
   //
   // 【載入順序】此檔必須排在 kintone「JavaScript 自訂」清單的「最上面」，
   //   其餘檔案才能透過 window.PR_CONFIG 取用。
@@ -105,28 +105,117 @@
     },
   });
 
+  // ── 測試區／正式區設定（執行時依目前 App ID 自動判斷）──────────────────────────
+  //   【只有這裡的值會因環境不同】，其他常數兩區共用；兩區的鍵必須完全一致（config.test 會檢查）。
+  //   判斷：目前 App ID ＝ 某環境的 APPS.TRAFFIC_PAYMENT（請款單）或 APPS.TRAFFIC_RULE_MASTER
+  //     （規則主檔，752 存檔檢查在那裡跑）→ 用那個環境。
+  //   都對不到 → 用 test（維持現況），Console 警告一次。要強制指定可在本檔前設 window.PR_ENV = 'test' | 'prod'。
+  //   prod 先全填 null：正式區 App 建好後把 null 全換成正式值。null 永遠對不到 App ID，所以沒填完不會被選到；
+  //     選到的環境若還有 null，本檔直接報錯（不帶著錯的設定跑）。
+  //   DIRECTOR_UPLINE_RULES 與請款單（請購_庶務_轉請款單）的 DIRECTOR_UPLINE 相同，改一邊要同步另一邊。
+  const ENV_SETTINGS = Object.freeze({
+    test: Object.freeze({
+      APPS: Object.freeze({
+        COST_CENTER: 661, // 費用歸屬代碼（CostCenter）
+        ACCOUNTING_MAP: 433, // 申請單位 → 會計單位／承辦人 對應
+        APPROVAL_FLOW: 139, // 簽核流程主檔
+        SAP_MAPPING: 751, // 交通費轉出欄位對應（另建，不和請款單共用 SAP 對應 App；欄位為交通費套表 A～Q）
+        PDF_FONT: 488, // PDF 產生用字型
+        PERMISSION: 673, // 帳號權限設定（欄位顯隱／可編輯／必填規則）
+        HOLIDAY_CALENDAR: 620, // 行事曆（國定假日、週末、補行上班日），預計付款日用
+        TRAFFIC_RULE_MASTER: 752, // 交通費明細規則主檔（交通工具／憑證種類的規則；讀不到就退回 TRAFFIC_RULES）
+        // 交通費請款單的固定 App ID：判斷環境用，以及【在規則主檔執行的檢查程式】用（交通費明細規則主檔檢查_20261104.js；
+        //   在規則主檔裡 getId() 拿到的是規則主檔自己的 ID）。請款單自己的程式一律用 APPS.PAYMENT。
+        TRAFFIC_PAYMENT: 749,
+      }),
+      ADMIN_USERS: Object.freeze(['24136', '24136T', '24145', '24145T']),
+      SUPER_ADMIN: '24136', // 唯一開發者本人；比 ADMIN_USERS 更窄的權限（僅限「JS 自定義設定」按鈕），刻意不與四人白名單混用
+      DIRECTOR_UPLINE_RULES: Object.freeze(
+        [
+          { org: '台中營業部', title: '部長', group: 'HQ_部長' },
+          { org: '航空貨物部', title: '部長', group: 'BH_FF_部長' },
+          { org: '海運貨物部', title: '部長', group: 'BH_FF_部長' },
+          { org: '汽車貨運部', title: '部長', group: 'BH_LT_部長' },
+          { org: '安全品質推動部', title: '部長', group: 'HQ_部長' },
+          { org: '事業本部', title: '部長', group: 'HQ_部長' },
+          { org: '總務部', title: '部長', group: 'HQ_ACC_課長' },
+          { org: '物流運輸事業部', title: '部長', group: 'BH_部長' },
+        ].map((r) => Object.freeze(r)),
+      ),
+      // 會計單位代號 → kintone 會計群組代碼（ACCOUNTING.MAP）
+      ACCOUNTING_MAP: Object.freeze({ TPE: 'ACC_TPE', TPE海運: 'ACC_TPE海運', CKS: 'ACC_CKS', KHH: 'ACC_KHH', TEPZ: 'ACC_TEPZ', NEXT: 'ACC_NEXT' }),
+    }),
+    // 正式區：App 尚未建立，全部待填（鍵與 test 相同；ADMIN_USERS／DIRECTOR_UPLINE_RULES／ACCOUNTING_MAP 要確認正式區名單與群組後填，不要直接照抄 test）
+    prod: Object.freeze({
+      APPS: Object.freeze({
+        COST_CENTER: null,
+        ACCOUNTING_MAP: null,
+        APPROVAL_FLOW: null,
+        SAP_MAPPING: null,
+        PDF_FONT: null,
+        PERMISSION: null,
+        HOLIDAY_CALENDAR: null,
+        TRAFFIC_RULE_MASTER: null,
+        TRAFFIC_PAYMENT: null,
+      }),
+      ADMIN_USERS: null,
+      SUPER_ADMIN: null,
+      DIRECTOR_UPLINE_RULES: null,
+      // 會計單位代號照 test（流程管理用同一組代號），群組代碼待填
+      ACCOUNTING_MAP: Object.freeze({
+        TPE: null,
+        TPE海運: null,
+        CKS: null,
+        KHH: null,
+        TEPZ: null,
+        NEXT: null,
+      }),
+    }),
+  });
+
+  const CURRENT_APP_ID = PR_KT.app().getId();
+
+  /** 目前環境名稱（'test'／'prod'）：window.PR_ENV 強制指定 > App ID 對到 > 退回 test */
+  const ENV = (() => {
+    const forced = window.PR_ENV;
+    if (forced !== undefined && forced !== null && forced !== '') {
+      if (!ENV_SETTINGS[forced]) throw new Error(`交通費請款單設定：window.PR_ENV＝「${forced}」不是 ${Object.keys(ENV_SETTINGS).join('／')}`);
+      return forced;
+    }
+    const appId = Number(CURRENT_APP_ID);
+    const matched = Object.keys(ENV_SETTINGS).find((name) => {
+      const apps = ENV_SETTINGS[name].APPS;
+      return [apps.TRAFFIC_PAYMENT, apps.TRAFFIC_RULE_MASTER].some((id) => id !== null && id === appId);
+    });
+    if (matched) return matched;
+    if (typeof console !== 'undefined') console.warn(`交通費請款單設定：App ${CURRENT_APP_ID} 不在任何環境的對照裡，先用測試區（test）設定`);
+    return 'test';
+  })();
+
+  /** 列出某環境還沒填（null／undefined）的設定路徑 */
+  const missingEnvKeys = (node, path) => {
+    if (node === null || node === undefined) return [path];
+    if (typeof node !== 'object') return [];
+    return Object.keys(node).flatMap((key) => missingEnvKeys(node[key], `${path}.${key}`));
+  };
+  {
+    const missing = missingEnvKeys(ENV_SETTINGS[ENV], ENV);
+    if (missing.length) throw new Error(`交通費請款單設定：${ENV} 環境還有未填的值：${missing.join('、')}`);
+  }
+  const ENV_CFG = ENV_SETTINGS[ENV];
+
   // ── App ID 對照 ─────────────────────────────────────────────────────────────
+  //   各 App ID 見上方 ENV_SETTINGS（依環境）；PAYMENT 一律動態取得。
   const APPS = Object.freeze({
-    PAYMENT: PR_KT.app().getId(), // 本 App（交通費請款單），動態取得
-    COST_CENTER: 661, // 費用歸屬代碼（CostCenter）
-    ACCOUNTING_MAP: 433, // 申請單位 → 會計單位／承辦人 對應
-    APPROVAL_FLOW: 139, // 簽核流程主檔
-    SAP_MAPPING: 751, // 交通費轉出欄位對應（另建，不和請款單共用 SAP 對應 App；欄位為交通費套表 A～Q）
-    PDF_FONT: 488, // PDF 產生用字型
-    PERMISSION: 673, // 帳號權限設定（欄位顯隱／可編輯／必填規則）
-    HOLIDAY_CALENDAR: 620, // 行事曆（國定假日、週末、補行上班日），預計付款日用
-    TRAFFIC_RULE_MASTER: 752, // 交通費明細規則主檔（交通工具／憑證種類的規則；讀不到就退回 TRAFFIC_RULES）
-    // 交通費請款單的固定 App ID，【只給在規則主檔執行的檢查程式用】（交通費明細規則主檔檢查_20261104.js；
-    //   在規則主檔裡 getId() 拿到的是規則主檔自己的 ID）。請款單自己的程式一律用 APPS.PAYMENT。
-    //   正式區上線時要和其他 App ID 一起換。
-    TRAFFIC_PAYMENT: 749,
+    PAYMENT: CURRENT_APP_ID, // 本 App（交通費請款單），動態取得
+    ...ENV_CFG.APPS,
   });
 
   // ── 會計單位（kintone 群組）───────────────────────────────────────────────
   //   會計單位一律依費用所屬人部門查會計對應主檔（APPS.ACCOUNTING_MAP）帶入；
-  //   這裡列出全部會計群組，給流程管理檢查（process_management）比對用。
+  //   這裡列出全部會計群組，給流程管理檢查（process_management）比對用。群組代碼依環境，見 ENV_SETTINGS 的 ACCOUNTING_MAP。
   const ACCOUNTING = Object.freeze({
-    MAP: Object.freeze({ TPE: 'ACC_TPE', TPE海運: 'ACC_TPE海運', CKS: 'ACC_CKS', KHH: 'ACC_KHH', TEPZ: 'ACC_TEPZ', NEXT: 'ACC_NEXT' }),
+    MAP: ENV_CFG.ACCOUNTING_MAP,
   });
 
   // ── 預計付款日 ─────────────────────────────────────────────────────────────
@@ -209,8 +298,8 @@
   });
 
   // ── 其他共用常數 ───────────────────────────────────────────────────────────
-  const ADMIN_USERS = Object.freeze(['24136', '24136T', '24145', '24145T']);
-  const SUPER_ADMIN = '24136'; // 唯一開發者本人；比 ADMIN_USERS 更窄的權限（僅限「JS 自定義設定」按鈕），刻意不與四人白名單混用
+  const ADMIN_USERS = ENV_CFG.ADMIN_USERS; // 名單見 ENV_SETTINGS（依環境）
+  const SUPER_ADMIN = ENV_CFG.SUPER_ADMIN; // 比 ADMIN_USERS 更窄（僅限「JS 自定義設定」按鈕），刻意不與白名單混用
   const SEP = ' / '; // 發票號碼記錄的分隔字元
   const VOID_FIELD = '表單作廢'; // 欄位代碼（與 STATUS.VOID 字串相同但語意不同，見下）
 
@@ -545,23 +634,12 @@
   //   其餘簽核格清空，部門主管簽核人數＝0人、部門次長簽核人數＝0人（流程管理：主管、次長都 0 人且部長格有人＝直接到部長確認）。
   //   對不到的人照原本簽核流程主檔（APPS.APPROVAL_FLOW）的排法。群組扣掉本人後沒人／查不到 → 擋存檔。
   //   只在新增、EDITABLE_STATUSES 與駁回狀態（REJECT_SUFFIX 結尾）重算；手動設定簽核流程、表單作廢不處理。
-  //   對照表與請款單（請購_庶務_轉請款單）的 DIRECTOR_UPLINE 相同，改一邊要同步另一邊。
+  //   對照表（RULES）依環境，寫在 ENV_SETTINGS 的 DIRECTOR_UPLINE_RULES；與請款單（請購_庶務_轉請款單）的 DIRECTOR_UPLINE 相同，改一邊要同步另一邊。
   const DIRECTOR_UPLINE = Object.freeze({
     SLOT: '單位部長_支店長',
     CLEAR_FIELDS: Object.freeze(['單位主管1', '單位主管2', '單位主管3', '單位次長', '單位次長1']),
     COUNT_FIELDS: Object.freeze({ MANAGER: '部門主管簽核人數', DEPUTY: '部門次長簽核人數' }),
-    RULES: Object.freeze(
-      [
-        { org: '台中營業部', title: '部長', group: 'HQ_部長' },
-        { org: '航空貨物部', title: '部長', group: 'BH_FF_部長' },
-        { org: '海運貨物部', title: '部長', group: 'BH_FF_部長' },
-        { org: '汽車貨運部', title: '部長', group: 'BH_LT_部長' },
-        { org: '安全品質推動部', title: '部長', group: 'HQ_部長' },
-        { org: '事業本部', title: '部長', group: 'HQ_部長' },
-        { org: '總務部', title: '部長', group: 'HQ_ACC_課長' },
-        { org: '物流運輸事業部', title: '部長', group: 'BH_部長' },
-      ].map((r) => Object.freeze(r)),
-    ),
+    RULES: ENV_CFG.DIRECTOR_UPLINE_RULES,
     EDITABLE_STATUSES: Object.freeze([STATUS.REIMBURSEMENT_FILL, STATUS.APPLY_START]),
     REJECT_SUFFIX: '駁回',
     GROUP_PAGE_SIZE: 100, // /v1/group/users.json 一次最多 100 筆
@@ -611,6 +689,8 @@
   });
 
   window.PR_CONFIG = Object.freeze({
+    ENV, // 目前環境名稱（'test'／'prod'），除錯用
+    ENV_SETTINGS,
     APPS,
     ACCOUNTING,
     EXPECTED_PAY_DATE,

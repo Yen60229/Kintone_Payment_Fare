@@ -25,13 +25,16 @@ const sliceBetween = (from, to) => {
   return cfgSrc.slice(start, end);
 };
 
-const APP_IDS = [...sliceBetween('const APPS', 'const ACCOUNTING').matchAll(/:\s*(\d{3,4})\s*,/g)].map((m) => Number(m[1]));
+// App ID 與管理員名單依環境寫在 ENV_SETTINGS（test／prod 都收，正式區填了值也一起掃）
+const ENV_BLOCK = sliceBetween('const ENV_SETTINGS', 'const CURRENT_APP_ID');
+const APP_IDS = [...new Set([...ENV_BLOCK.matchAll(/:\s*(\d{3,4})\s*,/g)].map((m) => Number(m[1])))];
 const STATUS = extractQuoted(sliceBetween('const STATUS', 'const ACTIONS'));
 const OPTIONS = extractQuoted(sliceBetween('const OPTIONS', '// ── 共用工具'));
-const ADMINS = extractQuoted(sliceBetween('const ADMIN_USERS', 'const SUPER_ADMIN'));
-const accMapBlock = /MAP: Object\.freeze\(\{([^}]*)\}\)/.exec(sliceBetween('const ACCOUNTING', 'const EXPECTED_PAY_DATE'));
-if (!accMapBlock) throw new Error('scan_hardcoded：config 的 ACCOUNTING.MAP 找不到，請同步更新本檔');
-const ACC_CODES = extractQuoted(accMapBlock[1]);
+const ADMINS = [...new Set([...ENV_BLOCK.matchAll(/ADMIN_USERS:\s*Object\.freeze\(\[([^\]]*)\]\)/g)].flatMap((m) => extractQuoted(m[1])))];
+if (APP_IDS.length === 0 || ADMINS.length === 0) throw new Error('scan_hardcoded：config 的 ENV_SETTINGS 抽不到 App ID 或 ADMIN_USERS，請同步更新本檔');
+// 會計群組也依環境（ENV_SETTINGS 的 ACCOUNTING_MAP，test／prod 都收）
+const ACC_CODES = [...new Set([...ENV_BLOCK.matchAll(/ACCOUNTING_MAP:\s*Object\.freeze\(\{([^}]*)\}\)/g)].flatMap((m) => extractQuoted(m[1])))];
+if (ACC_CODES.length === 0) throw new Error('scan_hardcoded：config 的 ENV_SETTINGS 抽不到 ACCOUNTING_MAP，請同步更新本檔');
 
 const results = {};
 const add = (file, cat, line, text) => {
