@@ -307,7 +307,7 @@
       DEPT_OF_CODE = deptMap;
       DEPT_NAMES = deptNames;
 
-      console.log(`✅ 已載入 ${validCodes.size} 筆費用歸屬代碼`);
+      window.PR_LOG.debug(`✅ 已載入 ${validCodes.size} 筆費用歸屬代碼`);
 
       Object.keys(nameConflicts).forEach((code) => {
         console.warn(`⚠️ [費用歸屬] 代號「${code}」在費用歸屬主檔的多筆記錄中有不同的名稱，已採用第一筆「${nameMap[code]}」；請回主檔統一`, [...nameConflicts[code]]);

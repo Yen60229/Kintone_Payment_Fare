@@ -7,6 +7,7 @@
     "build": "vite build --mode desktop && vite build --mode mobile",
     "build:desktop": "vite build --mode desktop",
     "build:mobile": "vite build --mode mobile",
+    "build:debug": "vite build --mode desktop --minify false && vite build --mode mobile --minify false",
     "test": "node scripts/run-tests.cjs",
     "lint": "eslint .",
     "scan": "node tests/scan_hardcoded.cjs",

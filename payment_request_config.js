@@ -112,6 +112,34 @@
   });
   window.PR_KT = PR_KT;
 
+  // ── 共用 log（window.PR_LOG）──────────────────────────────────────────────
+  //   debug／info：只有除錯開關打開才印；warn／error：一律印。
+  //   開關（擇一，載入頁面時讀一次，改完要重新整理）：
+  //     Console 輸入 localStorage['pr-debug'] = '1'（關掉：localStorage.removeItem('pr-debug')）
+  //     或網址加 ?pr-debug=1
+  //   模組裡不要直接寫 console.log（tests/logger.test.cjs 會擋），改用 PR_LOG.debug／info。
+  const readDebugSwitch = () => {
+    try {
+      if (window.localStorage?.getItem('pr-debug') === '1') return true;
+    } catch (_) {
+      // 無痕模式或封鎖網站資料時 localStorage 會丟錯，當作沒開
+    }
+    try {
+      return /[?&]pr-debug=1(?:&|#|$)/.test(String(window.location?.search || ''));
+    } catch (_) {
+      return false;
+    }
+  };
+  const DEBUG_ON = readDebugSwitch();
+  const noop = () => {};
+  window.PR_LOG = Object.freeze({
+    enabled: DEBUG_ON,
+    debug: DEBUG_ON ? (...args) => console.log('[PR]', ...args) : noop,
+    info: DEBUG_ON ? (...args) => console.log('[PR]', ...args) : noop,
+    warn: (...args) => console.warn(...args),
+    error: (...args) => console.error(...args),
+  });
+
   // ── 同一次存檔的錯誤訊息匯總（window.PR_SAVE_ERRORS）──────────────────────
   //   比 payment_request_submit 早跑的存檔檢查（帳號權限設定的必填）把訊息放這裡，
   //   payment_request_submit 在同一個 SweetAlert 視窗一起顯示，避免兩個視窗互相蓋掉。

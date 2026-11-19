@@ -628,7 +628,7 @@
     const fileName = `交通費轉出_${formatDate(new Date(), 'YYYYMMDD')}.xlsx`;
     XLSX.writeFile(wb, fileName);
 
-    console.log('Excel 檔案已產生:', fileName);
+    window.PR_LOG.debug('Excel 檔案已產生:', fileName);
     return { fileName, rowCount: rows.length };
   }
 
@@ -766,13 +766,13 @@
         return;
       }
 
-      console.log('處理記錄:', recordIds);
+      window.PR_LOG.debug('處理記錄:', recordIds);
 
       // 1. 一按就跳「請稍後」，同時讀欄位對應設定、請款單記錄、Business Area 對照（費用歸屬 → Business Area）
       showLoading();
       const [mappings, records, businessArea] = await Promise.all([fetchFieldMappings(), fetchSourceRecords(recordIds), fetchBusinessAreaMap()]);
-      console.log('欄位對應設定:', mappings);
-      console.log('請款單記錄:', records);
+      window.PR_LOG.debug('欄位對應設定:', mappings);
+      window.PR_LOG.debug('請款單記錄:', records);
 
       if (mappings.length === 0) {
         closeLoading();
@@ -791,7 +791,7 @@
       if (!dates) return;
 
       // 3. 產生 Excel
-      console.log('正在產生 Excel...');
+      window.PR_LOG.debug('正在產生 Excel...');
       const result = await generateExcel(mappings, sorted, { dates, businessArea });
       if (!result) return;
 
@@ -834,10 +834,10 @@
       if (btn && !btn.dataset.bindOrganize) {
         btn.addEventListener('click', handleBatchOrganizeData);
         btn.dataset.bindOrganize = 'true';
-        console.log('批次整理資料按鈕綁定成功');
+        window.PR_LOG.debug('批次整理資料按鈕綁定成功');
         clearInterval(checkButton);
       } else if (attempts >= maxAttempts) {
-        console.log('找不到批次整理資料按鈕（可能無權限）');
+        window.PR_LOG.debug('找不到批次整理資料按鈕（可能無權限）');
         clearInterval(checkButton);
       }
     }, 100);

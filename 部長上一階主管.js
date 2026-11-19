@@ -143,7 +143,7 @@
         return [`${emptyMessage(result.orgName, result.group)}\n※ 請管理員到 kintone 群組「${result.group}」加入簽核人；急件可改勾「${F.MANUAL_FLOW}」`];
       }
       if (writeSlots(record, result.users)) {
-        console.log(`[部長上一階主管] ${result.orgName} 部長 → 群組 ${result.group}：`, result.users.map((u) => u.code));
+        window.PR_LOG.debug(`[部長上一階主管] ${result.orgName} 部長 → 群組 ${result.group}：`, result.users.map((u) => u.code));
       }
       return [];
     } catch (err) {

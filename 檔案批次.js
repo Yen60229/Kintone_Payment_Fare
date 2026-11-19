@@ -28,25 +28,25 @@
   window.checkPermission = async (testUserCode) => {
     const currentUser = kintone.getLoginUser();
     const fontAppId = window.PR_CONFIG.APPS.PDF_FONT;
-    console.log('🔍 ========== 權限診斷開始 ==========');
-    console.log('🔍 當前登入者:', currentUser.code, currentUser.name);
-    console.log('🔍 測試對象:', testUserCode || '(當前使用者)');
-    console.log('🔍 當前 App ID:', kintone.app.getId());
+    console.info('🔍 ========== 權限診斷開始 ==========');
+    console.info('🔍 當前登入者:', currentUser.code, currentUser.name);
+    console.info('🔍 測試對象:', testUserCode || '(當前使用者)');
+    console.info('🔍 當前 App ID:', kintone.app.getId());
 
     // 測試 PDF 字型 App
-    console.log(`🔍 測試 App ${fontAppId} (PDF 字型)...`);
+    console.info(`🔍 測試 App ${fontAppId} (PDF 字型)...`);
     try {
       await kintone.api(kintone.api.url('/k/v1/record', true), 'GET', {
         app: fontAppId,
         id: FONT_CONFIG.FONT_RECORD_ID,
       });
-      console.log(`🔍 ✅ App ${fontAppId}: 有權限`);
+      console.info(`🔍 ✅ App ${fontAppId}: 有權限`);
     } catch (e) {
       console.error(`🔍 ❌ App ${fontAppId}: 無權限 -`, e.message || e);
     }
 
-    console.log('🔍 ========== 權限診斷結束 ==========');
-    console.log(`🔍 💡 若 App ${fontAppId} 無權限，請為該使用者開放 App ${fontAppId} 檢視權限`);
+    console.info('🔍 ========== 權限診斷結束 ==========');
+    console.info(`🔍 💡 若 App ${fontAppId} 無權限，請為該使用者開放 App ${fontAppId} 檢視權限`);
   };
 
   // ======================== 數量／大小上限 ========================
@@ -719,9 +719,9 @@
 
   // ======================== 取得單筆記錄 ========================
   const fetchRecord = async (app, id) => {
-    console.log(`[PDF Batch] API call to fetch record: App=${app}, ID=${id}`);
+    window.PR_LOG.debug(`[PDF Batch] API call to fetch record: App=${app}, ID=${id}`);
     const resp = await kintone.api(kintone.api.url('/k/v1/record', true), 'GET', { app, id: String(id) });
-    console.log(`[PDF Batch] Fetch record response status:`, resp ? 'success' : 'failed');
+    window.PR_LOG.debug(`[PDF Batch] Fetch record response status:`, resp ? 'success' : 'failed');
     return resp.record;
   };
 
@@ -991,7 +991,7 @@ ${failNote}==========================================`;
   }
 
   async function performBatchPrintPDF(recordIds) {
-    console.log('[PDF Batch] Starting performBatchPrintPDF with record IDs:', recordIds);
+    window.PR_LOG.debug('[PDF Batch] Starting performBatchPrintPDF with record IDs:', recordIds);
     ensurePdfDeps();
     createLoadingOverlay();
     const appId = kintone.app.getId();
@@ -1007,7 +1007,7 @@ ${failNote}==========================================`;
       const byId = await fetchRecordsByIds(appId, recordIds);
 
       for (const recordId of recordIds) {
-        console.log(`[PDF Batch] Start processing record: ${recordId}`);
+        window.PR_LOG.debug(`[PDF Batch] Start processing record: ${recordId}`);
         updateResultMessage(`處理記錄 ${recordId}...`, 'info');
         updateProgress((processed / recordIds.length) * 100);
 
@@ -1018,7 +1018,7 @@ ${failNote}==========================================`;
           const skipped = await drawRecordInto(merged, font, record, recordId);
           skipped.forEach((name) => skippedAll.push(`記錄 ${recordId}：${name}`));
           processed++;
-          console.log(`[PDF Batch] Added record ${recordId} (${merged.getPageCount() - before} pages) to merged PDF.`);
+          window.PR_LOG.debug(`[PDF Batch] Added record ${recordId} (${merged.getPageCount() - before} pages) to merged PDF.`);
         } catch (recordError) {
           console.error(`[PDF Batch] 記錄 ${recordId} 處理失敗:`, recordError);
           const errMsg = recordError.message || (typeof recordError === 'object' ? JSON.stringify(recordError) : String(recordError));
@@ -1029,7 +1029,7 @@ ${failNote}==========================================`;
 
       }
 
-      console.log(`[PDF Batch] Loop completed. Success = ${processed}, Failed = ${failed.length}`);
+      window.PR_LOG.debug(`[PDF Batch] Loop completed. Success = ${processed}, Failed = ${failed.length}`);
       if (!processed) throw new Error(`全部 ${failed.length} 筆都失敗：\n${failed.map((f) => `記錄 ${f.id}：${f.message}`).join('\n')}`);
 
       updateResultMessage('正在合併 PDF 檔案...', 'info');
@@ -1047,7 +1047,7 @@ ${failNote}==========================================`;
       } else if (skippedAll.length) {
         updateResultMessage(`⚠️ 列印完成，共 ${processed} 筆記錄${skipNote}`, 'warning');
       } else {
-        console.log('[PDF Batch] All files printed and downloaded successfully.');
+        window.PR_LOG.debug('[PDF Batch] All files printed and downloaded successfully.');
         updateResultMessage(`✅ 列印完成！共處理 ${processed} 筆記錄`, 'success');
       }
       showCloseButton();

@@ -381,7 +381,7 @@
       ]);
 
       if (costCenters.error) allErrors.push(costCenters.error);
-      else console.log(`✅ 已載入 ${costCenters.set.size} 筆合法費用歸屬代碼`);
+      else window.PR_LOG.debug(`✅ 已載入 ${costCenters.set.size} 筆合法費用歸屬代碼`);
 
       // 1. 表單基本驗證
       allErrors.push(...validateForm(record, costCenters.set));

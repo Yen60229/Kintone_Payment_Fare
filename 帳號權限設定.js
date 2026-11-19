@@ -8,7 +8,7 @@
  *
  * ⚠️ 部署 / 環境注意：
  *   - SETTINGS_APP_ID = PR_CONFIG.APPS.PERMISSION：權限設定 App。內每筆記錄以 APP_ID 欄位對應「表單 App」，
- *   - DEBUG = true：會輸出 [KDEBUG] console；正式環境請改為 false。
+ *   - DEBUG：跟著 PR_LOG 除錯開關（localStorage pr-debug＝1 或網址 ?pr-debug=1），打開才輸出 [KDEBUG] console。
  *   - 本模組僅綁桌面版事件，未含 mobile.*；行動版不套用此權限控管。
  *   - 子表格新增／刪除列時，依開畫面時算好的權限重新鎖定每一列（子表格 change 事件，載入時依表單設定自動註冊）。
  *     若同一表單有其他程式也在子表格 change 事件設定 disabled，後執行的會覆蓋先執行的。
@@ -24,7 +24,7 @@
   const SETTINGS_APP_ID = window.PR_CONFIG.APPS.PERMISSION;
   const APP_ID_FIELD = 'APP_ID';
   const STATUS_FIELD = window.PR_CONFIG.FIELDS.STATUS_FIELD;
-  const DEBUG = false;
+  const DEBUG = window.PR_LOG.enabled; // 除錯開關見 payment_request_config.js 的 PR_LOG
 
   const RULE_TYPE = {
     ACCOUNT: 'ACCOUNT',
@@ -160,7 +160,7 @@
   const toArr = (value) => (Array.isArray(value) ? value : []);
 
   const log = (...args) => {
-    if (DEBUG) console.log('[KDEBUG]', ...args);
+    if (DEBUG) window.PR_LOG.debug('[KDEBUG]', ...args);
   };
 
   const warn = (...args) => {

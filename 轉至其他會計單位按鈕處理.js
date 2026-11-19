@@ -19,7 +19,7 @@ function adjustTransferButtonsPosition() {
       }
     });
 
-    console.log('已調整轉至按鈕位置');
+    window.PR_LOG?.debug('已調整轉至按鈕位置');
   }, 500);
 }
 
