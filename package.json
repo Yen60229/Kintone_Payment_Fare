@@ -9,6 +9,7 @@
     "build:mobile": "vite build --mode mobile",
     "build:debug": "vite build --mode desktop --minify false && vite build --mode mobile --minify false",
     "test": "node scripts/run-tests.cjs",
+    "smoke": "playwright test -c tests/smoke/playwright.config.cjs",
     "lint": "eslint .",
     "scan": "node tests/scan_hardcoded.cjs",
     "check:process": "node process_management/check_process.cjs",
@@ -16,6 +17,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.65.1",
     "eslint": "^10.15.0",
     "globals": "^17.14.0",
     "terser": "^5.31.0",

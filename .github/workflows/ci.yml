@@ -1,0 +1,69 @@
+# CI：push／PR 到 main 時跑全部檢查（不需要任何 secret，不連 kintone）
+#   單元測試（含 plugins/*/tests）、語法、硬編碼掃描、ESLint、流程管理設定、打包、Playwright 冒煙測試
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: 安裝套件
+        run: npm ci
+
+      - name: 單元測試（npm test，自動含 plugins/*/tests）
+        run: npm test
+
+      - name: 發票登記 plug-in 自己的測試腳本
+        working-directory: plugins/invoice-registry
+        run: npm test
+
+      - name: 語法檢查
+        run: bash tests/syntax.test.sh
+
+      - name: 硬編碼掃描
+        run: npm run scan
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: 流程管理設定檢查
+        run: npm run check:process
+
+      - name: 打包（只確認打得起來，不上傳）
+        run: npm run build
+
+      - name: 安裝 Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: 冒煙測試（Playwright＋假 kintone）
+        run: npm run smoke
+
+      - name: 冒煙測試失敗時保留 trace
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-results
+          path: node_modules/.cache/smoke-results
+          if-no-files-found: ignore
+          retention-days: 7
