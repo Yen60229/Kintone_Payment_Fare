@@ -23,7 +23,7 @@ const setup = (opts) => {
   const env = createEnv(opts);
   env.load('payment_request_config.js');
   env.load('發票號碼寫入獨立欄位檢查.js');
-  env.load('交通費明細規則_20261022.js');
+  env.load('交通費明細規則.js');
   return { env, R: env.window.PR_TRAFFIC_RULES, C: env.window.PR_CONFIG };
 };
 

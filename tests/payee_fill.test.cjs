@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：受款人填寫設定_20250902.js
+// 測試：受款人填寫設定.js
 //   「同申請人」按鈕：填入「員工代碼 中文姓名」；沒填申請人要報錯；只在 create.show／edit.show 掛按鈕且不重複掛。
 // 單獨執行：node tests/payee_fill.test.cjs
 
@@ -56,7 +56,7 @@ eval(readSrc('payment_request_config.js'));
 // eslint-disable-next-line no-eval
 eval(readSrc('使用者主檔快取.js'));
 // eslint-disable-next-line no-eval
-eval(readSrc('受款人填寫設定_20250902.js'));
+eval(readSrc('受款人填寫設定.js'));
 
 const F = global.window.PR_CONFIG.FIELDS;
 const P = global.window.PR_PAYEE;
@@ -288,7 +288,7 @@ check('選擇員工：受款人是 5 碼開頭用員工編號當關鍵字；選�
 });
 
 check('原始碼不含類型判斷、舊的「同費用所屬人」按鈕與 723 員工姓名欄位', () => {
-  const src = readSrc('受款人填寫設定_20250902.js');
+  const src = readSrc('受款人填寫設定.js');
   ['F.TYPE', 'COMPANY_TYPES', 'EMPLOYEE_NAME', 'same-expense-owner-btn', '同費用所屬人', 'F.EXPENSE_OWNER'].forEach((s) => assert.ok(!src.includes(s), s));
 });
 

@@ -527,7 +527,7 @@ check('EXPECTED_PAY_DATE：5 個工作日、每月 10／20 日（另加月底）
 // ── 沒有人把已註冊的欄位代碼再寫死一次 ──────────────────────────────────────
 check('main／submit 沒有把 FIELDS 已註冊的欄位代碼再寫死成字面值', () => {
   const allCodes = [...mainCodes, ...tables.map((t) => t.CODE), ...tables.flatMap((t) => Object.values(t.COLS))];
-  ['payment_request_main_20260521.js', 'payment_request_submit_20260506.js'].forEach((file) => {
+  ['payment_request_main.js', 'payment_request_submit.js'].forEach((file) => {
     const text = fs.readFileSync(path.join(rootDir, file), 'utf8');
     // 去掉註解再看，只檢查可執行程式碼
     const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -541,7 +541,7 @@ check('main／submit 沒有把 FIELDS 已註冊的欄位代碼再寫死成字面
 
 check('main／submit 沒有引用已刪的 config 鍵', () => {
   const removed = ['C.TYPE', 'C.TYPES', 'TRANSFER_TYPES', 'COMPANY_TYPES', 'ENT_SIGN', 'SLOT3_RELOCATION', 'APPLICANT_SWITCH', 'COST_CENTER_SCOPE', 'PAYEE_EDITABLE_TYPES', 'SOURCE_FIELDS', 'C.TAX', 'ATTACHMENT_TEXT', 'OPT.', 'SPECIAL_CODES', 'LOCATION', 'determineAllocation'];
-  ['payment_request_main_20260521.js', 'payment_request_submit_20260506.js'].forEach((file) => {
+  ['payment_request_main.js', 'payment_request_submit.js'].forEach((file) => {
     const text = fs.readFileSync(path.join(rootDir, file), 'utf8');
     removed.forEach((key) => assert.ok(!text.includes(key), `${file} 不應引用 ${key}`));
   });

@@ -40,7 +40,7 @@ const loadWith = async (records, { pages = null } = {}) => {
     },
   });
   env.load('payment_request_config.js');
-  env.load('payment_request_main_20260521.js');
+  env.load('payment_request_main.js');
   const CC = env.window.PR_CONFIG.REF_FIELDS.COST_CENTER;
   await env.window.PR_COST_CENTER.ensureLoaded();
   return { env, calls, CC, validCodes: [...env.window.PR_COST_CENTER.getValidCodes()] };
@@ -112,7 +112,7 @@ check('載入失敗：丟出錯誤，且不快取失敗結果，下次呼叫會�
     },
   });
   env.load('payment_request_config.js');
-  env.load('payment_request_main_20260521.js');
+  env.load('payment_request_main.js');
   await assert.rejects(() => env.window.PR_COST_CENTER.ensureLoaded(), /boom/);
   fail = false;
   await env.window.PR_COST_CENTER.ensureLoaded();
@@ -140,7 +140,7 @@ check('所屬部門：一筆記錄的組織欄位選了好幾個部門 → 全�
 });
 
 check('主檔欄位代碼走 REF_FIELDS.COST_CENTER，不寫死；部長／主管部門的讀取已全數移除（所屬部門 2026-10-22 起為掛帳單位限部內重新讀取）', () => {
-  const src = readSrc('payment_request_main_20260521.js');
+  const src = readSrc('payment_request_main.js');
   assert.ok(src.includes('C.REF_FIELDS.COST_CENTER'));
   ['CC.DIRECTOR', 'CC.OWNER', 'DEPTS_OF_CODE', 'DIRECTOR_OF_DEPT', 'OWNER_DEPT_OF_CODE', 'getMaps', 'CC.LOCATION', 'LOCATION_CODE_MAP'].forEach((s) => {
     assert.ok(!src.includes(s), `不應殘留 ${s}`);

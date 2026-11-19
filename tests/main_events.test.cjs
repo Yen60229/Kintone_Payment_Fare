@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：payment_request_main_20260521.js 的畫面事件（749 交通費請款單）
+// 測試：payment_request_main.js 的畫面事件（749 交通費請款單）
 //   1. 說明文字 Space_Noti_1/2/3（不再依類型切換）
 //   2. 欄位鎖定：請款日期鎖、申請人只有管理員能改（受款人開放手 key）、申請人部門／費用所屬人部門一律鎖（依人員帶入）、
 //      會計單位承辦人／權限開放人員只有管理員看得到、手動簽核欄位在詳細頁有勾才顯示
@@ -32,7 +32,7 @@ const loadMain = async ({ loginCode = 'someone', costCenters = [] } = {}) => {
     },
   });
   env.load('payment_request_config.js');
-  env.load('payment_request_main_20260521.js');
+  env.load('payment_request_main.js');
   await env.window.PR_COST_CENTER.ensureLoaded();
   return { env, C: env.window.PR_CONFIG, F: env.window.PR_CONFIG.FIELDS };
 };
@@ -79,7 +79,7 @@ check('說明文字在新增／編輯／詳細／列印四種畫面都有套用�
     assert.ok(env.spaces[C.SPACES.NOTI_3].innerHTML.includes('受款人為員工'), type);
   }
   assert.ok(!('Purchase_button' in env.spaces));
-  assert.ok(!readSrc('payment_request_main_20260521.js').includes('Purchase_button'));
+  assert.ok(!readSrc('payment_request_main.js').includes('Purchase_button'));
 });
 
 // ── 2. 欄位鎖定 ─────────────────────────────────────────────────────────────
@@ -198,7 +198,7 @@ check('費用歸屬變更不動會計單位（會計單位只依費用所屬人�
 });
 
 check('main 不再依費用歸屬據點判斷會計單位（據點對照、特殊代碼已刪）', () => {
-  const src = readSrc('payment_request_main_20260521.js');
+  const src = readSrc('payment_request_main.js');
   ['determineAllocation', 'updateAccountingDepartment', 'LOCATION', 'SPECIAL_CODES', 'ACCOUNTING_UNIT'].forEach((s_) => {
     assert.ok(!src.includes(s_), `不應殘留 ${s_}`);
   });
@@ -476,12 +476,12 @@ check('欄寬 class：MIN～MAX 每 8px 都在 payment_request.css 有定義；m
   assert.strictEqual(T.widthClass('130px'), 'pr-tcol-w-128', '對齊 8px');
   assert.strictEqual(T.widthClass('999px'), `pr-tcol-w-${W.MAX_PX}`);
   assert.strictEqual(T.widthClass(null), 'pr-tcol-hidden');
-  const src = readSrc('payment_request_main_20260521.js');
+  const src = readSrc('payment_request_main.js');
   assert.ok(!/cell\.style\./.test(src), '格子不寫 inline style');
 });
 
 check('原始碼：不再從畫面抓文字猜欄寬（getCellValue／processTableByContainer 已刪）', () => {
-  const src = readSrc('payment_request_main_20260521.js');
+  const src = readSrc('payment_request_main.js');
   ['getCellValue', 'processTableByContainer', 'autoProcessAllTables', 'auto_table_'].forEach((s) => assert.ok(!src.includes(s), s));
   assert.ok(src.includes('C.TRAFFIC_TABLE_LAYOUT'));
 });
@@ -524,7 +524,7 @@ check('稅額維持手填：費用歸屬變更不會改動金額或稅額', asyn
 });
 
 check('main 原始碼沒有 723 的殘留（類型、分攤、交際費、帶入、借支、使用須知）', () => {
-  const src = readSrc('payment_request_main_20260521.js');
+  const src = readSrc('payment_request_main.js');
   [
     'F.TYPE', 'TYPES', 'APPLY_UNIT', 'EXPENSE_FILL_MODE', 'ATTACHMENT_TEXT', 'VENDOR_TABLE', 'ENTERTAINMENT', 'TRIP_',
     'localStorage', 'SOURCE_FIELDS', 'C.TAX', 'ADVANCE', 'AMOUNT_CHANGE', 'NXAccountPermission', 'NOTICE_CONFIG', 'docs/',

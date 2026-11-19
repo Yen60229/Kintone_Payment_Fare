@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：欄位標籤說明圖示（欄位標籤說明圖示_20261104.js，上傳到規則主檔 App）
+// 測試：欄位標籤說明圖示（欄位標籤說明圖示.js，上傳到規則主檔 App）
 //   1. splitLabel：全形、半形、混用、無括號、括號不在結尾、空字串、巢狀
 //   2. 假 DOM 上跑 index.show／detail.show／create.show／edit.show：欄名換掉、有問號、hint 正確
 //   3. 重複觸發不會重複加問號；找不到 DOM 不丟錯；有子元素（排序圖示）的標籤不動
@@ -55,7 +55,7 @@ const load = (labelsBySelector) => {
     console: { log: () => {}, warn: () => {}, error: () => {} },
   };
   vm.createContext(sandbox);
-  vm.runInContext(readSrc('欄位標籤說明圖示_20261104.js'), sandbox, { filename: '欄位標籤說明圖示_20261104.js' });
+  vm.runInContext(readSrc('欄位標籤說明圖示.js'), sandbox, { filename: '欄位標籤說明圖示.js' });
   return { api: sandbox.window.PR_LABEL_HINTS, handlers, document, sandbox };
 };
 
@@ -187,7 +187,7 @@ check('沒有 PR_KT 時只 console.error，不丟錯；PR_LABEL_HINTS 仍匯出'
   const errors = [];
   const sandbox = { window: {}, document: makeDoc({}), console: { log() {}, warn() {}, error: (m) => errors.push(m) } };
   vm.createContext(sandbox);
-  assert.doesNotThrow(() => vm.runInContext(readSrc('欄位標籤說明圖示_20261104.js'), sandbox));
+  assert.doesNotThrow(() => vm.runInContext(readSrc('欄位標籤說明圖示.js'), sandbox));
   assert.strictEqual(errors.length, 1);
   assert.strictEqual(typeof sandbox.window.PR_LABEL_HINTS.splitLabel, 'function');
 });
@@ -213,9 +213,9 @@ check('CSS：.pr-label-hint 圖標、::after tooltip（attr(data-pr-hint)）、:
 });
 
 check('2026-11-16 起請款單也用：進桌面版 bundle、不進手機版；JS 沒有寫死樣式', () => {
-  assert.ok(readSrc('src/index.js').includes("import '../欄位標籤說明圖示_20261104.js';"));
+  assert.ok(readSrc('src/index.js').includes("import '../欄位標籤說明圖示.js';"));
   assert.ok(!readSrc('src/mobile.js').includes('欄位標籤說明圖示'));
-  const src = readSrc('欄位標籤說明圖示_20261104.js');
+  const src = readSrc('欄位標籤說明圖示.js');
   assert.ok(!/\.style\b|cssText|style="|createElement\(['"]style/.test(src));
 });
 

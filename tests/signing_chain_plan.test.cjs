@@ -1,6 +1,6 @@
 'use strict';
 
-// 回歸測試：signing_personnel_manager_20260506.js 的 planSigningChain（純函式）
+// 回歸測試：signing_personnel_manager.js 的 planSigningChain（純函式）
 //   簽核流程主檔有值的欄位「全部」排進來，順序固定為
 //   單位主管1 → 單位主管2 → 單位主管3 → 單位次長 → 單位次長1 → 單位部長_支店長；
 //   費用所屬人本人那一層與以下，由 clearSigningFieldsByTitle 依職稱清掉（那段走 signing_owner_chain.test.cjs）。
@@ -15,7 +15,7 @@ const fs = require('fs');
 const rootDir = path.join(__dirname, '..');
 // 正規化行尾：repo 內 LF／CRLF 混用（git 亦會自動轉換），regex 擷取需先統一
 const readSrc = (name) => fs.readFileSync(path.join(rootDir, name), 'utf8').replace(/\r\n/g, '\n');
-const signingSrc = readSrc('signing_personnel_manager_20260506.js');
+const signingSrc = readSrc('signing_personnel_manager.js');
 
 // 與原始檔相同的欄位對應（APPROVAL_FIELDS 目前六格皆 enabled）
 const MANAGER_FIELDS_MAPPING = [

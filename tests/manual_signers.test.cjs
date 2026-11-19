@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：手動簽核人設定_20261102.js
+// 測試：手動簽核人設定.js
 //   一、排法規則（checkSigners）：第 1 位必填、不能跳格、不能重複、申請人不能簽自己的單、一格只能一人
 //   二、存檔檢查（validate）：只限費用歸屬不限部門群組、手動會計承辦人必填（管理員略過）、寫入手動簽核人數
 //   三、找人（searchUsers、/v1/users.json 分頁與快取）
@@ -100,7 +100,7 @@ const setup = ({ loginCode = 'u1', exempt = true, users = USERS, storage } = {})
   env.load('payment_request_config.js');
   env.window.PR_COST_SCOPE = { applicantCodeOf: (r) => r['申請人']?.value?.[0]?.code, ensureExempt: () => Promise.resolve(exempt), isExempt: () => exempt };
   env.load('使用者主檔快取.js');
-  env.load('手動簽核人設定_20261102.js');
+  env.load('手動簽核人設定.js');
   return { env, M: env.window.PR_MANUAL_SIGNERS, C: env.window.PR_CONFIG, apiCalls, popups, store };
 };
 
@@ -467,7 +467,7 @@ check('人員名單：分頁抓到最後一頁、抓過就不再抓；抓不到�
   failing.window.Swal = fs.swal;
   failing.load('payment_request_config.js');
   failing.load('使用者主檔快取.js');
-  failing.load('手動簽核人設定_20261102.js');
+  failing.load('手動簽核人設定.js');
   failing.window.PR_MANUAL_SIGNERS.openDialog({ initial: [], applicant: U('ME'), accounting: [] });
   await settle();
   assert.match(find(fs.popups[0].opts.html, 'pr-signer__results').children[0].textContent, /讀不到人員名單/);
@@ -475,7 +475,7 @@ check('人員名單：分頁抓到最後一頁、抓過就不再抓；抓不到�
   const noSwal = createEnv();
   noSwal.load('payment_request_config.js');
   noSwal.load('使用者主檔快取.js');
-  noSwal.load('手動簽核人設定_20261102.js');
+  noSwal.load('手動簽核人設定.js');
   assert.strictEqual(await noSwal.window.PR_MANUAL_SIGNERS.openDialog({ initial: [], applicant: null, accounting: [] }), null);
   assert.match(noSwal.logs.error.join('|'), /找不到 SweetAlert/);
 });

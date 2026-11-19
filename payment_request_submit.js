@@ -313,7 +313,7 @@
     });
   };
 
-  // 對外：流程按鈕（process.proceed）的防呆沿用同一個錯誤視窗（作廢防呆_20260506.js 的附件檢查）
+  // 對外：流程按鈕（process.proceed）的防呆沿用同一個錯誤視窗（作廢防呆.js 的附件檢查）
   window.PR_SHOW_VALIDATION = showValidationErrors;
 
   KT.on(['app.record.create.submit', 'app.record.edit.submit'], async (event) => {

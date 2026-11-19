@@ -245,7 +245,7 @@
   color: #666;
 }
 
-/* ── 手動簽核人：「簽核流程」群組裡的按鈕與指定簽核人視窗（手動簽核人設定_20261102.js）── */
+/* ── 手動簽核人：「簽核流程」群組裡的按鈕與指定簽核人視窗（手動簽核人設定.js）── */
 /* 表單上：按鈕＋簽核路線 */
 .pr-signer-entry {
   display: flex;
@@ -606,7 +606,7 @@
   text-align: center !important;
 }
 
-/* ── 批次下載／批次列印按鈕、處理中視窗（檔案批次_6版_PDFLib向量版） ── */
+/* ── 批次下載／批次列印按鈕、處理中視窗（檔案批次.js） ── */
 #batch-download-container {
   display: flex;
   align-items: flex-start;
@@ -693,7 +693,7 @@ body.pr-hide-paper-na .control-value-gaia:has(input[value="不適用"]) { width:
 .pr-export-menu__item:focus-visible { background: #3a3a3a; outline: none; }
 .pr-export-menu__title { display: block; font-size: 15px; font-weight: bold; line-height: 1.4; }
 .pr-export-menu__desc { display: block; margin-top: 4px; font-size: 12px; line-height: 1.5; color: rgba(255, 255, 255, 0.7); }
-/* ===== 批次填傳票／入帳完成視窗（批次填傳票_入帳完成_20261118.js）===== */
+/* ===== 批次填傳票／入帳完成視窗（批次填傳票_入帳完成.js）===== */
 .pr-bvs-wrap{font-size:15px;text-align:left;min-width:min(960px,88vw)}
 .pr-bvs-inputs{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px}
 .pr-bvs-field{display:flex;flex-direction:column;gap:6px;flex:1;min-width:220px}
@@ -1012,7 +1012,7 @@ body.pr-hide-paper-na .control-value-gaia:has(input[value="不適用"]) { width:
   display: none !important;
 }
 
-/* 交通費明細表頭的說明文件連結（表頭查詢連結_20261105.js）：深色表頭上用亮黃色＋底線＋粗體，一眼看出可點。
+/* 交通費明細表頭的說明文件連結（表頭查詢連結.js）：深色表頭上用亮黃色＋底線＋粗體，一眼看出可點。
    kintone 自己的 a 樣式（藍字、無底線）優先權較高，所以用 !important 蓋掉 */
 .pr-header-link,
 .pr-header-link:visited,
@@ -1029,7 +1029,7 @@ body.pr-hide-paper-na .control-value-gaia:has(input[value="不適用"]) { width:
   text-decoration-thickness: 2px;
 }
 
-/* ── 欄位標籤說明圖示（欄位標籤說明圖示_20261104.js，只上傳到 App 752） ──
+/* ── 欄位標籤說明圖示（欄位標籤說明圖示.js，只上傳到 App 752） ──
    問號小圖標；說明文字放在 data-pr-hint，hover／鍵盤 focus 時用 ::after 顯示（往上展開，避免被 kintone 原生排序提示蓋住）。
    表頭或欄位容器若 overflow:hidden 會切到 tooltip，JS 替祖先加 .pr-label-hint-host 改成 visible。 */
 .pr-label-hint-host {

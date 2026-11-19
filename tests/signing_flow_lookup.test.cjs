@@ -15,7 +15,7 @@ const fs = require('fs');
 const rootDir = path.join(__dirname, '..');
 // 正規化行尾：repo 內 LF／CRLF 混用（git 亦會自動轉換），regex 擷取需先統一
 const readSrc = (name) => fs.readFileSync(path.join(rootDir, name), 'utf8').replace(/\r\n/g, '\n');
-const signingSrc = readSrc('signing_personnel_manager_20260506.js');
+const signingSrc = readSrc('signing_personnel_manager.js');
 
 const extract = (re, label) => {
   const m = signingSrc.match(re);

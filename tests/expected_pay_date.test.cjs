@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：預計付款日_20261020.js（2026-10-20）
+// 測試：預計付款日.js（2026-10-20）
 //   請款日期（不含當天）＋5 個工作日後，取第一個 10 號／20 號／月底，遇假日往後順延。
 //   工作日看行事曆 App（有記錄看「是否假日」，沒記錄看星期）。
 // 單獨執行：node tests/expected_pay_date.test.cjs
@@ -37,7 +37,7 @@ global.kintone = {
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
 // eslint-disable-next-line no-eval
-eval(readSrc('預計付款日_20261020.js'));
+eval(readSrc('預計付款日.js'));
 
 const C = global.window.PR_CONFIG;
 const F = C.FIELDS;
@@ -235,8 +235,8 @@ const check = async (label, fn) => {
 
   await check('載入順序：src/index.js 有接線', () => {
     const index = readSrc('src/index.js');
-    assert.ok(index.includes("import '../預計付款日_20261020.js';"));
-    assert.ok(index.indexOf('payment_request_config.js') < index.indexOf('預計付款日_20261020.js'));
+    assert.ok(index.includes("import '../預計付款日.js';"));
+    assert.ok(index.indexOf('payment_request_config.js') < index.indexOf('預計付款日.js'));
   });
 
   console.log(`${passed} assertions passed.`);

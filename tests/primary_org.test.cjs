@@ -82,7 +82,7 @@ global.kintone = {
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
 // eslint-disable-next-line no-eval
-eval(readSrc('signing_personnel_manager_20260506.js'));
+eval(readSrc('signing_personnel_manager.js'));
 const C = global.window.PR_CONFIG;
 const F = C.FIELDS;
 const OWNER_EVENT = `app.record.create.change.${F.EXPENSE_OWNER}`;

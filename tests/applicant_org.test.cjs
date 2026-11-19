@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：申請人部門帶入_20261022.js
+// 測試：申請人部門帶入.js
 //   申請人部門鎖住、只依申請人帶入：
 //     - create.show：目前部門是申請人的單位 → 不動；空白或不是他的單位（複製別人的單）→ 重新帶入
 //     - 改申請人 → 查新申請人的單位帶入；清空申請人 → 部門清空
@@ -51,9 +51,9 @@ const setup = ({ orgs = {}, delay = {}, pick, apiFail = false } = {}) => {
     else if (typeof pick === 'number') view.options[pick].click();
   };
   env.load('payment_request_config.js');
-  env.load('signing_personnel_manager_20260506.js');
+  env.load('signing_personnel_manager.js');
   const before = env.handlers.length;
-  env.load('申請人部門帶入_20261022.js');
+  env.load('申請人部門帶入.js');
   const mine = env.handlers.slice(before);
   const F = env.window.PR_CONFIG.FIELDS;
   /** 只觸發申請人部門模組的處理程式（同步回傳值照原樣交回） */
@@ -180,7 +180,7 @@ check('查詢失敗：記錄錯誤、不寫回、不丟例外', async () => {
 });
 
 check('原始檔：欄位代碼走 F.*，沒有用字面值取申請人／申請人部門欄位（「申請人」只出現在畫面文字）', () => {
-  const src = readSrc('申請人部門帶入_20261022.js').replace(/^\s*\/\/.*$/gm, '');
+  const src = readSrc('申請人部門帶入.js').replace(/^\s*\/\/.*$/gm, '');
   assert.ok(!/\[\s*['"`]申請人(部門)?['"`]\s*\]/.test(src));
   assert.ok(!/change\.申請人/.test(src));
   assert.ok(src.includes('F.APPLICANT_ORG') && src.includes('F.APPLICANT'));

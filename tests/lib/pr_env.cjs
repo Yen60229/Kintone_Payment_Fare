@@ -3,7 +3,7 @@
 // 測試共用：把 payment_request_config.js 與要測的模組放進 vm 沙箱執行，
 // 用替身的 kintone／document／Swal 攔下事件處理程式，測試時再用 fire() 觸發。
 //   const env = createEnv({ appId: 749, loginCode: '24136' });
-//   env.load('payment_request_main_20260521.js');
+//   env.load('payment_request_main.js');
 //   const event = await env.fire('app.record.create.show', { record });
 
 const path = require('path');

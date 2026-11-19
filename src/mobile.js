@@ -19,22 +19,22 @@ import './mobile_target.js';
 import '../payment_request_config.js';
 
 // 「儲存中，請稍候…」提示：排在所有有存檔程式的模組前面（理由同桌面版）
-import '../存檔等待提示_20260923.js';
+import '../存檔等待提示.js';
 
 // ② 表單行為 ────────────────────────────────────────────────────────────
-import '../payment_request_main_20260521.js';
-import '../公司卡付款來源_20261116.js';
-import '../payment_request_submit_20260506.js';
-import '../費用歸屬部門限制_20261022.js';
-import '../signing_personnel_manager_20260506.js';
-import '../部長上一階主管_20261116.js';
+import '../payment_request_main.js';
+import '../公司卡付款來源.js';
+import '../payment_request_submit.js';
+import '../費用歸屬部門限制.js';
+import '../signing_personnel_manager.js';
+import '../部長上一階主管.js';
 import '../使用者主檔快取.js';
-import '../手動簽核人設定_20261102.js';
-import '../申請人部門帶入_20261022.js';
-import '../交通費明細規則_20261022.js';
-import '../預計付款日_20261020.js';
-import '../受款人填寫設定_20250902.js';
-import '../流程自動推進_20260810.js';
-import '../作廢防呆_20260506.js';
+import '../手動簽核人設定.js';
+import '../申請人部門帶入.js';
+import '../交通費明細規則.js';
+import '../預計付款日.js';
+import '../受款人填寫設定.js';
+import '../流程自動推進.js';
+import '../作廢防呆.js';
 import '../發票號碼寫入獨立欄位檢查.js';
 import '../開發人員用群組欄位.js';

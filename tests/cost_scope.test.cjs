@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：費用歸屬部門限制_20261022.js
+// 測試：費用歸屬部門限制.js
 //   (1) 掛帳單位（費用歸屬）只能是費用所屬人部內  (2) 不能跨部門
 //   (3) 申請人在「費用歸屬不限部門」群組 → 不受限制；create.show／edit.show 先算好存起來
 //   (5) 申請人與費用所屬人要同部門（申請部門、費用所屬人部門各自往上爬到的部相同）
@@ -52,7 +52,7 @@ const setup = ({ groups = {}, groupFail = false, orgFail = false, validCodes = O
     },
   });
   env.load('payment_request_config.js');
-  env.load('費用歸屬部門限制_20261022.js');
+  env.load('費用歸屬部門限制.js');
   // 費用歸屬主檔快取（main 提供）的替身
   env.window.PR_COST_CENTER = {
     ensureLoaded: () => Promise.resolve(),

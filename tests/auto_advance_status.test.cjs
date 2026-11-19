@@ -1,6 +1,6 @@
 'use strict';
 
-// 回歸測試：流程自動推進_20260810.js
+// 回歸測試：流程自動推進.js
 //   ① buildStatusBody —— 送出的是「動作名稱」而非狀態名稱；assignee 依 SEND_ASSIGNEE 決定送不送
 //   ② shouldCompensate —— 只有「本人 × FROM_STATUS × 未作廢 × 有 $id」四條件全滿足才補償
 //   ③ withTimeout —— 無回應的 Promise 會被轉成明確的 reject（避免 submit 永久轉圈）
@@ -14,7 +14,7 @@ const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
 
-const srcPath = path.join(__dirname, '..', '流程自動推進_20260810.js');
+const srcPath = path.join(__dirname, '..', '流程自動推進.js');
 const src = fs.readFileSync(srcPath, 'utf8');
 
 const extract = (re, label) => {

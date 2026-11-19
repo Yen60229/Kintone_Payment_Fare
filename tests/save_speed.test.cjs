@@ -51,7 +51,7 @@ const loadSavingHint = () => {
     clearTimeout: () => {},
   };
   // eslint-disable-next-line no-new-func
-  new Function('window', 'kintone', 'setTimeout', 'clearTimeout', readSrc('存檔等待提示_20260923.js'))(
+  new Function('window', 'kintone', 'setTimeout', 'clearTimeout', readSrc('存檔等待提示.js'))(
     sandbox.window,
     sandbox.kintone,
     sandbox.setTimeout,
@@ -90,7 +90,7 @@ const loadSavingHint = () => {
     assert.doesNotThrow(() => api.onSubmitStart({}));
     // 這裡的 window 是提示模組的替身；PR_SAVE_ERRORS 由共用設定檔提供，給一個最小替身
     const queued = ['上一次留下的錯誤'];
-    const src = readSrc('存檔等待提示_20260923.js');
+    const src = readSrc('存檔等待提示.js');
     assert.ok(/const onSubmitStart = \(event\) => \{\s*window\.PR_SAVE_ERRORS\?\.take\(\);\s*openSaving\(\);/.test(src), '開提示前先 take() 清空');
     const fakeWindow = { PR_SAVE_ERRORS: { take: () => queued.splice(0) } };
     // eslint-disable-next-line no-new-func
@@ -141,7 +141,7 @@ const loadSavingHint = () => {
     kintoneStub.api.url = (p) => p;
     const win = { PR_KT: { on, app: () => ({ getId: () => 749 }) } };
     // eslint-disable-next-line no-new-func
-    new Function('window', 'kintone', 'setTimeout', 'clearTimeout', readSrc('存檔等待提示_20260923.js'))(win, kintoneStub, () => 0, () => {});
+    new Function('window', 'kintone', 'setTimeout', 'clearTimeout', readSrc('存檔等待提示.js'))(win, kintoneStub, () => 0, () => {});
     const leave = registered.find((r) => r.types.includes('app.record.create.show')).handler;
     leave({ type: 'app.record.detail.show' });
     assert.strictEqual(calls.length, 0, '詳細頁不用讀');
@@ -189,7 +189,7 @@ const loadSavingHint = () => {
     const registered = [];
     // eslint-disable-next-line no-new-func
     const on = (types, handler) => registered.push({ types, handler });
-    new Function('window', 'kintone', 'setTimeout', 'clearTimeout', readSrc('存檔等待提示_20260923.js'))(
+    new Function('window', 'kintone', 'setTimeout', 'clearTimeout', readSrc('存檔等待提示.js'))(
       { PR_KT: { on } },
       { events: { on } },
       () => 0,
@@ -205,11 +205,11 @@ const loadSavingHint = () => {
       .map((l) => l.trim())
       .filter((l) => l.startsWith('import ') && l.endsWith(".js';"));
     assert.ok(imports[0].includes('payment_request_config.js'));
-    assert.ok(imports[1].includes('存檔等待提示_20260923.js'), `第二個應該是提示模組，實際是 ${imports[1]}`);
+    assert.ok(imports[1].includes('存檔等待提示.js'), `第二個應該是提示模組，實際是 ${imports[1]}`);
   });
 
   // ── 2. 費用歸屬代碼共用主程式的快取 ─────────────────────────────────────────
-  const submitSrc = readSrc('payment_request_submit_20260506.js');
+  const submitSrc = readSrc('payment_request_submit.js');
   const extract = (source, re, label) => {
     const m = source.match(re);
     assert.ok(m, `找不到 ${label}`);
@@ -245,7 +245,7 @@ const loadSavingHint = () => {
   });
 
   await check('主程式的代碼集合用原始大小寫建（和 submit 原本自己查時的比對方式一致）', () => {
-    const mainSrc = readSrc('payment_request_main_20260521.js');
+    const mainSrc = readSrc('payment_request_main.js');
     const loadBody = extract(mainSrc, /const loadCostCenterMaps = \(\) => \{[\s\S]*?\n  \};/, 'loadCostCenterMaps');
     const addIdx = loadBody.indexOf('validCodes.add(rawCode)');
     const upperIdx = loadBody.indexOf('rawCode.toUpperCase()');

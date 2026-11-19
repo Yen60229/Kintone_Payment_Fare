@@ -1,6 +1,6 @@
 'use strict';
 
-// 回歸測試：payment_request_main_20260521.js 的公司名稱推導
+// 回歸測試：payment_request_main.js 的公司名稱推導
 //   費用所屬人部門代碼開頭為「聯海」→ 公司名稱＝聯海通運；其餘（含尚未選擇）→ ＮＸ臺灣國際物流。
 //   create.show 與「費用所屬人部門」變更時都要重算並鎖住欄位；edit.show 只鎖、不重算（不蓋掉已存的值）。
 // 直接用 Node 執行：node tests/company_name_derivation.test.cjs
@@ -13,7 +13,7 @@ const { check, done } = createRunner('company_name_derivation.test.cjs');
 const loadMain = () => {
   const env = createEnv({ appId: 749, loginCode: 'someone' });
   env.load('payment_request_config.js');
-  env.load('payment_request_main_20260521.js');
+  env.load('payment_request_main.js');
   return { env, F: env.window.PR_CONFIG.FIELDS };
 };
 
@@ -100,7 +100,7 @@ check('PR_COMPANY_NAME.apply：給其他模組（例如簽核人員程式帶入�
 
 // ── 結構：不再依賴已刪除的欄位 ──────────────────────────────────────────────
 check('main 原始碼不再出現申請單位／請購庶務帶入／URL 參數的殘留', () => {
-  const src = readSrc('payment_request_main_20260521.js');
+  const src = readSrc('payment_request_main.js');
   ['APPLY_UNIT', 'deriveCompanyNameByApplyUnit', 'getCompanyNameFromUrl', 'checkBoxValue', 'kintoneTransferData'].forEach((s) => {
     assert.ok(!src.includes(s), `不應殘留 ${s}`);
   });

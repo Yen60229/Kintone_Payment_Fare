@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：詳細頁欄位寬度自動（詳細頁欄位寬度自動_20261112.js）
+// 測試：詳細頁欄位寬度自動（詳細頁欄位寬度自動.js）
 //   1. targetFieldCodes：子表格、群組、關聯記錄、狀態等有自己版面的型別不動
 //   2. detail.show：主表欄位外框（.control-gaia）加 pr-fit-width；找不到元素略過、getFieldElement 丟錯不中斷
 //   3. 只綁 detail.show（新增／編輯不動）；模組只進桌面版；CSS 有 .pr-fit-width 且 width: auto !important
@@ -12,7 +12,7 @@ const { createRunner, readSrc } = require('./lib/pr_env.cjs');
 
 const { check, done } = createRunner('detail_fit_width.test.cjs');
 
-const FILE = '詳細頁欄位寬度自動_20261112.js';
+const FILE = '詳細頁欄位寬度自動.js';
 
 /** 假的欄位元素：closest('.control-gaia') 回外框（可指定沒有外框） */
 const makeField = (hasBox = true) => {

@@ -61,7 +61,8 @@ npm run check:process
 ```bash
 npm run build
 ```
-一次打包桌面版與手機版，**只打包 JS**，輸出到 `dist/`：
+一次打包桌面版與手機版，**只打包 JS**，輸出到 `dist/`。
+**`dist/` 不進 git**（2026-11-19 起）：每次上傳 749 前都要先跑一次 `npm run build`，上傳剛產出的檔，不要上傳舊的。
 
 | 檔案 | 入口 | 內容 |
 |---|---|---|
@@ -73,7 +74,7 @@ npm run build
 | 檔案 | 內容 |
 |---|---|
 | [`payment_request.css`](payment_request.css) | **全部樣式只有這一個檔**，PC 和手機都上傳同一份 |
-| [`交通費明細規則主檔檢查_20261104.js`](交通費明細規則主檔檢查_20261104.js) | **上傳到 App 752（規則主檔），不是請款單**：存檔時檢查名稱與請款單下拉選項一字不差等（只有 PC） |
+| [`交通費明細規則主檔檢查.js`](交通費明細規則主檔檢查.js) | **上傳到 App 752（規則主檔），不是請款單**：存檔時檢查名稱與請款單下拉選項一字不差等（只有 PC） |
 
 - 只打一套：`npm run build:desktop`、`npm run build:mobile`（`build:mobile` 不會清空 `dist/`）。
 - `.map` 是除錯用，不用上傳。
@@ -93,13 +94,14 @@ npm run build
 | JavaScript（手機） | ① SweetAlert2 ② `dist/payment_request_mobile.js` |
 | CSS（手機） | ① SweetAlert2 的 CSS（同上）② `payment_request.css`（和 PC 同一個檔） |
 
+- **上傳前先 `npm run build`**；749 只上傳上表 4 個檔（2 支 bundle＋同一份 CSS 傳兩次），模組原始檔不用個別上傳。
 - `coding_tools.js`、`SetFieldWidth_4_20251206.js` 已不單獨上傳（2026-11-12 起 coding_tools 打包進桌面版，SetFieldWidth 刪除）：後台這兩支要移除。
 
 #### App 752（交通費明細規則主檔）
 
 | 區塊 | 依序上傳 |
 |---|---|
-| JavaScript（PC） | ① `payment_request_config.js`（原始檔，自包含、不用打包）② `交通費明細規則主檔檢查_20261104.js` ③ `欄位標籤說明圖示_20261104.js`（請款單已打包進桌面版 bundle，752 要單獨上傳） |
+| JavaScript（PC） | ① `payment_request_config.js`（原始檔，自包含、不用打包）② `交通費明細規則主檔檢查.js` ③ `欄位標籤說明圖示.js`（請款單已打包進桌面版 bundle，752 要單獨上傳） |
 
 - 手機版、CSS 不用上傳。
 - 這支在 752 的新增、編輯、列表直接編輯存檔時，檢查「名稱」和請款單子表格的「交通工具」「憑證種類」下拉選項一字不差（含前後空白、類型選錯）、可選憑證種類、固定格式與統編、類型不用的欄位要留空。
