@@ -30,7 +30,9 @@ npm test && bash tests/syntax.test.sh && npm run scan
 目前基準：**36 支測試／748 項斷言**、語法檢查 **31 檔**、硬編碼掃描 **12 處**。
 掃描數字若無故上升，多半是**註解裡寫了 App ID 數字**（規則 1 刻意連註解一起掃）——
 註解請改引用常數名（如 `APPS.APPROVAL_FLOW`），不要寫 App 的數字。
-新增測試檔要同時加進 `package.json` 的 `test` 腳本。
+測試檔命名 `tests/*.test.cjs`（plug-in 為 `plugins/*/tests/*.test.cjs`），`scripts/run-tests.cjs` 會自動找到，不用改 `package.json`。
+只跑部分：`npm test -- 關鍵字`（路徑含關鍵字的檔）；加 `--verbose` 印每支完整輸出。
+`npm run lint`（ESLint，只抓 bug）不在 `npm test` 裡；中、大改動後順手跑一次，維持 0 錯誤 0 警告，不要用 `--fix`。
 從 kintone 下載新版流程管理設定後，放進 `process_management/exports/`（檔名 `749_rev<revision>.json`），
 跑 `npm run check:process` 檢查（結構＋全部假資料走一遍＋每個狀態的按鈕）。
 

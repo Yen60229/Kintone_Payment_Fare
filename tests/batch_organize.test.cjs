@@ -92,7 +92,6 @@ const D = (amount, tax, extra = {}) =>
 // 兩列明細：第 1 列金額 3000 稅額 0（費用歸屬 AJ63）、第 2 列金額 476 稅額 166（費用歸屬 XXXX）→ 總金額 3476、總稅額 166
 const record = mkRecord(88, 12, OWNER, [D(3000, 0), D(476, 166, { [T.COLS.EXPENSE]: 'XXXX', [T.COLS.INVOICE_NO]: 'ZZ99999999', [T.COLS.SELLER_TAX_ID]: '99999999' })]);
 const ctx = (over = {}) => ({ record, seq: 7, today: TODAY, dateFormat: 'YYYY/MM/DD', ...over });
-const tmpl = (...parts) => parts.join('');
 const tok = (s) => `{${s}}`;
 const tcol = (col) => tok(`${T.CODE}.${col}`);
 

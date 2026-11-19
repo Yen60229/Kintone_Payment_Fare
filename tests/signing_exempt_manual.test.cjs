@@ -147,13 +147,7 @@ const run = async ({ orgName, title, queryName = orgName, master = masterOf(FULL
   await fire(eventType);
   await settle();
 };
-const signers = () => {
-  const out = {};
-  SLOTS.forEach((f) => (out[f] = env.live[f].value.map((u) => u.code)));
-  return out;
-};
 const filledSlots = () => SLOTS.filter((f) => env.live[f].value.length > 0);
-const counts = () => [env.live[COUNT_M].value, env.live[COUNT_D].value];
 const approvalCall = () => env.apiCalls.find((c) => c.params.app === C.APPS.APPROVAL_FLOW);
 
 let passed = 0;

@@ -326,7 +326,7 @@
     const userCode = toStr(loginUser?.code);
     const userName = toStr(loginUser?.name);
 
-    let organizations = [];
+    let organizations;
     try {
       organizations = await kintone.user.getOrganizations(userCode);
     } catch (error) {

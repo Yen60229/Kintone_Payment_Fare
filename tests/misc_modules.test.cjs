@@ -18,7 +18,7 @@ const prompts = [];
 global.window = {
   prompt: (msg) => {
     prompts.push(msg);
-    return window.__promptAnswer;
+    return global.window.__promptAnswer;
   },
 };
 global.kintone = {

@@ -604,7 +604,7 @@ check('不適用選項：是否有紙本憑證＝是 → body 掛 pr-hide-paper-
   let ev = await env.fire('app.record.edit.show', { record: withVoucher({ [F.PAPER_RECEIPT]: { value: '是' } }) });
   assert.strictEqual(hidden(), true);
   ev.record[F.PAPER_RECEIPT].value = '否';
-  ev = await env.fire(`app.record.edit.change.${F.PAPER_RECEIPT}`, { record: ev.record });
+  await env.fire(`app.record.edit.change.${F.PAPER_RECEIPT}`, { record: ev.record });
   assert.strictEqual(hidden(), false);
   const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'payment_request.css'), 'utf8');
   assert.ok(css.includes('body.pr-hide-paper-na .input-radio-item-cybozu:has(input[value="不適用"])'));

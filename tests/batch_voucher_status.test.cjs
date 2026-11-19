@@ -230,8 +230,8 @@ check('註冊與載入：按鈕在「批次動作」下拉選單（本檔不註�
   assert.ok(iPrev > 0 && iMod > iPrev);
   const batch = readSrc('檔案批次_6版_PDFLib向量版_20260716.js');
   assert.ok(batch.includes('📋 批次填傳票／入帳完成') && batch.includes('window.PR_BATCH_VOUCHER.openDialog()'));
-  assert.ok(readSrc('package.json').includes('node tests/batch_voucher_status.test.cjs'));
-  assert.ok(!/(749|752|673)/.test(readSrc(MOD)));
+  assert.ok(fs.readdirSync(__dirname).includes('batch_voucher_status.test.cjs') && /\.test\.cjs$/.test(path.basename(__filename)), 'npm test（scripts/run-tests.cjs）會自動找到本檔');
+  assert.ok(!/\b(749|752|673)\b/.test(readSrc(MOD)));
   assert.ok(!/<style|style="/.test(readSrc(MOD)), '樣式只寫在 payment_request.css');
 });
 

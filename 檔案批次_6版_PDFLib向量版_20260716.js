@@ -351,8 +351,6 @@
     headerSize = 10,
     padding = 4,
   }) => {
-    const pageW = pager.pageW;
-    const usableW = pageW - pager.marginL - pager.marginR;
     const x0 = pager.marginL;
 
     // title
@@ -1084,7 +1082,6 @@ ${records.map((r, i) => `${i + 1}. 記錄 ${r[F.RECORD_NO]?.value || r.$id.value
   const generatePDFFileName = (record, id) => {
     let company = record[F.COMPANY_NAME]?.value?.trim() || '';
     company = company?.startsWith('ＮＸ') ? 'NX' : '聯海';
-    const date = record[F.PAYMENT_DATE]?.value?.split('T')[0] || '';
     // 受款人欄位資料可能夾雜 Tab／換行等控制字元（例如「代號\t姓名」格式），
     // 這類字元 Windows 檔名不允許，會讓解壓縮工具跳過該檔案而誤以為 ZIP 是空的
     const payName = (record[F.PAYEE]?.value || '').replace(/[\t\n\r]+/g, ' ').trim();
