@@ -25,11 +25,11 @@ const extract = (re, label) => {
 
 const isVoidedSrc = extract(/const isVoided = \(record\) =>.*;/, 'isVoided');
 const getStatusSrc = extract(/const getStatus = \(record\) =>.*;/, 'getStatus');
-const withTimeoutSrc = extract(/const withTimeout = \(promise, ms, label\) =>[\s\S]*?\n    \]\);/, 'withTimeout');
-const buildStatusBodySrc = extract(/const buildStatusBody = \(recordId, assigneeCode\) => \{[\s\S]*?\n  \};/, 'buildStatusBody');
-const fetchCurrentStatusSrc = extract(/const fetchCurrentStatus = async \(recordId\) => \{[\s\S]*?\n  \};/, 'fetchCurrentStatus');
-const advanceStatusSrc = extract(/async function advanceStatus\([\s\S]*?\n  \}/, 'advanceStatus');
-const shouldCompensateSrc = extract(/const shouldCompensate = \(record, loginCode\) => \{[\s\S]*?\n  \};/, 'shouldCompensate');
+const withTimeoutSrc = extract(/const withTimeout = \(promise, ms, label\) =>[\s\S]*?\n  \]\);/, 'withTimeout');
+const buildStatusBodySrc = extract(/const buildStatusBody = \(recordId, assigneeCode\) => \{[\s\S]*?\n\};/, 'buildStatusBody');
+const fetchCurrentStatusSrc = extract(/const fetchCurrentStatus = async \(recordId\) => \{[\s\S]*?\n\};/, 'fetchCurrentStatus');
+const advanceStatusSrc = extract(/async function advanceStatus\([\s\S]*?\n\}/, 'advanceStatus');
+const shouldCompensateSrc = extract(/const shouldCompensate = \(record, loginCode\) => \{[\s\S]*?\n\};/, 'shouldCompensate');
 
 // 測試用替身：對應 payment_request_config.js 的實際值
 const PRELUDE = `
@@ -211,7 +211,7 @@ check('detail.show 用 setTimeout 背景補償（不回傳 Promise，避免 kint
 });
 
 check('補償流程有防迴圈守衛（reload 前先設旗標）', () => {
-  const m = src.match(/async function compensateIfNeeded\(record\)[\s\S]*?\n  \}/);
+  const m = src.match(/async function compensateIfNeeded\(record\)[\s\S]*?\n\}/);
   assert.ok(m, '找不到 compensateIfNeeded');
   const body = m[0];
   assert.ok(body.includes('guardGet('), '缺少守衛檢查');

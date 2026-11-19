@@ -1,205 +1,205 @@
-(function () {
-  'use strict';
-  function updateAttachmentInList(record, index) {
-    // 找到該筆記錄的附件欄位 <td>
-    const attachmentCells = document.querySelectorAll('.recordlist-cell-gaia.recordlist-file-gaia');
-    if (!attachmentCells || attachmentCells.length <= index) {
-      return;
-    }
-    const attachmentCell = attachmentCells[index];
+function updateAttachmentInList(record, index) {
+  // 找到該筆記錄的附件欄位 <td>
+  const attachmentCells = document.querySelectorAll('.recordlist-cell-gaia.recordlist-file-gaia');
+  if (!attachmentCells || attachmentCells.length <= index) {
+    return;
+  }
+  const attachmentCell = attachmentCells[index];
 
-    // 獲取該筆記錄的附件資料
-    const attachmentField = record[window.PR_CONFIG.FIELDS.ATTACHMENT];
-    if (!attachmentField || !attachmentField.value || attachmentField.value.length === 0) {
-      return;
-    }
-
-    // 找到該筆記錄的附件列表 <li>
-    const fileItems = attachmentCell.querySelectorAll('.recordlist-file-others-gaia');
-    if (!fileItems || fileItems.length === 0) {
-      return;
-    }
-
-    // 遍歷附件
-    attachmentField.value.forEach((file, fileIndex) => {
-      if (fileIndex >= fileItems.length) return;
-
-      const fileItem = fileItems[fileIndex];
-      const fileName = file.name;
-      const fileExt = fileName.split('.').pop().toLowerCase();
-
-      if (fileExt === 'pdf') {
-        // 檢查是否已經有預覽按鈕
-        if (fileItem.querySelector('.gaia-attachment-file-action-preview')) {
-          return;
-        }
-
-        // 創建預覽按鈕
-        const previewButton = document.createElement('a');
-        previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview pr-preview-button'; // 樣式在 payment_request.css
-        previewButton.title = '預覽';
-        previewButton.href = 'javascript:void(0)';
-
-        // 創建放大鏡圖示
-        const magnifierIcon = document.createElement('i');
-        magnifierIcon.className = 'fa fa-search gaia-attachment-file-action-preview-image';
-        previewButton.appendChild(magnifierIcon);
-
-        // 點擊事件
-        previewButton.onclick = async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const fileUrl = await getFileUrl(file.fileKey);
-          openInNewTab(fileUrl);
-        };
-
-        // 添加按鈕
-        fileItem.appendChild(previewButton);
-      }
-    });
+  // 獲取該筆記錄的附件資料
+  const attachmentField = record[window.PR_CONFIG.FIELDS.ATTACHMENT];
+  if (!attachmentField || !attachmentField.value || attachmentField.value.length === 0) {
+    return;
   }
 
-  // 添加簡單的日誌功能，方便除錯
-  // function log(message, data) {
-  //   console.log(`[附件預覽] ${message}`, data || '');
-  // }
+  // 找到該筆記錄的附件列表 <li>
+  const fileItems = attachmentCell.querySelectorAll('.recordlist-file-others-gaia');
+  if (!fileItems || fileItems.length === 0) {
+    return;
+  }
 
-  // 更新附件欄位中的文件
-  function updateAttachmentField(record) {
-    // 找到附件欄位 - 嘗試多種選擇器
-    const attachmentFieldEl = kintone.app.record.getFieldElement(window.PR_CONFIG.FIELDS.ATTACHMENT);
-    if (!attachmentFieldEl) {
-      return;
-    }
+  // 遍歷附件
+  attachmentField.value.forEach((file, fileIndex) => {
+    if (fileIndex >= fileItems.length) return;
 
-    // 獲取附件資料
-    const attachmentField = record[window.PR_CONFIG.FIELDS.ATTACHMENT];
-    if (!attachmentField || !attachmentField.value || attachmentField.value.length === 0) {
-      return;
-    }
+    const fileItem = fileItems[fileIndex];
+    const fileName = file.name;
+    const fileExt = fileName.split('.').pop().toLowerCase();
 
-    // 嘗試多種選擇器找到文件列表
-    let fileListEl = attachmentFieldEl.querySelector('.attachment-list-itemlist');
-    if (!fileListEl) {
-      fileListEl = attachmentFieldEl.querySelector('.gaia-attachment-filelist');
-    }
-    if (!fileListEl) {
-      fileListEl = attachmentFieldEl;
-    }
-
-    if (!fileListEl) {
-      return;
-    }
-
-    // 使用多種可能的選擇器來找到文件項目
-    let fileItems = fileListEl.querySelectorAll('.attachment-list-item');
-    if (!fileItems || fileItems.length === 0) {
-      fileItems = fileListEl.querySelectorAll('.gaia-attachment-file');
-    }
-    if (!fileItems || fileItems.length === 0) {
-      fileItems = fileListEl.querySelectorAll('li');
-    }
-
-    if (!fileItems || fileItems.length === 0) {
-      return;
-    }
-
-    // 遍歷所有檔案
-    attachmentField.value.forEach((file, index) => {
-      if (index >= fileItems.length) {
+    if (fileExt === 'pdf') {
+      // 檢查是否已經有預覽按鈕
+      if (fileItem.querySelector('.gaia-attachment-file-action-preview')) {
         return;
       }
 
-      const fileItem = fileItems[index];
-      const fileName = file.name;
-      const fileExt = fileName.split('.').pop().toLowerCase();
+      // 創建預覽按鈕
+      const previewButton = document.createElement('a');
+      previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview pr-preview-button'; // 樣式在 payment_request.css
+      previewButton.title = '預覽';
+      previewButton.href = 'javascript:void(0)';
 
-      // 僅為 PDF 檔案添加預覽按鈕
-      if (fileExt === 'pdf') {
-        // 檢查是否已有預覽按鈕
-        if (fileItem.querySelector('.gaia-attachment-file-action-preview')) {
-          return;
-        }
+      // 創建放大鏡圖示
+      const magnifierIcon = document.createElement('i');
+      magnifierIcon.className = 'fa fa-search gaia-attachment-file-action-preview-image';
+      previewButton.appendChild(magnifierIcon);
 
-        // 嘗試多種選擇器找到適合添加按鈕的容器
-        let fileInfoContainer = fileItem.querySelector('.attachment-list-item-gaia');
-        if (!fileInfoContainer) {
-          fileInfoContainer = fileItem.querySelector('.gaia-attachment-file-fileinformation');
-        }
-        if (!fileInfoContainer) {
-          fileInfoContainer = fileItem.querySelector('a').parentNode;
-        }
-        if (!fileInfoContainer) {
-          fileInfoContainer = fileItem;
-        }
+      // 點擊事件
+      previewButton.onclick = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const fileUrl = await getFileUrl(file.fileKey);
+        openInNewTab(fileUrl);
+      };
 
-        const previewButton = document.createElement('a');
-        previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview pr-preview-button'; // 樣式在 payment_request.css
-        previewButton.title = '預覽';
-        previewButton.href = 'javascript:void(0)';
+      // 添加按鈕
+      fileItem.appendChild(previewButton);
+    }
+  });
+}
 
-        // 創建放大鏡圖示
-        const magnifierIcon = document.createElement('i');
-        magnifierIcon.className = 'fa fa-search gaia-attachment-file-action-preview-image';
-        previewButton.appendChild(magnifierIcon);
+// 添加簡單的日誌功能，方便除錯
+// function log(message, data) {
+//   console.log(`[附件預覽] ${message}`, data || '');
+// }
 
-        // 添加點擊事件
-        previewButton.onclick = async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const fileUrl = await getFileUrl(file.fileKey);
-          openInNewTab(fileUrl);
-        };
+// 更新附件欄位中的文件
+function updateAttachmentField(record) {
+  // 找到附件欄位 - 嘗試多種選擇器
+  const attachmentFieldEl = kintone.app.record.getFieldElement(window.PR_CONFIG.FIELDS.ATTACHMENT);
+  if (!attachmentFieldEl) {
+    return;
+  }
 
-        // 將按鈕添加到檔案資訊容器
-        fileInfoContainer.appendChild(previewButton);
+  // 獲取附件資料
+  const attachmentField = record[window.PR_CONFIG.FIELDS.ATTACHMENT];
+  if (!attachmentField || !attachmentField.value || attachmentField.value.length === 0) {
+    return;
+  }
+
+  // 嘗試多種選擇器找到文件列表
+  let fileListEl = attachmentFieldEl.querySelector('.attachment-list-itemlist');
+  if (!fileListEl) {
+    fileListEl = attachmentFieldEl.querySelector('.gaia-attachment-filelist');
+  }
+  if (!fileListEl) {
+    fileListEl = attachmentFieldEl;
+  }
+
+  if (!fileListEl) {
+    return;
+  }
+
+  // 使用多種可能的選擇器來找到文件項目
+  let fileItems = fileListEl.querySelectorAll('.attachment-list-item');
+  if (!fileItems || fileItems.length === 0) {
+    fileItems = fileListEl.querySelectorAll('.gaia-attachment-file');
+  }
+  if (!fileItems || fileItems.length === 0) {
+    fileItems = fileListEl.querySelectorAll('li');
+  }
+
+  if (!fileItems || fileItems.length === 0) {
+    return;
+  }
+
+  // 遍歷所有檔案
+  attachmentField.value.forEach((file, index) => {
+    if (index >= fileItems.length) {
+      return;
+    }
+
+    const fileItem = fileItems[index];
+    const fileName = file.name;
+    const fileExt = fileName.split('.').pop().toLowerCase();
+
+    // 僅為 PDF 檔案添加預覽按鈕
+    if (fileExt === 'pdf') {
+      // 檢查是否已有預覽按鈕
+      if (fileItem.querySelector('.gaia-attachment-file-action-preview')) {
+        return;
       }
+
+      // 嘗試多種選擇器找到適合添加按鈕的容器
+      let fileInfoContainer = fileItem.querySelector('.attachment-list-item-gaia');
+      if (!fileInfoContainer) {
+        fileInfoContainer = fileItem.querySelector('.gaia-attachment-file-fileinformation');
+      }
+      if (!fileInfoContainer) {
+        fileInfoContainer = fileItem.querySelector('a').parentNode;
+      }
+      if (!fileInfoContainer) {
+        fileInfoContainer = fileItem;
+      }
+
+      const previewButton = document.createElement('a');
+      previewButton.className = 'gaia-attachment-file-action-link gaia-attachment-file-action-preview pr-preview-button'; // 樣式在 payment_request.css
+      previewButton.title = '預覽';
+      previewButton.href = 'javascript:void(0)';
+
+      // 創建放大鏡圖示
+      const magnifierIcon = document.createElement('i');
+      magnifierIcon.className = 'fa fa-search gaia-attachment-file-action-preview-image';
+      previewButton.appendChild(magnifierIcon);
+
+      // 添加點擊事件
+      previewButton.onclick = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const fileUrl = await getFileUrl(file.fileKey);
+        openInNewTab(fileUrl);
+      };
+
+      // 將按鈕添加到檔案資訊容器
+      fileInfoContainer.appendChild(previewButton);
+    }
+  });
+}
+
+// 下載 Kintone 附件
+async function getFileUrl(fileKey) {
+  try {
+    const response = await fetch(kintone.api.url('/k/v1/file.json', true) + `?fileKey=${fileKey}`, {
+      method: 'GET',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+      },
     });
-  }
 
-  // 下載 Kintone 附件
-  async function getFileUrl(fileKey) {
-    try {
-      const response = await fetch(kintone.api.url('/k/v1/file.json', true) + `?fileKey=${fileKey}`, {
-        method: 'GET',
-        headers: {
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('無法下載檔案');
-      }
-
-      const blob = await response.blob();
-      const fileUrl = URL.createObjectURL(blob);
-      return fileUrl;
-    } catch (error) {
-      console.error('無法取得檔案 URL:', error);
-      return null;
-    }
-  }
-
-  /** 提示視窗：全域 SweetAlert（寬度自動）；載不到 SweetAlert 才退回瀏覽器的 alert */
-  function notify(text, icon) {
-    if (typeof Swal === 'undefined') {
-      alert(text);
-      return;
-    }
-    Swal.fire({ icon, text, width: 'auto', confirmButtonText: '好', customClass: { htmlContainer: 'pr-notice-text' } });
-  }
-
-  // **彈出視窗顯示預覽**
-  function openInNewTab(fileUrl) {
-    if (!fileUrl) {
-      notify('無法預覽檔案，請稍後再試！', 'error');
-      return;
+    if (!response.ok) {
+      throw new Error('無法下載檔案');
     }
 
-    // 直接在新分頁開啟
-    window.open(fileUrl, '_blank');
+    const blob = await response.blob();
+    const fileUrl = URL.createObjectURL(blob);
+    return fileUrl;
+  } catch (error) {
+    console.error('無法取得檔案 URL:', error);
+    return null;
+  }
+}
+
+/** 提示視窗：全域 SweetAlert（寬度自動）；載不到 SweetAlert 才退回瀏覽器的 alert */
+function notify(text, icon) {
+  if (typeof Swal === 'undefined') {
+    alert(text);
+    return;
+  }
+  Swal.fire({ icon, text, width: 'auto', confirmButtonText: '好', customClass: { htmlContainer: 'pr-notice-text' } });
+}
+
+// **彈出視窗顯示預覽**
+function openInNewTab(fileUrl) {
+  if (!fileUrl) {
+    notify('無法預覽檔案，請稍後再試！', 'error');
+    return;
   }
 
+  // 直接在新分頁開啟
+  window.open(fileUrl, '_blank');
+}
+
+/** 入口檔 import '…?install' 時呼叫：註冊事件（載入時只定義函式） */
+export const install = () => {
   // 處理詳細頁面的顯示
   window.PR_KT.on('app.record.detail.show', function (event) {
     // 首次更新
@@ -258,4 +258,4 @@
 
     return event;
   });
-})();
+};

@@ -14,971 +14,971 @@
  *     若同一表單有其他程式也在子表格 change 事件設定 disabled，後執行的會覆蓋先執行的。
  * ============================================================
  */
-(function () {
-  ('use strict');
 
-  /* =========================================================
-   * 一、基本設定
-   * ========================================================= */
+/* =========================================================
+ * 一、基本設定
+ * ========================================================= */
 
-  const SETTINGS_APP_ID = window.PR_CONFIG.APPS.PERMISSION;
-  const APP_ID_FIELD = 'APP_ID';
-  const STATUS_FIELD = window.PR_CONFIG.FIELDS.STATUS_FIELD;
-  const DEBUG = window.PR_LOG.enabled; // 除錯開關見 payment_request_config.js 的 PR_LOG
+const SETTINGS_APP_ID = window.PR_CONFIG.APPS.PERMISSION;
+const APP_ID_FIELD = 'APP_ID';
+const STATUS_FIELD = window.PR_CONFIG.FIELDS.STATUS_FIELD;
+const DEBUG = window.PR_LOG.enabled; // 除錯開關見 payment_request_config.js 的 PR_LOG
 
-  const RULE_TYPE = {
-    ACCOUNT: 'ACCOUNT',
-    ORG: 'ORG',
-  };
+const RULE_TYPE = {
+  ACCOUNT: 'ACCOUNT',
+  ORG: 'ORG',
+};
 
-  const ENABLE_ON = '使用中';
-  const SHOW = '顯示';
-  const HIDE = '隱藏';
-  const EDIT = '編輯';
-  const REQUIRED = '必填';
+const ENABLE_ON = '使用中';
+const SHOW = '顯示';
+const HIDE = '隱藏';
+const EDIT = '編輯';
+const REQUIRED = '必填';
 
-  const EVENTS_SHOW = [
-    'app.record.create.show',
-    'app.record.edit.show',
-    'app.record.detail.show',
-    'app.record.print.show',
-    'app.record.index.edit.show'
-  ];
+const EVENTS_SHOW = [
+  'app.record.create.show',
+  'app.record.edit.show',
+  'app.record.detail.show',
+  'app.record.print.show',
+  'app.record.index.edit.show'
+];
 
-  // 列表直接編輯的存檔也檢查必填（2026-10-27）。kintone 的 index.edit.show 不能標欄位錯誤、也不能擋存檔，
-  //   所以 show 只套顯示／可編輯，必填在 index.edit.submit 檢查。
-  const INDEX_EDIT_SUBMIT = 'app.record.index.edit.submit';
-  const EVENTS_SUBMIT = ['app.record.create.submit', 'app.record.edit.submit', INDEX_EDIT_SUBMIT];
-  // 列表上只有這幾欄能改（其餘由 payment_request_main 鎖住），列表存檔只檢查這幾欄的必填；
-  //   其他欄位改不了，必填在新增／編輯畫面存檔時檢查，不然列表上會被一個改不了的欄位卡住。
-  const INLINE_EDITABLE = window.PR_CONFIG.INLINE_EDIT.EDITABLE;
+// 列表直接編輯的存檔也檢查必填（2026-10-27）。kintone 的 index.edit.show 不能標欄位錯誤、也不能擋存檔，
+//   所以 show 只套顯示／可編輯，必填在 index.edit.submit 檢查。
+const INDEX_EDIT_SUBMIT = 'app.record.index.edit.submit';
+const EVENTS_SUBMIT = ['app.record.create.submit', 'app.record.edit.submit', INDEX_EDIT_SUBMIT];
+// 列表上只有這幾欄能改（其餘由 payment_request_main 鎖住），列表存檔只檢查這幾欄的必填；
+//   其他欄位改不了，必填在新增／編輯畫面存檔時檢查，不然列表上會被一個改不了的欄位卡住。
+const INLINE_EDITABLE = window.PR_CONFIG.INLINE_EDIT.EDITABLE;
 
-  // ── 錯誤提醒：一律用全域 SweetAlert（window.Swal，2026-10-27）──────────────
-  //   event.error 只放「儲存失敗」，細節在 SweetAlert 視窗；開畫面出錯的標題是「發生錯誤」。
-  //   新增／編輯存檔：訊息交給 PR_SAVE_ERRORS，由 payment_request_submit 和其他檢查結果合成同一個視窗；
-  //   列表直接編輯存檔（沒有 payment_request_submit）、開畫面讀不到設定：直接跳視窗。
-  const SAVE_FAILED = '儲存失敗';
-  const ERROR_TITLE = '發生錯誤';
-  const escapeHtml = (text) =>
-    String(text ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+// ── 錯誤提醒：一律用全域 SweetAlert（window.Swal，2026-10-27）──────────────
+//   event.error 只放「儲存失敗」，細節在 SweetAlert 視窗；開畫面出錯的標題是「發生錯誤」。
+//   新增／編輯存檔：訊息交給 PR_SAVE_ERRORS，由 payment_request_submit 和其他檢查結果合成同一個視窗；
+//   列表直接編輯存檔（沒有 payment_request_submit）、開畫面讀不到設定：直接跳視窗。
+const SAVE_FAILED = '儲存失敗';
+const ERROR_TITLE = '發生錯誤';
+const escapeHtml = (text) =>
+  String(text ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
-  /** 用全域 SweetAlert 跳錯誤視窗（樣式同存檔驗證視窗：每條一張卡片）；沒載入 SweetAlert 才退回 alert */
-  const showAlert = (title, messages) => {
-    const swal = window.Swal;
-    if (typeof swal?.fire !== 'function') {
-      window.alert(`${title}\n${messages.join('\n')}`);
-      return;
+/** 用全域 SweetAlert 跳錯誤視窗（樣式同存檔驗證視窗：每條一張卡片）；沒載入 SweetAlert 才退回 alert */
+const showAlert = (title, messages) => {
+  const swal = window.Swal;
+  if (typeof swal?.fire !== 'function') {
+    window.alert(`${title}\n${messages.join('\n')}`);
+    return;
+  }
+  const items = messages
+    .map((msg, i) => {
+      const [head, ...rest] = String(msg).split('\n');
+      const detail = rest.map((line) => `<div class="pr-v-detail">${escapeHtml(line.replace(/^[▸※]\s*/, ''))}</div>`).join('');
+      return `<li class="pr-validation-item"><span class="pr-validation-no">${i + 1}</span><div class="pr-validation-text"><div class="pr-v-head">${escapeHtml(head)}</div>${detail}</div></li>`;
+    })
+    .join('');
+  swal.fire({
+    icon: 'error',
+    title,
+    html: `<ol class="pr-validation-list">${items}</ol>`,
+    confirmButtonText: '我知道了',
+    confirmButtonColor: '#d33',
+    customClass: { popup: 'pr-validation-popup' },
+  });
+};
+
+/** 存檔被擋：event.error＝儲存失敗；新增／編輯交給 PR_SAVE_ERRORS 合併顯示，列表直接編輯直接跳視窗 */
+const reportSaveErrors = (event, messages) => {
+  event.error = SAVE_FAILED;
+  const collector = window.PR_SAVE_ERRORS;
+  if (event.type !== INDEX_EDIT_SUBMIT && typeof collector?.add === 'function') collector.add(messages);
+  else showAlert(SAVE_FAILED, messages);
+  return event;
+};
+
+/* =========================================================
+ * 二、權限設定 App 欄位代碼設定
+ * ========================================================= */
+
+const ACCOUNT_RULE = {
+  table: ['帳號權限設定'],
+  target: ['帳號權限'],
+  fieldType: ['帳號欄位屬性'],
+  fields: ['帳號欄位設定', '欄位設定'],
+  coverValues: ['帳號欄位涵蓋值'],
+  show: ['帳號顯示選項', '顯示選項'],
+  perm: ['帳號權限選項', '權限選項'],
+  required: ['帳號欄位必填'],
+  status: ['帳號狀態設定', '狀態設定'],
+  enable: ['帳號使用狀況', '使用狀況'],
+};
+
+const ORG_RULE = {
+  table: ['組織權限設定'],
+  target: ['組織權限'],
+  fieldType: ['組織欄位型態'],
+  fields: ['組織欄位設定', '欄位設定'],
+  coverValues: ['組織欄位涵蓋值'],
+  show: ['組織顯示選項', '顯示選項'],
+  perm: ['組織權限選項', '權限選項'],
+  required: ['組織欄位必填'],
+  status: ['組織狀態設定', '狀態設定'],
+  enable: ['組織使用狀況', '使用狀況'],
+};
+
+/* =========================================================
+ * 三、欄位型態與自動行為
+ * ========================================================= */
+
+const FIELD_KIND = {
+  NUMBER: '數值欄位',
+  RELATED: '相關記錄清單欄位',
+  SPACER: '空白欄元素',
+  GROUP: '群組欄位',
+  TABLE: '表格欄位',
+};
+
+const FIELD_ACTION = {
+  NONE: 'NONE',
+  SKIP: 'SKIP',
+};
+
+const FIELD_TYPE_BEHAVIOR = {
+  [FIELD_KIND.NUMBER]: FIELD_ACTION.NONE,
+  [FIELD_KIND.RELATED]: FIELD_ACTION.NONE,
+  [FIELD_KIND.SPACER]: FIELD_ACTION.SKIP,
+  [FIELD_KIND.GROUP]: FIELD_ACTION.SKIP,
+  [FIELD_KIND.TABLE]: FIELD_ACTION.SKIP,
+};
+
+const MATCH_RESULT = {
+  MATCH: 'MATCH',
+  NO_MATCH: 'NO_MATCH',
+  EMPTY: 'EMPTY',
+};
+
+const toStr = (value) => String(value || '').trim();
+const toArr = (value) => (Array.isArray(value) ? value : []);
+
+const log = (...args) => {
+  if (DEBUG) window.PR_LOG.debug('[KDEBUG]', ...args);
+};
+
+const warn = (...args) => {
+  if (DEBUG) console.warn('[KDEBUG]', ...args);
+};
+
+// parseArr 結果記憶化：同一份權限設定字串可能在「欄位型態蒐集」與「規則套用」兩階段重複解析，
+// 以原字串為鍵快取凍結陣列（呼叫端僅讀取，不可變動）。權限設定字串為有限集合，快取不會無限成長。
+const _parseArrCache = new Map();
+const parseArr = (text) => {
+  const raw = toStr(text);
+  if (!raw) return [];
+  if (_parseArrCache.has(raw)) return _parseArrCache.get(raw);
+
+  const result = Object.freeze(
+    raw
+      .replace(/^\[/, '')
+      .replace(/\]$/, '')
+      .replace(/["']/g, '')
+      .split(/\r?\n|,|，|;|；|、/g)
+      .map((item) => toStr(item))
+      .filter(Boolean),
+  );
+  _parseArrCache.set(raw, result);
+  return result;
+};
+
+const pickField = (row, candidateCodes) => {
+  for (const code of candidateCodes) {
+    if (row && row[code] !== undefined) {
+      return row[code];
     }
-    const items = messages
-      .map((msg, i) => {
-        const [head, ...rest] = String(msg).split('\n');
-        const detail = rest.map((line) => `<div class="pr-v-detail">${escapeHtml(line.replace(/^[▸※]\s*/, ''))}</div>`).join('');
-        return `<li class="pr-validation-item"><span class="pr-validation-no">${i + 1}</span><div class="pr-validation-text"><div class="pr-v-head">${escapeHtml(head)}</div>${detail}</div></li>`;
-      })
-      .join('');
-    swal.fire({
-      icon: 'error',
-      title,
-      html: `<ol class="pr-validation-list">${items}</ol>`,
-      confirmButtonText: '我知道了',
-      confirmButtonColor: '#d33',
-      customClass: { popup: 'pr-validation-popup' },
-    });
-  };
+  }
+  return undefined;
+};
 
-  /** 存檔被擋：event.error＝儲存失敗；新增／編輯交給 PR_SAVE_ERRORS 合併顯示，列表直接編輯直接跳視窗 */
-  const reportSaveErrors = (event, messages) => {
-    event.error = SAVE_FAILED;
-    const collector = window.PR_SAVE_ERRORS;
-    if (event.type !== INDEX_EDIT_SUBMIT && typeof collector?.add === 'function') collector.add(messages);
-    else showAlert(SAVE_FAILED, messages);
-    return event;
-  };
+const getCheckboxValues = (field) => toArr(field?.value);
 
-  /* =========================================================
-   * 二、權限設定 App 欄位代碼設定
-   * ========================================================= */
-
-  const ACCOUNT_RULE = {
-    table: ['帳號權限設定'],
-    target: ['帳號權限'],
-    fieldType: ['帳號欄位屬性'],
-    fields: ['帳號欄位設定', '欄位設定'],
-    coverValues: ['帳號欄位涵蓋值'],
-    show: ['帳號顯示選項', '顯示選項'],
-    perm: ['帳號權限選項', '權限選項'],
-    required: ['帳號欄位必填'],
-    status: ['帳號狀態設定', '狀態設定'],
-    enable: ['帳號使用狀況', '使用狀況'],
-  };
-
-  const ORG_RULE = {
-    table: ['組織權限設定'],
-    target: ['組織權限'],
-    fieldType: ['組織欄位型態'],
-    fields: ['組織欄位設定', '欄位設定'],
-    coverValues: ['組織欄位涵蓋值'],
-    show: ['組織顯示選項', '顯示選項'],
-    perm: ['組織權限選項', '權限選項'],
-    required: ['組織欄位必填'],
-    status: ['組織狀態設定', '狀態設定'],
-    enable: ['組織使用狀況', '使用狀況'],
-  };
-
-  /* =========================================================
-   * 三、欄位型態與自動行為
-   * ========================================================= */
-
-  const FIELD_KIND = {
-    NUMBER: '數值欄位',
-    RELATED: '相關記錄清單欄位',
-    SPACER: '空白欄元素',
-    GROUP: '群組欄位',
-    TABLE: '表格欄位',
-  };
-
-  const FIELD_ACTION = {
-    NONE: 'NONE',
-    SKIP: 'SKIP',
-  };
-
-  const FIELD_TYPE_BEHAVIOR = {
-    [FIELD_KIND.NUMBER]: FIELD_ACTION.NONE,
-    [FIELD_KIND.RELATED]: FIELD_ACTION.NONE,
-    [FIELD_KIND.SPACER]: FIELD_ACTION.SKIP,
-    [FIELD_KIND.GROUP]: FIELD_ACTION.SKIP,
-    [FIELD_KIND.TABLE]: FIELD_ACTION.SKIP,
-  };
-
-  const MATCH_RESULT = {
-    MATCH: 'MATCH',
-    NO_MATCH: 'NO_MATCH',
-    EMPTY: 'EMPTY',
-  };
-
-  const toStr = (value) => String(value || '').trim();
-  const toArr = (value) => (Array.isArray(value) ? value : []);
-
-  const log = (...args) => {
-    if (DEBUG) window.PR_LOG.debug('[KDEBUG]', ...args);
-  };
-
-  const warn = (...args) => {
-    if (DEBUG) console.warn('[KDEBUG]', ...args);
-  };
-
-  // parseArr 結果記憶化：同一份權限設定字串可能在「欄位型態蒐集」與「規則套用」兩階段重複解析，
-  // 以原字串為鍵快取凍結陣列（呼叫端僅讀取，不可變動）。權限設定字串為有限集合，快取不會無限成長。
-  const _parseArrCache = new Map();
-  const parseArr = (text) => {
-    const raw = toStr(text);
-    if (!raw) return [];
-    if (_parseArrCache.has(raw)) return _parseArrCache.get(raw);
-
-    const result = Object.freeze(
-      raw
-        .replace(/^\[/, '')
-        .replace(/\]$/, '')
-        .replace(/["']/g, '')
-        .split(/\r?\n|,|，|;|；|、/g)
-        .map((item) => toStr(item))
-        .filter(Boolean),
-    );
-    _parseArrCache.set(raw, result);
-    return result;
-  };
-
-  const pickField = (row, candidateCodes) => {
-    for (const code of candidateCodes) {
-      if (row && row[code] !== undefined) {
-        return row[code];
-      }
-    }
-    return undefined;
-  };
-
-  const getCheckboxValues = (field) => toArr(field?.value);
-
-  const normalizeTargetValues = (items) =>
-    toArr(items)
-      .flatMap((item) => {
-        if (typeof item === 'string' || typeof item === 'number') {
-          return [toStr(item)];
-        }
-
-        return [
-          item?.code,
-          item?.name,
-          item?.displayName,
-          item?.value,
-          item?.organization?.code,
-          item?.organization?.name,
-          item?.user?.code,
-          item?.user?.name,
-          item?.user?.displayName,
-        ].map(toStr);
-      })
-      .filter(Boolean);
-
-  // 檢查 values 是否有任一元素落在預建的集合內。
-  // accountSet / orgSet 於登入者上下文建立時一次建好，避免在逐行規則迴圈中重複建立 Set 物件。
-  const someInSet = (values, set) =>
-    toArr(values)
-      .map(toStr)
-      .filter(Boolean)
-      .some((value) => set.has(value));
-
-  const getUserCodes = (field) => {
-    const raw = toArr(field?.value);
-    const codes = normalizeTargetValues(raw);
-    log('getUserCodes', { raw, codes });
-    return codes;
-  };
-
-  const getOrgCodes = (field) => {
-    const raw = toArr(field?.value);
-    const codes = normalizeTargetValues(raw);
-    log('getOrgCodes', { raw, codes });
-    return codes;
-  };
-
-  const normalizeRecordFieldValue = (field) => {
-    if (!field) return [];
-
-    const value = field.value;
-
-    switch (true) {
-      case Array.isArray(value):
-        return normalizeTargetValues(value);
-      case value && typeof value === 'object':
-        return normalizeTargetValues([value]);
-      default:
-        return [toStr(value)].filter(Boolean);
-    }
-  };
-
-  const isEnabled = (field) => toStr(field?.value) === ENABLE_ON;
-
-  const isStatusMatch = (settingText, currentStatus) => {
-    const list = parseArr(settingText);
-    if (list.length === 0) return true;
-    return !!currentStatus && list.includes(currentStatus);
-  };
-
-  const isEmptyValue = (value) => {
-    switch (true) {
-      case value === null:
-      case value === undefined:
-        return true;
-      case typeof value === 'string' && value.trim() === '':
-        return true;
-      case Array.isArray(value) && value.length === 0:
-        return true;
-      default:
-        return false;
-    }
-  };
-
-  const hasShowFlag = (options) => options.includes(SHOW);
-  const hasHideFlag = (options) => options.includes(HIDE);
-  const hasEditFlag = (options) => options.includes(EDIT);
-  const hasRequiredFlag = (options) => options.includes(REQUIRED);
-
-  // 權限設定快取：查詢條件（APP_ID = 當前 App）在整個頁面生命週期固定，
-  // 同一張單從 show 至 submit 之間不會變動，以 Promise 快取省略重複 API 呼叫（失敗則清除以便重試）。
-  // ⚠️ 管理員在權限設定 App 變更權限規則後，使用者需「重新整理頁面」才會生效。
-  let _settingsPromise = null;
-  const fetchSettings = async () => {
-    const currentAppId = kintone.app.getId();
-
-    const response = await kintone.api(
-      kintone.api.url('/k/v1/records.json', true),
-      'GET',
-      {
-        app: SETTINGS_APP_ID,
-        query: `${APP_ID_FIELD} = "${currentAppId}"`,
-      },
-    );
-
-    log('permission settings query result', {
-      currentAppId,
-      settingsCount: toArr(response.records).length,
-      records: response.records,
-    });
-
-    return toArr(response.records);
-  };
-
-  const getSettings = () => {
-    if (_settingsPromise) return _settingsPromise;
-    _settingsPromise = fetchSettings().catch((error) => {
-      _settingsPromise = null; // 失敗不快取，下次重試
-      throw error;
-    });
-    return _settingsPromise;
-  };
-
-  // 登入者上下文：頁面整個工作階段不會變動，以 Promise 快取永久重用（失敗則清除以便重試）。
-  // accountSet / orgSet 於此處一次建立，供 matchTarget 在逐行規則迴圈中直接查詢，免去重複建立 Set 物件。
-  let _loginContextPromise = null;
-  const fetchLoginContext = async () => {
-    const loginUser = kintone.getLoginUser();
-    const userCode = toStr(loginUser?.code);
-    const userName = toStr(loginUser?.name);
-
-    let organizations;
-    try {
-      organizations = await kintone.user.getOrganizations(userCode);
-    } catch (error) {
-      organizations = [];
-      warn('getOrganizations fail', error);
-    }
-
-    const orgCodes = [];
-    const orgNames = [];
-
-    organizations.forEach((org) => {
-      const code = toStr(org?.code || org?.organization?.code);
-      const name = toStr(org?.name || org?.organization?.name);
-
-      if (code) orgCodes.push(code);
-      if (name) orgNames.push(name);
-    });
-
-    const accountSet = new Set([userCode, userName].map(toStr).filter(Boolean));
-    const orgSet = new Set(
-      [...orgCodes, ...orgNames].map(toStr).filter(Boolean),
-    );
-
-    log('loginContext', {
-      userCode,
-      userName,
-      orgCodes,
-      orgNames,
-      organizations,
-    });
-
-    return { userCode, userName, orgCodes, orgNames, accountSet, orgSet };
-  };
-
-  const getLoginContext = () => {
-    if (_loginContextPromise) return _loginContextPromise;
-    _loginContextPromise = fetchLoginContext().catch((error) => {
-      _loginContextPromise = null; // 失敗不快取，下次重試
-      throw error;
-    });
-    return _loginContextPromise;
-  };
-
-  const getRuleConfig = (type) => {
-    switch (type) {
-      case RULE_TYPE.ACCOUNT:
-        return {
-          ...ACCOUNT_RULE,
-          targetGetter: getUserCodes,
-        };
-      case RULE_TYPE.ORG:
-        return {
-          ...ORG_RULE,
-          targetGetter: getOrgCodes,
-        };
-      default:
-        return null;
-    }
-  };
-
-  const matchTarget = (type, targets, loginContext) => {
-    if (targets.length === 0) {
-      return MATCH_RESULT.EMPTY;
-    }
-
-    switch (type) {
-      case RULE_TYPE.ACCOUNT: {
-        const matched = someInSet(targets, loginContext.accountSet);
-        return matched ? MATCH_RESULT.MATCH : MATCH_RESULT.NO_MATCH;
+const normalizeTargetValues = (items) =>
+  toArr(items)
+    .flatMap((item) => {
+      if (typeof item === 'string' || typeof item === 'number') {
+        return [toStr(item)];
       }
 
-      case RULE_TYPE.ORG: {
-        const matched = someInSet(targets, loginContext.orgSet);
-        return matched ? MATCH_RESULT.MATCH : MATCH_RESULT.NO_MATCH;
-      }
+      return [
+        item?.code,
+        item?.name,
+        item?.displayName,
+        item?.value,
+        item?.organization?.code,
+        item?.organization?.name,
+        item?.user?.code,
+        item?.user?.name,
+        item?.user?.displayName,
+      ].map(toStr);
+    })
+    .filter(Boolean);
 
-      default:
-        return MATCH_RESULT.NO_MATCH;
-    }
-  };
+// 檢查 values 是否有任一元素落在預建的集合內。
+// accountSet / orgSet 於登入者上下文建立時一次建好，避免在逐行規則迴圈中重複建立 Set 物件。
+const someInSet = (values, set) =>
+  toArr(values)
+    .map(toStr)
+    .filter(Boolean)
+    .some((value) => set.has(value));
 
-  const matchCoverValues = (field, coverValuesText) => {
-    const coverValues = parseArr(coverValuesText);
+const getUserCodes = (field) => {
+  const raw = toArr(field?.value);
+  const codes = normalizeTargetValues(raw);
+  log('getUserCodes', { raw, codes });
+  return codes;
+};
 
-    if (coverValues.length === 0) {
-      return MATCH_RESULT.EMPTY;
-    }
+const getOrgCodes = (field) => {
+  const raw = toArr(field?.value);
+  const codes = normalizeTargetValues(raw);
+  log('getOrgCodes', { raw, codes });
+  return codes;
+};
 
-    const localValues = normalizeRecordFieldValue(field);
-    const matched = localValues.some((value) => coverValues.includes(value));
+const normalizeRecordFieldValue = (field) => {
+  if (!field) return [];
 
-    log('matchCoverValues', {
-      coverValues,
-      localValues,
-      matched,
-    });
+  const value = field.value;
 
-    return matched ? MATCH_RESULT.MATCH : MATCH_RESULT.NO_MATCH;
-  };
+  switch (true) {
+    case Array.isArray(value):
+      return normalizeTargetValues(value);
+    case value && typeof value === 'object':
+      return normalizeTargetValues([value]);
+    default:
+      return [toStr(value)].filter(Boolean);
+  }
+};
 
-  const createFieldState = () => ({
-    visible: false,
-    editable: false,
-    required: false,
+const isEnabled = (field) => toStr(field?.value) === ENABLE_ON;
 
-    matchedByAccount: false,
-    matchedByOrg: false,
+const isStatusMatch = (settingText, currentStatus) => {
+  const list = parseArr(settingText);
+  if (list.length === 0) return true;
+  return !!currentStatus && list.includes(currentStatus);
+};
 
-    accountVisibleSet: false,
-    accountEditableSet: false,
-    accountRequiredSet: false,
+const isEmptyValue = (value) => {
+  switch (true) {
+    case value === null:
+    case value === undefined:
+      return true;
+    case typeof value === 'string' && value.trim() === '':
+      return true;
+    case Array.isArray(value) && value.length === 0:
+      return true;
+    default:
+      return false;
+  }
+};
 
-    orgVisibleSet: false,
-    orgEditableSet: false,
-    orgRequiredSet: false,
+const hasShowFlag = (options) => options.includes(SHOW);
+const hasHideFlag = (options) => options.includes(HIDE);
+const hasEditFlag = (options) => options.includes(EDIT);
+const hasRequiredFlag = (options) => options.includes(REQUIRED);
+
+// 權限設定快取：查詢條件（APP_ID = 當前 App）在整個頁面生命週期固定，
+// 同一張單從 show 至 submit 之間不會變動，以 Promise 快取省略重複 API 呼叫（失敗則清除以便重試）。
+// ⚠️ 管理員在權限設定 App 變更權限規則後，使用者需「重新整理頁面」才會生效。
+let _settingsPromise = null;
+const fetchSettings = async () => {
+  const currentAppId = kintone.app.getId();
+
+  const response = await kintone.api(
+    kintone.api.url('/k/v1/records.json', true),
+    'GET',
+    {
+      app: SETTINGS_APP_ID,
+      query: `${APP_ID_FIELD} = "${currentAppId}"`,
+    },
+  );
+
+  log('permission settings query result', {
+    currentAppId,
+    settingsCount: toArr(response.records).length,
+    records: response.records,
   });
 
-  const ensureFieldState = (map, fieldCode) => {
-    if (!map[fieldCode]) {
-      map[fieldCode] = createFieldState();
+  return toArr(response.records);
+};
+
+const getSettings = () => {
+  if (_settingsPromise) return _settingsPromise;
+  _settingsPromise = fetchSettings().catch((error) => {
+    _settingsPromise = null; // 失敗不快取，下次重試
+    throw error;
+  });
+  return _settingsPromise;
+};
+
+// 登入者上下文：頁面整個工作階段不會變動，以 Promise 快取永久重用（失敗則清除以便重試）。
+// accountSet / orgSet 於此處一次建立，供 matchTarget 在逐行規則迴圈中直接查詢，免去重複建立 Set 物件。
+let _loginContextPromise = null;
+const fetchLoginContext = async () => {
+  const loginUser = kintone.getLoginUser();
+  const userCode = toStr(loginUser?.code);
+  const userName = toStr(loginUser?.name);
+
+  let organizations;
+  try {
+    organizations = await kintone.user.getOrganizations(userCode);
+  } catch (error) {
+    organizations = [];
+    warn('getOrganizations fail', error);
+  }
+
+  const orgCodes = [];
+  const orgNames = [];
+
+  organizations.forEach((org) => {
+    const code = toStr(org?.code || org?.organization?.code);
+    const name = toStr(org?.name || org?.organization?.name);
+
+    if (code) orgCodes.push(code);
+    if (name) orgNames.push(name);
+  });
+
+  const accountSet = new Set([userCode, userName].map(toStr).filter(Boolean));
+  const orgSet = new Set(
+    [...orgCodes, ...orgNames].map(toStr).filter(Boolean),
+  );
+
+  log('loginContext', {
+    userCode,
+    userName,
+    orgCodes,
+    orgNames,
+    organizations,
+  });
+
+  return { userCode, userName, orgCodes, orgNames, accountSet, orgSet };
+};
+
+const getLoginContext = () => {
+  if (_loginContextPromise) return _loginContextPromise;
+  _loginContextPromise = fetchLoginContext().catch((error) => {
+    _loginContextPromise = null; // 失敗不快取，下次重試
+    throw error;
+  });
+  return _loginContextPromise;
+};
+
+const getRuleConfig = (type) => {
+  switch (type) {
+    case RULE_TYPE.ACCOUNT:
+      return {
+        ...ACCOUNT_RULE,
+        targetGetter: getUserCodes,
+      };
+    case RULE_TYPE.ORG:
+      return {
+        ...ORG_RULE,
+        targetGetter: getOrgCodes,
+      };
+    default:
+      return null;
+  }
+};
+
+const matchTarget = (type, targets, loginContext) => {
+  if (targets.length === 0) {
+    return MATCH_RESULT.EMPTY;
+  }
+
+  switch (type) {
+    case RULE_TYPE.ACCOUNT: {
+      const matched = someInSet(targets, loginContext.accountSet);
+      return matched ? MATCH_RESULT.MATCH : MATCH_RESULT.NO_MATCH;
     }
-    return map[fieldCode];
-  };
 
-  const collectConfiguredFieldMeta = (settings) => {
-    const fieldMetaMap = {};
+    case RULE_TYPE.ORG: {
+      const matched = someInSet(targets, loginContext.orgSet);
+      return matched ? MATCH_RESULT.MATCH : MATCH_RESULT.NO_MATCH;
+    }
 
-    [RULE_TYPE.ACCOUNT, RULE_TYPE.ORG].forEach((ruleType) => {
-      const config = getRuleConfig(ruleType);
+    default:
+      return MATCH_RESULT.NO_MATCH;
+  }
+};
 
-      settings.forEach((record, recordIndex) => {
-        const tableField = pickField(record, config.table);
-        const rows = toArr(tableField?.value);
+const matchCoverValues = (field, coverValuesText) => {
+  const coverValues = parseArr(coverValuesText);
 
-        log(`collect meta ${ruleType}`, {
-          recordIndex,
-          tableCandidates: config.table,
-          rowCount: rows.length,
+  if (coverValues.length === 0) {
+    return MATCH_RESULT.EMPTY;
+  }
+
+  const localValues = normalizeRecordFieldValue(field);
+  const matched = localValues.some((value) => coverValues.includes(value));
+
+  log('matchCoverValues', {
+    coverValues,
+    localValues,
+    matched,
+  });
+
+  return matched ? MATCH_RESULT.MATCH : MATCH_RESULT.NO_MATCH;
+};
+
+const createFieldState = () => ({
+  visible: false,
+  editable: false,
+  required: false,
+
+  matchedByAccount: false,
+  matchedByOrg: false,
+
+  accountVisibleSet: false,
+  accountEditableSet: false,
+  accountRequiredSet: false,
+
+  orgVisibleSet: false,
+  orgEditableSet: false,
+  orgRequiredSet: false,
+});
+
+const ensureFieldState = (map, fieldCode) => {
+  if (!map[fieldCode]) {
+    map[fieldCode] = createFieldState();
+  }
+  return map[fieldCode];
+};
+
+const collectConfiguredFieldMeta = (settings) => {
+  const fieldMetaMap = {};
+
+  [RULE_TYPE.ACCOUNT, RULE_TYPE.ORG].forEach((ruleType) => {
+    const config = getRuleConfig(ruleType);
+
+    settings.forEach((record, recordIndex) => {
+      const tableField = pickField(record, config.table);
+      const rows = toArr(tableField?.value);
+
+      log(`collect meta ${ruleType}`, {
+        recordIndex,
+        tableCandidates: config.table,
+        rowCount: rows.length,
+      });
+
+      rows.forEach((rowItem, rowIndex) => {
+        const row = rowItem?.value || {};
+        const rawFields = pickField(row, config.fields)?.value;
+        const fieldCodes = parseArr(rawFields);
+        const configuredType = toStr(pickField(row, config.fieldType)?.value);
+
+        log(`collect meta row ${ruleType} [${recordIndex}:${rowIndex}]`, {
+          rawFields,
+          fieldCodes,
+          configuredType,
+          rowKeys: Object.keys(row),
         });
 
-        rows.forEach((rowItem, rowIndex) => {
-          const row = rowItem?.value || {};
-          const rawFields = pickField(row, config.fields)?.value;
-          const fieldCodes = parseArr(rawFields);
-          const configuredType = toStr(pickField(row, config.fieldType)?.value);
-
-          log(`collect meta row ${ruleType} [${recordIndex}:${rowIndex}]`, {
-            rawFields,
-            fieldCodes,
-            configuredType,
-            rowKeys: Object.keys(row),
-          });
-
-          fieldCodes.forEach((fieldCode) => {
-            const code = toStr(fieldCode);
-            if (code) {
-              fieldMetaMap[code] = { code, configuredType };
-            }
-          });
+        fieldCodes.forEach((fieldCode) => {
+          const code = toStr(fieldCode);
+          if (code) {
+            fieldMetaMap[code] = { code, configuredType };
+          }
         });
       });
     });
+  });
 
-    log('fieldMetaMap', fieldMetaMap);
-    return fieldMetaMap;
-  };
+  log('fieldMetaMap', fieldMetaMap);
+  return fieldMetaMap;
+};
 
-  const initControlMap = (fieldMetaMap) => {
-    const map = {};
-    Object.keys(fieldMetaMap).forEach((fieldCode) => {
-      map[fieldCode] = createFieldState();
-    });
-    return map;
-  };
+const initControlMap = (fieldMetaMap) => {
+  const map = {};
+  Object.keys(fieldMetaMap).forEach((fieldCode) => {
+    map[fieldCode] = createFieldState();
+  });
+  return map;
+};
 
-  const getFieldBehaviorByConfiguredType = (configuredType) => {
-    return FIELD_TYPE_BEHAVIOR[configuredType] || FIELD_ACTION.NONE;
-  };
+const getFieldBehaviorByConfiguredType = (configuredType) => {
+  return FIELD_TYPE_BEHAVIOR[configuredType] || FIELD_ACTION.NONE;
+};
 
-  const getFieldBehavior = (configuredType) => {
-    const configuredBehavior = getFieldBehaviorByConfiguredType(configuredType);
+const getFieldBehavior = (configuredType) => {
+  const configuredBehavior = getFieldBehaviorByConfiguredType(configuredType);
 
-    switch (configuredBehavior) {
-      case FIELD_ACTION.SKIP:
-        return configuredBehavior;
-      default:
-        return FIELD_ACTION.NONE;
-    }
-  };
+  switch (configuredBehavior) {
+    case FIELD_ACTION.SKIP:
+      return configuredBehavior;
+    default:
+      return FIELD_ACTION.NONE;
+  }
+};
 
-  const isRelatedFieldType = (configuredType) => {
-    return toStr(configuredType) === FIELD_KIND.RELATED;
-  };
+const isRelatedFieldType = (configuredType) => {
+  return toStr(configuredType) === FIELD_KIND.RELATED;
+};
 
-  const cssEscape = (value) => {
-    if (window.CSS && typeof window.CSS.escape === 'function') {
-      return window.CSS.escape(value);
-    }
-    return String(value).replace(/["\\]/g, '\\$&');
-  };
+const cssEscape = (value) => {
+  if (window.CSS && typeof window.CSS.escape === 'function') {
+    return window.CSS.escape(value);
+  }
+  return String(value).replace(/["\\]/g, '\\$&');
+};
 
-  const setRelatedFieldShown = (fieldCode, shown) => {
+const setRelatedFieldShown = (fieldCode, shown) => {
+  try {
+    kintone.app.record.setFieldShown(fieldCode, shown);
+  } catch (error) {
+    warn(`setFieldShown related failed: ${fieldCode}`, error);
+  }
+
+  const applyDomShown = () => {
     try {
-      kintone.app.record.setFieldShown(fieldCode, shown);
-    } catch (error) {
-      warn(`setFieldShown related failed: ${fieldCode}`, error);
-    }
-
-    const applyDomShown = () => {
-      try {
-        const fieldElement = kintone.app.record.getFieldElement(fieldCode);
-        if (fieldElement) {
-          fieldElement.style.display = shown ? '' : 'none';
-          return;
-        }
-
-        const escapedCode = cssEscape(fieldCode);
-        const domElement = document.querySelector(
-          `[data-field-code="${escapedCode}"]`,
-        );
-        if (domElement) {
-          domElement.style.display = shown ? '' : 'none';
-        }
-      } catch (error) {
-        warn(`related DOM shown failed: ${fieldCode}`, error);
+      const fieldElement = kintone.app.record.getFieldElement(fieldCode);
+      if (fieldElement) {
+        fieldElement.style.display = shown ? '' : 'none';
+        return;
       }
-    };
 
-    applyDomShown();
-    setTimeout(applyDomShown, 100);
-    setTimeout(applyDomShown, 500);
+      const escapedCode = cssEscape(fieldCode);
+      const domElement = document.querySelector(
+        `[data-field-code="${escapedCode}"]`,
+      );
+      if (domElement) {
+        domElement.style.display = shown ? '' : 'none';
+      }
+    } catch (error) {
+      warn(`related DOM shown failed: ${fieldCode}`, error);
+    }
   };
 
-  const applyMatchedRule = (
-    control,
+  applyDomShown();
+  setTimeout(applyDomShown, 100);
+  setTimeout(applyDomShown, 500);
+};
+
+const applyMatchedRule = (
+  control,
+  showOptions,
+  permissionOptions,
+  requiredOptions,
+  coverMatchResult,
+  source,
+) => {
+  const showFlag = hasShowFlag(showOptions);
+  const hideFlag = hasHideFlag(showOptions);
+  const editFlag = hasEditFlag(permissionOptions);
+  const requiredFlag = hasRequiredFlag(requiredOptions);
+
+  log('applyMatchedRule', {
+    source,
     showOptions,
     permissionOptions,
     requiredOptions,
     coverMatchResult,
-    source,
-  ) => {
-    const showFlag = hasShowFlag(showOptions);
-    const hideFlag = hasHideFlag(showOptions);
-    const editFlag = hasEditFlag(permissionOptions);
-    const requiredFlag = hasRequiredFlag(requiredOptions);
+    showFlag,
+    hideFlag,
+    editFlag,
+    requiredFlag,
+    before: { ...control },
+  });
 
-    log('applyMatchedRule', {
-      source,
-      showOptions,
-      permissionOptions,
-      requiredOptions,
-      coverMatchResult,
-      showFlag,
-      hideFlag,
-      editFlag,
-      requiredFlag,
-      before: { ...control },
-    });
+  switch (source) {
+    case RULE_TYPE.ACCOUNT:
+      control.matchedByAccount = true;
 
-    switch (source) {
-      case RULE_TYPE.ACCOUNT:
-        control.matchedByAccount = true;
+      if (showFlag) {
+        control.visible = true;
+        control.accountVisibleSet = true;
+      } else if (hideFlag && !control.orgVisibleSet) {
+        control.visible = false;
+        control.accountVisibleSet = true;
+      }
 
-        if (showFlag) {
-          control.visible = true;
-          control.accountVisibleSet = true;
-        } else if (hideFlag && !control.orgVisibleSet) {
-          control.visible = false;
-          control.accountVisibleSet = true;
-        }
+      control.editable = !!editFlag;
+      control.accountEditableSet = true;
 
+      if (
+        coverMatchResult === MATCH_RESULT.MATCH ||
+        coverMatchResult === MATCH_RESULT.EMPTY
+      ) {
+        control.required = !!requiredFlag;
+        control.accountRequiredSet = true;
+      }
+      break;
+
+    case RULE_TYPE.ORG:
+      control.matchedByOrg = true;
+
+      if (showFlag) {
+        control.visible = true;
+        control.orgVisibleSet = true;
+      } else if (hideFlag && !control.accountVisibleSet) {
+        control.visible = false;
+        control.orgVisibleSet = true;
+      }
+
+      if (!control.accountEditableSet) {
         control.editable = !!editFlag;
-        control.accountEditableSet = true;
+        control.orgEditableSet = true;
+      }
 
-        if (
-          coverMatchResult === MATCH_RESULT.MATCH ||
-          coverMatchResult === MATCH_RESULT.EMPTY
-        ) {
-          control.required = !!requiredFlag;
-          control.accountRequiredSet = true;
-        }
-        break;
+      if (
+        !control.accountRequiredSet &&
+        (coverMatchResult === MATCH_RESULT.MATCH ||
+          coverMatchResult === MATCH_RESULT.EMPTY)
+      ) {
+        control.required = !!requiredFlag;
+        control.orgRequiredSet = true;
+      }
+      break;
+  }
 
-      case RULE_TYPE.ORG:
-        control.matchedByOrg = true;
+  log('applyMatchedRule result', {
+    source,
+    after: { ...control },
+  });
+};
 
-        if (showFlag) {
-          control.visible = true;
-          control.orgVisibleSet = true;
-        } else if (hideFlag && !control.accountVisibleSet) {
-          control.visible = false;
-          control.orgVisibleSet = true;
-        }
+const shouldApplyRule = (ruleType, matchResult) => {
+  switch (ruleType) {
+    case RULE_TYPE.ACCOUNT:
+      return matchResult === MATCH_RESULT.MATCH;
+    case RULE_TYPE.ORG:
+      return (
+        matchResult === MATCH_RESULT.MATCH ||
+        matchResult === MATCH_RESULT.EMPTY
+      );
+    default:
+      return false;
+  }
+};
 
-        if (!control.accountEditableSet) {
-          control.editable = !!editFlag;
-          control.orgEditableSet = true;
-        }
+const processRules = (
+  ruleType,
+  settings,
+  loginContext,
+  currentStatus,
+  record,
+  controlMap,
+) => {
+  const config = getRuleConfig(ruleType);
 
-        if (
-          !control.accountRequiredSet &&
-          (coverMatchResult === MATCH_RESULT.MATCH ||
-            coverMatchResult === MATCH_RESULT.EMPTY)
-        ) {
-          control.required = !!requiredFlag;
-          control.orgRequiredSet = true;
-        }
-        break;
-    }
+  settings.forEach((recordItem) => {
+    const tableField = pickField(recordItem, config.table);
+    const rows = toArr(tableField?.value);
 
-    log('applyMatchedRule result', {
-      source,
-      after: { ...control },
-    });
-  };
+    rows.forEach((rowItem) => {
+      const row = rowItem?.value || {};
 
-  const shouldApplyRule = (ruleType, matchResult) => {
-    switch (ruleType) {
-      case RULE_TYPE.ACCOUNT:
-        return matchResult === MATCH_RESULT.MATCH;
-      case RULE_TYPE.ORG:
-        return (
-          matchResult === MATCH_RESULT.MATCH ||
-          matchResult === MATCH_RESULT.EMPTY
+      const enableField = pickField(row, config.enable);
+      const statusField = pickField(row, config.status);
+      const targetField = pickField(row, config.target);
+      const fieldsField = pickField(row, config.fields);
+      const coverField = pickField(row, config.coverValues);
+      const showField = pickField(row, config.show);
+      const permField = pickField(row, config.perm);
+      const requiredField = pickField(row, config.required);
+
+      const enabled = isEnabled(enableField);
+      const statusMatched = isStatusMatch(statusField?.value, currentStatus);
+      const targets = config.targetGetter(targetField);
+      const matchResult = matchTarget(ruleType, targets, loginContext);
+      const fieldCodes = parseArr(fieldsField?.value);
+      const coverValuesText = coverField?.value;
+      const showOptions = getCheckboxValues(showField);
+      const permissionOptions = getCheckboxValues(permField);
+      const requiredOptions = getCheckboxValues(requiredField);
+      const runnable =
+        enabled && statusMatched && shouldApplyRule(ruleType, matchResult);
+
+      log('rule runnable', {
+        ruleType,
+        enabled,
+        currentStatus,
+        statusSetting: statusField?.value,
+        statusMatched,
+        targets,
+        matchResult,
+        runnable,
+      });
+
+      if (!runnable) return;
+
+      fieldCodes.forEach((fieldCode) => {
+        const code = toStr(fieldCode);
+        if (!code) return;
+
+        const localField = record?.[code];
+        const coverMatchResult = matchCoverValues(
+          localField,
+          coverValuesText,
         );
-      default:
-        return false;
-    }
-  };
 
-  const processRules = (
-    ruleType,
+        const control = ensureFieldState(controlMap, code);
+        applyMatchedRule(
+          control,
+          showOptions,
+          permissionOptions,
+          requiredOptions,
+          coverMatchResult,
+          ruleType,
+        );
+      });
+    });
+  });
+};
+
+/**
+ * 依 controlMap 設定欄位可否編輯：主表欄位，以及所有子表格「每一列」的明細欄位。
+ * 開畫面時套用一次；子表格新增列時，新列的欄位預設可編輯，所以子表格 change 事件要再套一次（2026-10-29）。
+ */
+const applyDisabled = (record, controlMap, fieldMetaMap) => {
+  const subtableRows = Object.values(record || {})
+    .filter((field) => field?.type === 'SUBTABLE' && Array.isArray(field.value))
+    .flatMap((field) => field.value);
+
+  Object.keys(controlMap).forEach((fieldCode) => {
+    const configuredType = fieldMetaMap[fieldCode]?.configuredType;
+    if (getFieldBehavior(configuredType) === FIELD_ACTION.SKIP || isRelatedFieldType(configuredType)) return;
+
+    const disabled = !controlMap[fieldCode].editable;
+    if (record[fieldCode]) {
+      record[fieldCode].disabled = disabled;
+    }
+    subtableRows.forEach((row) => {
+      if (row?.value?.[fieldCode]) {
+        row.value[fieldCode].disabled = disabled;
+      }
+    });
+  });
+};
+
+const applyUI = (event, controlMap, fieldMetaMap) => {
+  const record = event.record;
+  const eventType = event.type;
+
+  Object.keys(controlMap).forEach((fieldCode) => {
+    const control = controlMap[fieldCode];
+    const meta = fieldMetaMap[fieldCode];
+    const behavior = getFieldBehavior(meta?.configuredType);
+
+    if (behavior === FIELD_ACTION.SKIP) return;
+
+    if (isRelatedFieldType(meta?.configuredType)) {
+      setRelatedFieldShown(fieldCode, !!control.visible);
+      return;
+    }
+
+    try {
+      kintone.app.record.setFieldShown(fieldCode, !!control.visible);
+    } catch (error) {
+      warn(`setFieldShown failed: ${fieldCode}`, error);
+    }
+  });
+
+  // detail.show 與 print.show 為唯讀頁面，不設 disabled；其餘（create/edit 的 show）皆套用
+  const isReadOnlyView = eventType === 'app.record.detail.show' || eventType === 'app.record.print.show';
+  if (!isReadOnlyView) {
+    applyDisabled(record, controlMap, fieldMetaMap);
+  }
+
+  return event;
+};
+
+// ── 欄位標籤（錯誤視窗顯示用）────────────────────────────────────────────
+//   視窗點名的是畫面上看到的標籤（例如「申請單號（Application Number）」），不是欄位代碼（傳票編號）。
+//   取本 App 的表單設定：先用 kintone.app.getFormFields()，沒有這個 API 才打 REST；
+//   整頁只取一次，取不到就退回顯示欄位代碼（不影響擋存檔）。子表格裡的欄位也收進來。
+// 本 App 的表單設定：欄位標籤與子表格清單共用，整頁只取一次（失敗則清除以便重試）。
+let _formPropertiesPromise = null;
+const getFormProperties = () => {
+  if (_formPropertiesPromise) return _formPropertiesPromise;
+  const appId = kintone.app.getId();
+  _formPropertiesPromise = (
+    typeof kintone.app.getFormFields === 'function'
+      ? kintone.app.getFormFields()
+      : kintone.api(kintone.api.url('/k/v1/app/form/fields', true), 'GET', { app: appId }).then((resp) => resp.properties)
+  ).catch((error) => {
+    _formPropertiesPromise = null;
+    throw error;
+  });
+  return _formPropertiesPromise;
+};
+
+let _labelsPromise = null;
+const fetchFieldLabels = async () => {
+  const properties = await getFormProperties();
+  const labels = {};
+  Object.values(properties || {}).forEach((prop) => {
+    if (prop?.code && prop.label) labels[prop.code] = prop.label;
+    Object.values(prop?.fields || {}).forEach((sub) => {
+      if (sub?.code && sub.label) labels[sub.code] = sub.label;
+    });
+  });
+  return labels;
+};
+const getFieldLabels = () => {
+  if (_labelsPromise) return _labelsPromise;
+  _labelsPromise = fetchFieldLabels().catch((error) => {
+    warn('讀取欄位標籤失敗，改顯示欄位代碼', error);
+    _labelsPromise = null; // 下次重試
+    return {};
+  });
+  return _labelsPromise;
+};
+
+/**
+ * 檢查必填：沒填的欄位標紅，回傳沒填的欄位 [{ code, row }]（row＝子表格第幾列，主表欄位為 null）。
+ * 列表直接編輯只檢查列表上能改的欄位（INLINE_EDITABLE）。
+ */
+const collectMissingRequired = (event, controlMap) => {
+  const record = event.record;
+  const missing = [];
+  const isIndexEdit = event.type === INDEX_EDIT_SUBMIT;
+
+  Object.keys(controlMap).forEach((fieldCode) => {
+    const control = controlMap[fieldCode];
+    const field = record?.[fieldCode];
+
+    if (isIndexEdit && !INLINE_EDITABLE.includes(fieldCode)) return;
+
+    if (control.required) {
+      if (field) {
+        field.error = null;
+        if (isEmptyValue(field.value)) {
+          field.error = '此欄位為必填';
+          missing.push({ code: fieldCode, row: null });
+        }
+      }
+      // 同時支援子表格內明細欄位的必填驗證與高亮
+      Object.keys(record).forEach((key) => {
+        if (record[key]?.type === 'SUBTABLE' && Array.isArray(record[key].value)) {
+          record[key].value.forEach((row, rowIndex) => {
+            if (row.value && row.value[fieldCode]) {
+              row.value[fieldCode].error = null;
+              if (isEmptyValue(row.value[fieldCode].value)) {
+                row.value[fieldCode].error = '此欄位為必填';
+                if (!missing.some((m) => m.code === fieldCode && m.row === rowIndex + 1)) missing.push({ code: fieldCode, row: rowIndex + 1 });
+              }
+            }
+          });
+        }
+      });
+    }
+  });
+
+  return missing;
+};
+
+/** 沒填的必填欄位 → 錯誤訊息（點名畫面上的標籤；子表格附上第幾列） */
+const missingMessage = (missing, labels) =>
+  `尚有必填欄位未填寫\n${missing
+      .map(({ code, row }) => `▸${labels[code] || code}${row ? `（第 ${row} 列）` : ''}`)
+      .join('\n')}\n※ 請填寫後再按一次儲存`;
+
+const buildPermissionContext = async () => {
+  const [settings, loginContext] = await Promise.all([
+    getSettings(),
+    getLoginContext(),
+  ]);
+
+  const fieldMetaMap = collectConfiguredFieldMeta(settings);
+  const controlMap = initControlMap(fieldMetaMap);
+
+  return { settings, loginContext, fieldMetaMap, controlMap };
+};
+
+// onShow / onSubmit 共用前置：建立權限上下文並依「帳號 → 組織」順序跑完兩類規則，
+// 回傳彙整後的 controlMap / fieldMetaMap，交由各事件做最後一步（套 UI / 驗必填）。
+const resolvePermissions = async (event) => {
+  const record = event.record;
+  const currentStatus = toStr(record?.[STATUS_FIELD]?.value);
+
+  const { settings, loginContext, fieldMetaMap, controlMap } =
+    await buildPermissionContext();
+
+  processRules(
+    RULE_TYPE.ACCOUNT,
     settings,
     loginContext,
     currentStatus,
     record,
     controlMap,
-  ) => {
-    const config = getRuleConfig(ruleType);
+  );
 
-    settings.forEach((recordItem) => {
-      const tableField = pickField(recordItem, config.table);
-      const rows = toArr(tableField?.value);
+  processRules(
+    RULE_TYPE.ORG,
+    settings,
+    loginContext,
+    currentStatus,
+    record,
+    controlMap,
+  );
 
-      rows.forEach((rowItem) => {
-        const row = rowItem?.value || {};
+  return { controlMap, fieldMetaMap };
+};
 
-        const enableField = pickField(row, config.enable);
-        const statusField = pickField(row, config.status);
-        const targetField = pickField(row, config.target);
-        const fieldsField = pickField(row, config.fields);
-        const coverField = pickField(row, config.coverValues);
-        const showField = pickField(row, config.show);
-        const permField = pickField(row, config.perm);
-        const requiredField = pickField(row, config.required);
+// 新增／編輯畫面開啟時算好的權限，供子表格 change 事件重新鎖定新列。
+// change 事件不可非同步，不能在裡面重新讀取設定；畫面上的登入者與流程狀態不會變，沿用開畫面時的結果即可。
+// （指定的欄位值只影響必填，必填在存檔時會重新計算。）
+const EDIT_SCREENS = ['app.record.create.show', 'app.record.edit.show'];
+let _screenPermissions = null;
 
-        const enabled = isEnabled(enableField);
-        const statusMatched = isStatusMatch(statusField?.value, currentStatus);
-        const targets = config.targetGetter(targetField);
-        const matchResult = matchTarget(ruleType, targets, loginContext);
-        const fieldCodes = parseArr(fieldsField?.value);
-        const coverValuesText = coverField?.value;
-        const showOptions = getCheckboxValues(showField);
-        const permissionOptions = getCheckboxValues(permField);
-        const requiredOptions = getCheckboxValues(requiredField);
-        const runnable =
-          enabled && statusMatched && shouldApplyRule(ruleType, matchResult);
-
-        log('rule runnable', {
-          ruleType,
-          enabled,
-          currentStatus,
-          statusSetting: statusField?.value,
-          statusMatched,
-          targets,
-          matchResult,
-          runnable,
-        });
-
-        if (!runnable) return;
-
-        fieldCodes.forEach((fieldCode) => {
-          const code = toStr(fieldCode);
-          if (!code) return;
-
-          const localField = record?.[code];
-          const coverMatchResult = matchCoverValues(
-            localField,
-            coverValuesText,
-          );
-
-          const control = ensureFieldState(controlMap, code);
-          applyMatchedRule(
-            control,
-            showOptions,
-            permissionOptions,
-            requiredOptions,
-            coverMatchResult,
-            ruleType,
-          );
-        });
-      });
-    });
-  };
-
-  /**
-   * 依 controlMap 設定欄位可否編輯：主表欄位，以及所有子表格「每一列」的明細欄位。
-   * 開畫面時套用一次；子表格新增列時，新列的欄位預設可編輯，所以子表格 change 事件要再套一次（2026-10-29）。
-   */
-  const applyDisabled = (record, controlMap, fieldMetaMap) => {
-    const subtableRows = Object.values(record || {})
-      .filter((field) => field?.type === 'SUBTABLE' && Array.isArray(field.value))
-      .flatMap((field) => field.value);
-
-    Object.keys(controlMap).forEach((fieldCode) => {
-      const configuredType = fieldMetaMap[fieldCode]?.configuredType;
-      if (getFieldBehavior(configuredType) === FIELD_ACTION.SKIP || isRelatedFieldType(configuredType)) return;
-
-      const disabled = !controlMap[fieldCode].editable;
-      if (record[fieldCode]) {
-        record[fieldCode].disabled = disabled;
-      }
-      subtableRows.forEach((row) => {
-        if (row?.value?.[fieldCode]) {
-          row.value[fieldCode].disabled = disabled;
-        }
-      });
-    });
-  };
-
-  const applyUI = (event, controlMap, fieldMetaMap) => {
-    const record = event.record;
-    const eventType = event.type;
-
-    Object.keys(controlMap).forEach((fieldCode) => {
-      const control = controlMap[fieldCode];
-      const meta = fieldMetaMap[fieldCode];
-      const behavior = getFieldBehavior(meta?.configuredType);
-
-      if (behavior === FIELD_ACTION.SKIP) return;
-
-      if (isRelatedFieldType(meta?.configuredType)) {
-        setRelatedFieldShown(fieldCode, !!control.visible);
-        return;
-      }
-
-      try {
-        kintone.app.record.setFieldShown(fieldCode, !!control.visible);
-      } catch (error) {
-        warn(`setFieldShown failed: ${fieldCode}`, error);
-      }
-    });
-
-    // detail.show 與 print.show 為唯讀頁面，不設 disabled；其餘（create/edit 的 show）皆套用
-    const isReadOnlyView = eventType === 'app.record.detail.show' || eventType === 'app.record.print.show';
-    if (!isReadOnlyView) {
-      applyDisabled(record, controlMap, fieldMetaMap);
-    }
-
+const onShow = async (event) => {
+  if (EDIT_SCREENS.includes(event.type)) _screenPermissions = null;
+  try {
+    const { controlMap, fieldMetaMap } = await resolvePermissions(event);
+    if (EDIT_SCREENS.includes(event.type)) _screenPermissions = { controlMap, fieldMetaMap };
+    return applyUI(event, controlMap, fieldMetaMap);
+  } catch (error) {
+    console.error('[帳號權限設定] 讀取權限規則失敗:', error);
+    showAlert(ERROR_TITLE, ['無法讀取帳號權限設定，欄位的顯示與編輯權限沒有套用\n※ 請重新整理頁面，仍有問題請聯絡系統管理員']);
     return event;
-  };
+  }
+};
 
-  // ── 欄位標籤（錯誤視窗顯示用）────────────────────────────────────────────
-  //   視窗點名的是畫面上看到的標籤（例如「申請單號（Application Number）」），不是欄位代碼（傳票編號）。
-  //   取本 App 的表單設定：先用 kintone.app.getFormFields()，沒有這個 API 才打 REST；
-  //   整頁只取一次，取不到就退回顯示欄位代碼（不影響擋存檔）。子表格裡的欄位也收進來。
-  // 本 App 的表單設定：欄位標籤與子表格清單共用，整頁只取一次（失敗則清除以便重試）。
-  let _formPropertiesPromise = null;
-  const getFormProperties = () => {
-    if (_formPropertiesPromise) return _formPropertiesPromise;
-    const appId = kintone.app.getId();
-    _formPropertiesPromise = (
-      typeof kintone.app.getFormFields === 'function'
-        ? kintone.app.getFormFields()
-        : kintone.api(kintone.api.url('/k/v1/app/form/fields', true), 'GET', { app: appId }).then((resp) => resp.properties)
-    ).catch((error) => {
-      _formPropertiesPromise = null;
-      throw error;
-    });
-    return _formPropertiesPromise;
-  };
+const onSubmit = async (event) => {
+  try {
+    const { controlMap } = await resolvePermissions(event);
+    const missing = collectMissingRequired(event, controlMap);
+    if (missing.length === 0) return event;
+    // 欄位下方另有紅字標示；視窗點名欄位標籤（列表直接編輯看不出是哪一格）
+    return reportSaveErrors(event, [missingMessage(missing, await getFieldLabels())]);
+  } catch (error) {
+    console.error('[帳號權限設定] 讀取權限規則失敗，無法檢查必填:', error);
+    return reportSaveErrors(event, ['無法讀取帳號權限設定，無法檢查必填欄位\n※ 請稍後再試，仍有問題請聯絡系統管理員']);
+  }
+};
 
-  let _labelsPromise = null;
-  const fetchFieldLabels = async () => {
-    const properties = await getFormProperties();
-    const labels = {};
-    Object.values(properties || {}).forEach((prop) => {
-      if (prop?.code && prop.label) labels[prop.code] = prop.label;
-      Object.values(prop?.fields || {}).forEach((sub) => {
-        if (sub?.code && sub.label) labels[sub.code] = sub.label;
-      });
-    });
-    return labels;
-  };
-  const getFieldLabels = () => {
-    if (_labelsPromise) return _labelsPromise;
-    _labelsPromise = fetchFieldLabels().catch((error) => {
-      warn('讀取欄位標籤失敗，改顯示欄位代碼', error);
-      _labelsPromise = null; // 下次重試
-      return {};
-    });
-    return _labelsPromise;
-  };
+/** 子表格新增／刪除列：新列的欄位預設可編輯，依開畫面時的權限重新鎖定所有列（同步處理） */
+const onSubtableChange = (event) => {
+  if (!_screenPermissions) return event; // 開畫面讀取權限失敗或尚未完成：維持現狀
+  applyDisabled(event.record, _screenPermissions.controlMap, _screenPermissions.fieldMetaMap);
+  return event;
+};
 
-  /**
-   * 檢查必填：沒填的欄位標紅，回傳沒填的欄位 [{ code, row }]（row＝子表格第幾列，主表欄位為 null）。
-   * 列表直接編輯只檢查列表上能改的欄位（INLINE_EDITABLE）。
-   */
-  const collectMissingRequired = (event, controlMap) => {
-    const record = event.record;
-    const missing = [];
-    const isIndexEdit = event.type === INDEX_EDIT_SUBMIT;
+// 子表格的欄位代碼每張表單不同，載入時讀取本 App 的表單設定，再替每個子表格註冊 change 事件
+const registerSubtableChange = async () => {
+  const properties = await getFormProperties();
+  const subtableCodes = Object.values(properties || {})
+    .filter((prop) => prop?.type === 'SUBTABLE')
+    .map((prop) => prop.code);
+  if (subtableCodes.length === 0) return;
 
-    Object.keys(controlMap).forEach((fieldCode) => {
-      const control = controlMap[fieldCode];
-      const field = record?.[fieldCode];
+  window.PR_KT.on(
+    subtableCodes.flatMap((code) => [`app.record.create.change.${code}`, `app.record.edit.change.${code}`]),
+    onSubtableChange,
+  );
+  log('subtable change registered', subtableCodes);
+};
 
-      if (isIndexEdit && !INLINE_EDITABLE.includes(fieldCode)) return;
-
-      if (control.required) {
-        if (field) {
-          field.error = null;
-          if (isEmptyValue(field.value)) {
-            field.error = '此欄位為必填';
-            missing.push({ code: fieldCode, row: null });
-          }
-        }
-        // 同時支援子表格內明細欄位的必填驗證與高亮
-        Object.keys(record).forEach((key) => {
-          if (record[key]?.type === 'SUBTABLE' && Array.isArray(record[key].value)) {
-            record[key].value.forEach((row, rowIndex) => {
-              if (row.value && row.value[fieldCode]) {
-                row.value[fieldCode].error = null;
-                if (isEmptyValue(row.value[fieldCode].value)) {
-                  row.value[fieldCode].error = '此欄位為必填';
-                  if (!missing.some((m) => m.code === fieldCode && m.row === rowIndex + 1)) missing.push({ code: fieldCode, row: rowIndex + 1 });
-                }
-              }
-            });
-          }
-        });
-      }
-    });
-
-    return missing;
-  };
-
-  /** 沒填的必填欄位 → 錯誤訊息（點名畫面上的標籤；子表格附上第幾列） */
-  const missingMessage = (missing, labels) =>
-    `尚有必填欄位未填寫\n${missing
-      .map(({ code, row }) => `▸${labels[code] || code}${row ? `（第 ${row} 列）` : ''}`)
-      .join('\n')}\n※ 請填寫後再按一次儲存`;
-
-  const buildPermissionContext = async () => {
-    const [settings, loginContext] = await Promise.all([
-      getSettings(),
-      getLoginContext(),
-    ]);
-
-    const fieldMetaMap = collectConfiguredFieldMeta(settings);
-    const controlMap = initControlMap(fieldMetaMap);
-
-    return { settings, loginContext, fieldMetaMap, controlMap };
-  };
-
-  // onShow / onSubmit 共用前置：建立權限上下文並依「帳號 → 組織」順序跑完兩類規則，
-  // 回傳彙整後的 controlMap / fieldMetaMap，交由各事件做最後一步（套 UI / 驗必填）。
-  const resolvePermissions = async (event) => {
-    const record = event.record;
-    const currentStatus = toStr(record?.[STATUS_FIELD]?.value);
-
-    const { settings, loginContext, fieldMetaMap, controlMap } =
-      await buildPermissionContext();
-
-    processRules(
-      RULE_TYPE.ACCOUNT,
-      settings,
-      loginContext,
-      currentStatus,
-      record,
-      controlMap,
-    );
-
-    processRules(
-      RULE_TYPE.ORG,
-      settings,
-      loginContext,
-      currentStatus,
-      record,
-      controlMap,
-    );
-
-    return { controlMap, fieldMetaMap };
-  };
-
-  // 新增／編輯畫面開啟時算好的權限，供子表格 change 事件重新鎖定新列。
-  // change 事件不可非同步，不能在裡面重新讀取設定；畫面上的登入者與流程狀態不會變，沿用開畫面時的結果即可。
-  // （指定的欄位值只影響必填，必填在存檔時會重新計算。）
-  const EDIT_SCREENS = ['app.record.create.show', 'app.record.edit.show'];
-  let _screenPermissions = null;
-
-  const onShow = async (event) => {
-    if (EDIT_SCREENS.includes(event.type)) _screenPermissions = null;
-    try {
-      const { controlMap, fieldMetaMap } = await resolvePermissions(event);
-      if (EDIT_SCREENS.includes(event.type)) _screenPermissions = { controlMap, fieldMetaMap };
-      return applyUI(event, controlMap, fieldMetaMap);
-    } catch (error) {
-      console.error('[帳號權限設定] 讀取權限規則失敗:', error);
-      showAlert(ERROR_TITLE, ['無法讀取帳號權限設定，欄位的顯示與編輯權限沒有套用\n※ 請重新整理頁面，仍有問題請聯絡系統管理員']);
-      return event;
-    }
-  };
-
-  const onSubmit = async (event) => {
-    try {
-      const { controlMap } = await resolvePermissions(event);
-      const missing = collectMissingRequired(event, controlMap);
-      if (missing.length === 0) return event;
-      // 欄位下方另有紅字標示；視窗點名欄位標籤（列表直接編輯看不出是哪一格）
-      return reportSaveErrors(event, [missingMessage(missing, await getFieldLabels())]);
-    } catch (error) {
-      console.error('[帳號權限設定] 讀取權限規則失敗，無法檢查必填:', error);
-      return reportSaveErrors(event, ['無法讀取帳號權限設定，無法檢查必填欄位\n※ 請稍後再試，仍有問題請聯絡系統管理員']);
-    }
-  };
-
-  /** 子表格新增／刪除列：新列的欄位預設可編輯，依開畫面時的權限重新鎖定所有列（同步處理） */
-  const onSubtableChange = (event) => {
-    if (!_screenPermissions) return event; // 開畫面讀取權限失敗或尚未完成：維持現狀
-    applyDisabled(event.record, _screenPermissions.controlMap, _screenPermissions.fieldMetaMap);
-    return event;
-  };
-
-  // 子表格的欄位代碼每張表單不同，載入時讀取本 App 的表單設定，再替每個子表格註冊 change 事件
-  const registerSubtableChange = async () => {
-    const properties = await getFormProperties();
-    const subtableCodes = Object.values(properties || {})
-      .filter((prop) => prop?.type === 'SUBTABLE')
-      .map((prop) => prop.code);
-    if (subtableCodes.length === 0) return;
-
-    window.PR_KT.on(
-      subtableCodes.flatMap((code) => [`app.record.create.change.${code}`, `app.record.edit.change.${code}`]),
-      onSubtableChange,
-    );
-    log('subtable change registered', subtableCodes);
-  };
-
+/** 入口檔 import '…?install' 時呼叫：註冊事件（載入時只定義函式） */
+export const install = () => {
   window.PR_KT.on(EVENTS_SHOW, onShow);
   window.PR_KT.on(EVENTS_SUBMIT, onSubmit);
   registerSubtableChange().catch((error) => {
     console.error('[帳號權限設定] 讀取子表格清單失敗，子表格新增列不會套用編輯權限:', error);
   });
-})();
+};

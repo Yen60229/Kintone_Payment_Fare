@@ -29,8 +29,7 @@ global.kintone = {
 
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
-// eslint-disable-next-line no-eval
-eval(readSrc('作廢防呆.js'));
+require('./lib/esm_loader.cjs').loadInto(null, '作廢防呆.js');
 
 const C = global.window.PR_CONFIG;
 const F = C.FIELDS;

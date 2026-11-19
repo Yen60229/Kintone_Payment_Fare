@@ -27,7 +27,7 @@ import '../payment_request_config.js';
 import '../存檔等待提示.js?install';
 
 // ② 依賴 Config 的模組（帳號權限設定排最前）────────────────────────────────
-import '../帳號權限設定.js';
+import '../帳號權限設定.js?install';
 import '../payment_request_main.js';
 // 公司卡支付／受款人明細：存檔錯誤交給 PR_SAVE_ERRORS，要排在 submit 前面才會併進同一個錯誤視窗
 import '../公司卡付款來源.js?install';
@@ -48,8 +48,8 @@ import '../批次整理資料.js?install';
 // 列表頁「🗂 批次動作 ▾」的批次填傳票／入帳完成；只有桌面版
 import '../批次填傳票_入帳完成.js';
 import '../受款人填寫設定.js';
-import '../流程自動推進.js';
-import '../作廢防呆.js';
+import '../流程自動推進.js?install';
+import '../作廢防呆.js?install';
 import '../print.show顯示單據編號_請款單據編號.js?install';
 import '../發票號碼寫入獨立欄位檢查.js';
 import '../開發人員用群組欄位.js?install';
@@ -58,10 +58,10 @@ import '../表頭查詢連結.js?install';
 import '../欄位標籤說明圖示.js';
 // 詳細頁主表欄位外框寬度改 auto（取代 SetFieldWidth）；只有桌面版
 import '../詳細頁欄位寬度自動.js?install';
-import '../請款單作廢_style.js';
+import '../請款單作廢_style.js?install';
 // 列表頁「JS 自定義設定」「流程管理」按鈕（2026-11-12 起打包；排在檔案批次後面，要找它的下載按鈕）
-import '../coding_tools.js';
+import '../coding_tools.js?install';
 
 // ③ 無 Config 依賴的獨立工具檔（順序不影響）──────────────────────────────
-import '../file_reader.js';
-import '../轉至其他會計單位按鈕處理.js';
+import '../file_reader.js?install';
+import '../轉至其他會計單位按鈕處理.js?install';

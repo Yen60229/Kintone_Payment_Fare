@@ -1,9 +1,8 @@
-(function () {
-  'use strict';
+// 列表頁「JS 自定義設定」「流程管理」按鈕（只進桌面版 bundle；2026-11-12 起打包，不再單獨上傳）
+const KT = window.PR_KT;
 
-  // 列表頁「JS 自定義設定」「流程管理」按鈕（只進桌面版 bundle；2026-11-12 起打包，不再單獨上傳）
-  const KT = window.PR_KT;
-
+/** 入口檔 import '…?install' 時呼叫：註冊事件（載入時只定義函式） */
+export const install = () => {
   KT.on('app.record.index.show', (event) => {
     // 檢查按鈕是否已存在
     if (document.getElementById('btn-workflow-settings') || document.getElementById('btn-js-settings')) {
@@ -74,4 +73,4 @@
 
     return event;
   });
-})();
+};
