@@ -4,7 +4,8 @@
 //   ① buildStatusBody —— 送出的是「動作名稱」而非狀態名稱；assignee 依 SEND_ASSIGNEE 決定送不送
 //   ② shouldCompensate —— 只有「本人 × FROM_STATUS × 未作廢 × 有 $id」四條件全滿足才補償
 //   ③ withTimeout —— 無回應的 Promise 會被轉成明確的 reject（避免 submit 永久轉圈）
-//   ④ 結構斷言 —— detail.show 必須用 setTimeout 脫離同步流程（SHOW handler 禁止 async）
+//   ④ 結構斷言 —— detail.show 用 setTimeout 背景補償（回傳 Promise 會讓 kintone 等它，卡住詳細頁）
+//   ⑤ advanceStatus —— 逾時後重讀狀態：其實已推進 → 視為成功不彈錯；仍未推進 → 帶 revision 重試
 // 直接用 Node 執行：node tests/auto_advance_status.test.cjs
 //
 // 作法：從原始檔擷取函式本體隔離執行，並對原始碼做結構斷言。
@@ -26,6 +27,8 @@ const isVoidedSrc = extract(/const isVoided = \(record\) =>.*;/, 'isVoided');
 const getStatusSrc = extract(/const getStatus = \(record\) =>.*;/, 'getStatus');
 const withTimeoutSrc = extract(/const withTimeout = \(promise, ms, label\) =>[\s\S]*?\n    \]\);/, 'withTimeout');
 const buildStatusBodySrc = extract(/const buildStatusBody = \(recordId, assigneeCode\) => \{[\s\S]*?\n  \};/, 'buildStatusBody');
+const fetchCurrentStatusSrc = extract(/const fetchCurrentStatus = async \(recordId\) => \{[\s\S]*?\n  \};/, 'fetchCurrentStatus');
+const advanceStatusSrc = extract(/async function advanceStatus\([\s\S]*?\n  \}/, 'advanceStatus');
 const shouldCompensateSrc = extract(/const shouldCompensate = \(record, loginCode\) => \{[\s\S]*?\n  \};/, 'shouldCompensate');
 
 // 測試用替身：對應 payment_request_config.js 的實際值
@@ -200,11 +203,11 @@ check('有註冊 create.submit.success 並呼叫 advanceStatus', () => {
   assert.ok(/silent:\s*true/.test(m[0]), '建單推進應為靜默（失敗交由詳細頁補償）');
 });
 
-check('detail.show 用 setTimeout 脫離同步流程（SHOW handler 禁止 async）', () => {
+check('detail.show 用 setTimeout 背景補償（不回傳 Promise，避免 kintone 等 API 重試而卡住詳細頁）', () => {
   const m = src.match(/KT\.on\('app\.record\.detail\.show'[\s\S]*?\n  \}\);/);
   assert.ok(m, '找不到 detail.show 事件註冊');
   assert.ok(/setTimeout\(\(\) => compensateIfNeeded/.test(m[0]), 'detail.show 未透過 setTimeout 呼叫補償');
-  assert.ok(!/async \(event\)/.test(m[0]), 'SHOW handler 不可為 async');
+  assert.ok(!/async \(event\)/.test(m[0]), 'SHOW handler 回傳 Promise 會讓 kintone 等補償完成，詳細頁會被卡住');
 });
 
 check('補償流程有防迴圈守衛（reload 前先設旗標）', () => {
@@ -215,6 +218,114 @@ check('補償流程有防迴圈守衛（reload 前先設旗標）', () => {
   assert.ok(body.indexOf('guardSet(') < body.indexOf('window.location.reload'), '必須先設旗標再 reload，否則會無限重載');
 });
 
-asyncChecks.then(() => {
-  console.log(`\n${passed} 項斷言全部通過`);
+// ── ⑤ advanceStatus：逾時後重讀狀態 ────────────────────────────────────────
+
+// 建立隔離環境：kintone.api 依序回放腳本；setTimeout 壓到 1ms（退避與逾時都不實際等待）
+const buildAdvance = (script) => {
+  const calls = [];
+  const swalCalls = [];
+  const kintone = {
+    api: (url, method, params) => {
+      calls.push({ url, method, params: { ...params } });
+      const next = script.shift();
+      assert.ok(next, `未預期的第 ${calls.length} 次 API 呼叫：${method} ${url}`);
+      assert.strictEqual(method, next.method, `第 ${calls.length} 次呼叫方法應為 ${next.method}`);
+      return next.respond();
+    },
+  };
+  kintone.api.url = (p) => p;
+  const Swal = { fire: (opts) => (swalCalls.push(opts), Promise.resolve()) };
+  const quietConsole = { warn() {}, info() {}, error() {}, log() {} };
+  // eslint-disable-next-line no-new-func
+  const { advanceStatus } = new Function('kintone', 'Swal', 'console', 'setTimeout', `
+    ${PRELUDE}
+    const CONFIG = {
+      ENABLED: true, FROM_STATUS: '報銷人填單', TO_STATUS: '草稿（未送出）', ACTION_NAME: '點擊流程開始',
+      SEND_ASSIGNEE: true, TIMEOUT_MS: 15000,
+    };
+    ${getStatusSrc}
+    ${withTimeoutSrc}
+    ${buildStatusBodySrc}
+    ${fetchCurrentStatusSrc}
+    ${advanceStatusSrc}
+    return { advanceStatus };
+  `)(kintone, Swal, quietConsole, (fn) => global.setTimeout(fn, 1));
+  return { advanceStatus, calls, swalCalls };
+};
+
+const NEVER = { method: 'PUT', respond: () => new Promise(() => {}) }; // 逾時（無回應）
+const PUT_OK = { method: 'PUT', respond: () => Promise.resolve({ revision: '3' }) };
+const PUT_FAIL = { method: 'PUT', respond: () => Promise.reject(new Error('網路錯誤')) };
+const getStatusResp = (status, revision) => ({
+  method: 'GET',
+  respond: () => Promise.resolve({ record: { 狀態: { value: status }, $revision: { value: revision } } }),
 });
+const okAsync = (label) => {
+  passed += 1;
+  console.log(`  ok - ${label}`);
+};
+
+const advanceChecks = asyncChecks.then(async () => {
+  {
+    const { advanceStatus, calls, swalCalls } = buildAdvance([NEVER, getStatusResp('草稿（未送出）', '3')]);
+    assert.strictEqual(await advanceStatus(77, 'u1', { maxRetries: 3, silent: false }), true);
+    assert.deepStrictEqual(calls.map((c) => c.method), ['PUT', 'GET']);
+    assert.deepStrictEqual(calls[1].params, { app: 749, id: '77' });
+    assert.strictEqual(swalCalls.length, 0, '已推進成功不應彈錯誤視窗');
+    okAsync('逾時後重讀狀態已離開 FROM_STATUS → 視為成功，不重複推進、不彈錯');
+  }
+  {
+    const { advanceStatus, swalCalls } = buildAdvance([NEVER, getStatusResp('草稿（未送出）', '3')]);
+    assert.strictEqual(await advanceStatus(77, 'u1', { maxRetries: 1, silent: false }), true);
+    assert.strictEqual(swalCalls.length, 0);
+    okAsync('最後一次失敗也先重讀狀態，實際已推進就不報「流程推進失敗」');
+  }
+  {
+    const { advanceStatus, calls } = buildAdvance([NEVER, getStatusResp('報銷人填單', '2'), PUT_OK]);
+    assert.strictEqual(await advanceStatus(77, 'u1', { maxRetries: 3 }), true);
+    assert.deepStrictEqual(calls.map((c) => c.method), ['PUT', 'GET', 'PUT']);
+    assert.ok(!('revision' in calls[0].params), '第一次推進不帶 revision');
+    assert.strictEqual(calls[2].params.revision, '2', '重試必須帶重讀到的 revision，避免重複推進');
+    assert.strictEqual(calls[2].params.action, '點擊流程開始');
+    okAsync('仍停在 FROM_STATUS → 帶 revision 重試');
+  }
+  {
+    // 原請求遲到完成 → 帶 revision 的重試因版本不符被擋 → 再重讀判定已推進
+    const { advanceStatus, calls, swalCalls } = buildAdvance([
+      NEVER,
+      getStatusResp('報銷人填單', '2'),
+      { method: 'PUT', respond: () => Promise.reject(new Error('GAIA_CO02 revision 不符')) },
+      getStatusResp('草稿（未送出）', '3'),
+    ]);
+    assert.strictEqual(await advanceStatus(77, 'u1', { maxRetries: 3, silent: false }), true);
+    assert.deepStrictEqual(calls.map((c) => c.method), ['PUT', 'GET', 'PUT', 'GET']);
+    assert.strictEqual(swalCalls.length, 0);
+    okAsync('原請求遲到完成 → 帶 revision 的重試被擋，重讀後判定成功');
+  }
+  {
+    const stay = () => getStatusResp('報銷人填單', '2');
+    const { advanceStatus, calls, swalCalls } = buildAdvance([PUT_FAIL, stay(), PUT_FAIL, stay()]);
+    assert.strictEqual(await advanceStatus(77, 'u1', { maxRetries: 2, silent: false }), false);
+    assert.strictEqual(calls.length, 4);
+    assert.strictEqual(swalCalls.length, 1);
+    assert.strictEqual(swalCalls[0].title, '流程推進失敗');
+    okAsync('重讀後仍在 FROM_STATUS 且重試耗盡 → 回 false 並彈「流程推進失敗」');
+  }
+  {
+    const GET_FAIL = { method: 'GET', respond: () => Promise.reject(new Error('讀取失敗')) };
+    const { advanceStatus, calls, swalCalls } = buildAdvance([PUT_FAIL, GET_FAIL, PUT_OK]);
+    assert.strictEqual(await advanceStatus(77, 'u1', { maxRetries: 2, silent: true }), true);
+    assert.ok(!('revision' in calls[2].params), '沒讀到 revision 就不帶');
+    assert.strictEqual(swalCalls.length, 0);
+    okAsync('重讀狀態失敗不影響原本的重試');
+  }
+});
+
+advanceChecks
+  .then(() => {
+    console.log(`\n${passed} 項斷言全部通過`);
+  })
+  .catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });

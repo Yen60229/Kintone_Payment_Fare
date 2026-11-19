@@ -57,10 +57,30 @@
     return body;
   };
 
+  /**
+   * 重讀記錄目前的狀態與 revision（推進失敗後確認「其實已經推進成功」用）
+   * @param {string|number} recordId 記錄 ID
+   * @returns {Promise<{status: string, revision: string}>}
+   */
+  const fetchCurrentStatus = async (recordId) => {
+    const resp = await withTimeout(
+      kintone.api(kintone.api.url('/k/v1/record', true), 'GET', { app: C.APPS.PAYMENT, id: String(recordId) }),
+      CONFIG.TIMEOUT_MS,
+      '讀取流程狀態'
+    );
+    const record = resp?.record;
+    return { status: getStatus(record), revision: String(record?.$revision?.value || '') };
+  };
+
   // ── 流程推進 ───────────────────────────────────────────────────────────────
 
   /**
    * 將記錄從 FROM_STATUS 推進至 TO_STATUS（失敗時指數退避重試）
+   *
+   * 逾時只代表「沒等到回應」，原請求可能其實已在伺服器端成功。所以每次失敗後先重讀狀態：
+   *   - 已離開 FROM_STATUS → 視為成功（不再推進、也不彈「流程推進失敗」）
+   *   - 仍在 FROM_STATUS → 下一次推進帶 revision；若遲到的原請求在這之間才完成，
+   *     帶 revision 的重試會因版本不符被 kintone 拒絕，下一輪重讀即判定成功，不會重複推進。
    * @param {string|number} recordId 記錄 ID
    * @param {string} assigneeCode 作業者帳號 code（通常為建立者＝登入者）
    * @param {Object} opts
@@ -79,8 +99,17 @@
       } catch (err) {
         lastErr = err;
         console.warn(`[流程自動推進] 推進失敗，第 ${attempt}/${maxRetries} 次：`, err);
-        if (attempt < maxRetries) {
-          await new Promise((r) => setTimeout(r, 800 * attempt)); // 指數退避
+        // 退避等待（最後一次也等）：讓逾時但仍在路上的原請求有時間完成，再重讀狀態
+        await new Promise((r) => setTimeout(r, 800 * attempt));
+        try {
+          const current = await fetchCurrentStatus(recordId);
+          if (current.status && current.status !== CONFIG.FROM_STATUS) {
+            console.info(`[流程自動推進] 重讀狀態為「${current.status}」，前次請求實際已推進，不再重試`);
+            return true;
+          }
+          if (current.revision) body.revision = current.revision;
+        } catch (checkErr) {
+          console.warn('[流程自動推進] 重讀狀態失敗，依原計畫重試：', checkErr);
         }
       }
     }
@@ -198,7 +227,8 @@
     return event;
   });
 
-  // SHOW handler 禁止 async（kintone 不等 Promise），須透過 setTimeout 脫離同步流程後再呼叫
+  // kintone 的 SHOW handler 若回傳 Promise 會「等它完成」才繼續（同事件後面的 handler 也會被卡住）。
+  // 補償要打 API 並可能重試數次，不能讓詳細頁等它，所以刻意不回傳 Promise，用 setTimeout 背景執行。
   KT.on('app.record.detail.show', (event) => {
     setTimeout(() => compensateIfNeeded(event.record), 0);
     return event;
