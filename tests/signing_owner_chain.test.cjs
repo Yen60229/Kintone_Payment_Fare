@@ -82,7 +82,7 @@ const loadSigning = () => {
   eval(readSrc('payment_request_config.js'));
   env.C = global.window.PR_CONFIG;
   // eslint-disable-next-line no-eval
-  eval(readSrc('signing_personnel_manager_20260506.js'));
+  eval(readSrc('signing_personnel_manager.js'));
   const ACC = env.C.REF_FIELDS.ACCOUNTING_MAP;
   env.accountingRecord = { [ACC.APPLY_UNIT]: { value: 'U' }, [ACC.ACCOUNTING_UNIT]: { value: 'ACC_TPE' }, [ACC.ACCOUNTING_STAFF]: { value: [] }, [ACC.PERMISSION_USER]: { value: [] } };
   return { env, handlers };
@@ -420,7 +420,7 @@ const NAME = '航空貨物部-台北營業課';
   });
 
   await check('原始檔只讀費用所屬人／費用所屬人部門，沒有舊欄位與舊 config 鍵', () => {
-    const src = readSrc('signing_personnel_manager_20260506.js');
+    const src = readSrc('signing_personnel_manager.js');
     [/F\.TYPE/, /F\.APPLY_UNIT/, /F\.EMPLOYEE_NAME/, /ENT_SIGN/, /SLOT3/, /APPLICANT_SWITCH/, /AUTO_CHAIN_TYPES/, /app\.record\.[a-z]+\.change\.申請單位/].forEach((re) => {
       assert.ok(!re.test(src), `不應再出現 ${re}`);
     });

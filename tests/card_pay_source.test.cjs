@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：公司卡付款來源_20261116.js（從請款單交際費搬來的公司卡支付／受款人明細）
+// 測試：公司卡付款來源.js（從請款單交際費搬來的公司卡支付／受款人明細）
 //   - 749 還沒建欄位 → 整支不動作
 //   - 顯示：勾公司卡才顯示支付方式；部分支付才顯示明細表；全額／部分自動填主表受款人
 //   - 部分支付且明細沒資料 → 帶一列員工代墊（主表受款人、總金額）
@@ -17,8 +17,8 @@ const { check, done } = createRunner('card_pay_source.test.cjs');
 const env = createEnv({ api: () => Promise.resolve({ users: [] }) });
 env.load('payment_request_config.js');
 env.load('使用者主檔快取.js');
-env.load('受款人填寫設定_20250902.js');
-env.load('公司卡付款來源_20261116.js');
+env.load('受款人填寫設定.js');
+env.load('公司卡付款來源.js');
 const W = env.window;
 const C = W.PR_CONFIG;
 const F = C.FIELDS;
@@ -183,11 +183,11 @@ check('員工代墊列：改付款來源 → 開共用的員工選人視窗；�
 check('載入順序：桌面版與手機版都在 payment_request_submit 前面（錯誤才會併進同一個視窗）；JS 不注入樣式', () => {
   ['src/index.js', 'src/mobile.js'].forEach((file) => {
     const src = readSrc(file);
-    const at = src.indexOf("'../公司卡付款來源_20261116.js'");
+    const at = src.indexOf("'../公司卡付款來源.js'");
     assert.ok(at > 0, `${file} 要接公司卡付款來源`);
-    assert.ok(at < src.indexOf("'../payment_request_submit_20260506.js'"), `${file}：要排在 submit 前`);
+    assert.ok(at < src.indexOf("'../payment_request_submit.js'"), `${file}：要排在 submit 前`);
   });
-  const src = readSrc('公司卡付款來源_20261116.js');
+  const src = readSrc('公司卡付款來源.js');
   assert.ok(!src.includes('<style') && !src.includes('cssText') && !src.includes('kintone.events.on'));
 });
 

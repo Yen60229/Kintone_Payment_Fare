@@ -33,23 +33,23 @@ const importsOf = (entry) => {
 const DESKTOP = importsOf('src/index.js');
 const MOBILE = importsOf('src/mobile.js');
 const DESKTOP_ONLY = [
-  '帳號權限設定_20260722.js',
-  '檔案批次_6版_PDFLib向量版_20260716.js',
+  '帳號權限設定.js',
+  '檔案批次.js',
   '批次整理資料.js',
-  '批次填傳票_入帳完成_20261118.js',
-  '表頭查詢連結_20261105.js',
-  '欄位標籤說明圖示_20261104.js',
-  '詳細頁欄位寬度自動_20261112.js',
+  '批次填傳票_入帳完成.js',
+  '表頭查詢連結.js',
+  '欄位標籤說明圖示.js',
+  '詳細頁欄位寬度自動.js',
   'print.show顯示單據編號_請款單據編號.js',
-  '請款單作廢_style_20260506.js',
+  '請款單作廢_style.js',
   'file_reader.js',
-  '轉至其他會計單位按鈕處理_20250723.js',
-  '詳細頁欄位寬度自動_20261112.js',
+  '轉至其他會計單位按鈕處理.js',
+  '詳細頁欄位寬度自動.js',
   'coding_tools.js',
 ];
 // 放在專案最外層、不打包，PC 單獨上傳（排在 bundle 後面）
 // （交通費明細規則主檔檢查是上傳到規則主檔 App 的，前面只放 payment_request_config.js 原始檔）
-const STANDALONE = ['交通費明細規則主檔檢查_20261104.js'];
+const STANDALONE = ['交通費明細規則主檔檢查.js'];
 const MOBILE_MODULES = MOBILE.js.filter((f) => f !== 'src/mobile_target.js');
 
 /**

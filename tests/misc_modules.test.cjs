@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：作廢防呆_20260506.js 與其餘小模組的清理結果
+// 測試：作廢防呆.js 與其餘小模組的清理結果
 //   ① 作廢防呆的動作名稱接 C.ACTIONS.VOID：作廢動作要二次確認、其他動作直接放行
 //   ② 自動寬度欄位＝付款方式、申請人、申請人部門、費用所屬人、費用所屬人部門；左移（leftShift）整段刪除
 //   ③ 其餘小模組沒有 723 其他類型的殘留
@@ -30,7 +30,7 @@ global.kintone = {
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
 // eslint-disable-next-line no-eval
-eval(readSrc('作廢防呆_20260506.js'));
+eval(readSrc('作廢防呆.js'));
 
 const C = global.window.PR_CONFIG;
 const F = C.FIELDS;
@@ -56,7 +56,7 @@ const proceedEvent = (action, nextStatus, { status = '草稿（未送出）', fi
 });
 
 check('作廢防呆：動作名稱取自 C.ACTIONS.VOID（原始碼不再寫死 \'作廢\' 當動作名稱）', () => {
-  const src = readSrc('作廢防呆_20260506.js');
+  const src = readSrc('作廢防呆.js');
   assert.ok(src.includes('ACTION_NAME: window.PR_CONFIG.ACTIONS.VOID'));
   assert.ok(!/ACTION_NAME:\s*'作廢'/.test(src));
   assert.strictEqual(C.ACTIONS.VOID, '作廢');
@@ -123,7 +123,7 @@ check('附件防呆：沒有 Swal 時退回 alert', () => {
 });
 
 check('submit 對外提供 PR_SHOW_VALIDATION，視窗上方說明可換', () => {
-  const src = readSrc('payment_request_submit_20260506.js');
+  const src = readSrc('payment_request_submit.js');
   assert.ok(src.includes('window.PR_SHOW_VALIDATION = showValidationErrors'));
   assert.ok(/const showValidationErrors = \(title, errors, lead\)/.test(src));
 });
@@ -141,12 +141,12 @@ check('其餘小模組沒有 723 其他類型的殘留（類型、回寫來源�
   [
     'coding_tools.js',
     'file_reader.js',
-    '存檔等待提示_20260923.js',
-    '作廢防呆_20260506.js',
-    '請款單作廢_style_20260506.js',
-    '轉至其他會計單位按鈕處理_20250723.js',
+    '存檔等待提示.js',
+    '作廢防呆.js',
+    '請款單作廢_style.js',
+    '轉至其他會計單位按鈕處理.js',
     '開發人員用群組欄位.js',
-    '流程自動推進_20260810.js',
+    '流程自動推進.js',
   ].forEach((name) => {
     const src = readSrc(name);
     ['F.TYPE', 'EMPLOYEE_NAME', '回寫來源單', '交際費簽核判定', '簽核判定', 'docs/1', 'ENT_SIGN'].forEach((s) => assert.ok(!src.includes(s), `${name}: ${s}`));

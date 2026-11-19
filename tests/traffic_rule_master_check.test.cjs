@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：交通費明細規則主檔檢查_20261104.js（上傳到規則主檔，存檔時檢查名稱與請款單下拉選項一致）
+// 測試：交通費明細規則主檔檢查.js（上傳到規則主檔，存檔時檢查名稱與請款單下拉選項一致）
 //   a. config 原始檔 + 本檔在「規則主檔」（getId 回 752、沒有 getLoginUser 等）單獨可執行
 //   b. 快照 12 筆全部通過
 //   c. 各種錯誤：前後空白、不存在、類型選錯、可選憑證種類不存在、固定格式無統編、憑證種類填了交通工具欄位…
@@ -15,7 +15,7 @@ const { createRunner, readSrc, rootDir } = require('./lib/pr_env.cjs');
 
 const { check, done } = createRunner('traffic_rule_master_check.test.cjs');
 
-const FILE = '交通費明細規則主檔檢查_20261104.js';
+const FILE = '交通費明細規則主檔檢查.js';
 const snapshot = JSON.parse(fs.readFileSync(path.join(rootDir, 'form_snapshots', '752_rev14_records.json'), 'utf8'));
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const snapshotRecords = () => clone(snapshot.records || snapshot);

@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：檔案批次_6版_PDFLib向量版_20260716.js
+// 測試：檔案批次.js
 //   PDF 明細表格設定只認交通費子表格、欄位都在 F.TRAFFIC_TABLE.COLS 內；
 //   PDF 表頭是 749 主表欄位（沒有類型、借支、供應商、分攤等）；數字欄位名單；檔名；原始碼沒有 723 其他類型殘留。
 // 單獨執行：node tests/batch_pdf_config.test.cjs
@@ -10,7 +10,7 @@ const path = require('path');
 const fs = require('fs');
 
 const rootDir = path.join(__dirname, '..');
-const pdfFile = '檔案批次_6版_PDFLib向量版_20260716.js';
+const pdfFile = '檔案批次.js';
 const readSrc = (name) => fs.readFileSync(path.join(rootDir, name), 'utf8');
 const pdfSrc = readSrc(pdfFile);
 

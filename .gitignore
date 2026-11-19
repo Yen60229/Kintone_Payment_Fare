@@ -2,7 +2,10 @@
 *.log
 node_modules/
 
-# Claude Code 本機設定與別的 repo 的 worktree
+# 打包產出（npm run build 產生；上傳 749 前現打，不進版控）
+dist/
+
+# Claude Code 本機設定、本 repo 平行工作用的 worktree
 .claude/settings.local.json
 .claude/worktrees/
 

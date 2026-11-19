@@ -104,8 +104,8 @@ check('受款人選擇員工＋手動簽核人視窗同一頁面一起開：/v1/
   env.window.localStorage = { getItem: () => null, setItem() {} };
   env.run('this.Swal = window.Swal;');
   env.load('payment_request_config.js');
-  env.load('手動簽核人設定_20261102.js');
-  env.load('受款人填寫設定_20250902.js');
+  env.load('手動簽核人設定.js');
+  env.load('受款人填寫設定.js');
 
   env.window.PR_MANUAL_SIGNERS.openDialog({ initial: [], applicant: { code: 'ME' }, accounting: [] });
   assert.strictEqual(env.window.PR_PAYEE.openUserPicker({ title: '選擇員工', keyword: '人12', onPick() {} }), true);
@@ -127,7 +127,7 @@ check('受款人選擇員工＋手動簽核人視窗同一頁面一起開：/v1/
 });
 
 check('使用端不再自己打 /v1/users.json，改用 PR_USERS', () => {
-  ['受款人填寫設定_20250902.js', '手動簽核人設定_20261102.js'].forEach((f) => {
+  ['受款人填寫設定.js', '手動簽核人設定.js'].forEach((f) => {
     const src = readSrc(f);
     assert.ok(!/kintone\.api\(\s*kintone\.api\.url\(\s*['"]\/v1\/users\.json/.test(src), `${f} 不應直接打 /v1/users.json`);
     assert.ok(!/USERS_API/.test(src), `${f} 不應自己定義 USERS_API`);
@@ -140,8 +140,8 @@ check('入口檔：使用者主檔快取排在手動簽核人與受款人前面�
     const src = readSrc(entry);
     const at = (f) => src.indexOf(`import '../${f}';`);
     assert.ok(at('使用者主檔快取.js') >= 0, `${entry} 沒有接使用者主檔快取`);
-    assert.ok(at('使用者主檔快取.js') < at('手動簽核人設定_20261102.js'), entry);
-    assert.ok(at('使用者主檔快取.js') < at('受款人填寫設定_20250902.js'), entry);
+    assert.ok(at('使用者主檔快取.js') < at('手動簽核人設定.js'), entry);
+    assert.ok(at('使用者主檔快取.js') < at('受款人填寫設定.js'), entry);
   });
 });
 

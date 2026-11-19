@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：部長上一階主管_20261116.js（取代 部長簽核帶入_20261029.js）＋簽核人員程式的接法
+// 測試：部長上一階主管.js（取代 部長簽核帶入_20261029.js）＋簽核人員程式的接法
 //   - 費用所屬人部門＋職稱對到 C.DIRECTOR_UPLINE.RULES → 群組成員（扣掉本人）進單位部長_支店長，其他格清空，人數 0人／0人
 //   - 存檔 apply()：不在對照表不打 API；群組沒人／查不到 → 擋存檔；手動、作廢、送出後不處理
 //   - 畫面：改費用所屬人部門 → 對照表裡的部長不查簽核流程主檔，改讀群組
@@ -86,9 +86,9 @@ global.kintone = {
 eval(readSrc('payment_request_config.js'));
 env.C = global.window.PR_CONFIG;
 // eslint-disable-next-line no-eval
-eval(readSrc('signing_personnel_manager_20260506.js'));
+eval(readSrc('signing_personnel_manager.js'));
 // eslint-disable-next-line no-eval
-eval(readSrc('部長上一階主管_20261116.js'));
+eval(readSrc('部長上一階主管.js'));
 const C = env.C;
 const F = C.FIELDS;
 const D = global.window.PR_DIRECTOR_UPLINE;
@@ -352,10 +352,10 @@ const check = async (label, fn) => {
 
   await check('原始碼：舊的依費用歸屬帶部長已移除；註解不寫 App 編號', () => {
     assert.ok(!fs.existsSync(path.join(rootDir, '部長簽核帶入_20261029.js')));
-    const sig = readSrc('signing_personnel_manager_20260506.js');
+    const sig = readSrc('signing_personnel_manager.js');
     assert.ok(!sig.includes('PR_DIRECTOR_BY_CC') && !sig.includes('DIRECTOR_BY_COST_CENTER'));
-    assert.ok(readSrc('payment_request_submit_20260506.js').includes('window.PR_DIRECTOR_UPLINE'));
-    assert.ok(!/App ?\d{3}/.test(readSrc('部長上一階主管_20261116.js')));
+    assert.ok(readSrc('payment_request_submit.js').includes('window.PR_DIRECTOR_UPLINE'));
+    assert.ok(!/App ?\d{3}/.test(readSrc('部長上一階主管.js')));
   });
 
   console.log(`\n${passed} assertions passed.`);

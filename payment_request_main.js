@@ -390,7 +390,7 @@
     // 申請人：只有管理員可改（費用所屬人、受款人開放所有人改，受款人可手 key）
     if (record[F.APPLICANT]) record[F.APPLICANT].disabled = !C.isAdmin();
     // 申請人部門、費用所屬人部門：一律鎖住（含管理員），只能依申請人／費用所屬人帶入
-    //   （申請人部門帶入_20261022.js、signing_personnel_manager 的改費用所屬人流程）
+    //   （申請人部門帶入.js、signing_personnel_manager 的改費用所屬人流程）
     [F.APPLICANT_ORG, F.EXPENSE_OWNER_ORG].forEach((field) => {
       if (record[field]) record[field].disabled = true;
     });

@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：交通費明細規則_20261022.js
+// 測試：交通費明細規則.js
 //   1. 高鐵 → 賣方統編 00000000、格式 22，並鎖住；改選其他交通工具清空並解鎖
 //   2. 稅額＝含稅金額 ÷ 1.05 × 0.05，四捨五入到個位數（只算高鐵票／發票，其他寫 0）；只重算變更事件改到的那一列，開畫面／存檔不動；稅額不鎖
 //   3. 憑證種類＝高鐵票／發票才開放發票號碼；其他種類清空並鎖住；存檔必填、本單不可重複、重算發票號碼記錄
@@ -20,7 +20,7 @@ const setup = () => {
   const env = createEnv();
   env.load('payment_request_config.js');
   env.load('發票號碼寫入獨立欄位檢查.js');
-  env.load('交通費明細規則_20261022.js');
+  env.load('交通費明細規則.js');
   return { env, R: env.window.PR_TRAFFIC_RULES, C: env.window.PR_CONFIG };
 };
 

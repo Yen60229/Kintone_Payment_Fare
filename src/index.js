@@ -19,44 +19,44 @@ import '../payment_request_config.js';
 
 // 「儲存中，請稍候…」提示：必須排在所有有存檔程式的模組前面，按下儲存時才會第一個執行；
 // 它自己會把「擋下時關掉提示」的程式延後註冊，排到所有存檔程式的最後面。
-import '../存檔等待提示_20260923.js';
+import '../存檔等待提示.js';
 
 // ② 依賴 Config 的模組（帳號權限設定排最前）────────────────────────────────
-import '../帳號權限設定_20260722.js';
-import '../payment_request_main_20260521.js';
+import '../帳號權限設定.js';
+import '../payment_request_main.js';
 // 公司卡支付／受款人明細：存檔錯誤交給 PR_SAVE_ERRORS，要排在 submit 前面才會併進同一個錯誤視窗
-import '../公司卡付款來源_20261116.js';
-import '../payment_request_submit_20260506.js';
-import '../費用歸屬部門限制_20261022.js';
-import '../signing_personnel_manager_20260506.js';
+import '../公司卡付款來源.js';
+import '../payment_request_submit.js';
+import '../費用歸屬部門限制.js';
+import '../signing_personnel_manager.js';
 // 費用所屬人是對照表裡的部長：上一階主管群組帶進單位主管3（C.DIRECTOR_UPLINE），由 submit 與簽核人員程式呼叫
-import '../部長上一階主管_20261116.js';
+import '../部長上一階主管.js';
 // 使用者主檔快取（PR_USERS：/v1/users.json 同一頁面只抓一次）：手動簽核人與受款人選擇員工共用，排在兩者前面
 import '../使用者主檔快取.js';
-import '../手動簽核人設定_20261102.js';
+import '../手動簽核人設定.js';
 // 申請人部門依申請人帶入：用簽核人員程式提供的 PR_ORG_PICKER，排在它後面
-import '../申請人部門帶入_20261022.js';
-import '../交通費明細規則_20261022.js';
-import '../預計付款日_20261020.js';
-import '../檔案批次_6版_PDFLib向量版_20260716.js';
+import '../申請人部門帶入.js';
+import '../交通費明細規則.js';
+import '../預計付款日.js';
+import '../檔案批次.js';
 import '../批次整理資料.js';
 // 列表頁「🗂 批次動作 ▾」的批次填傳票／入帳完成；只有桌面版
-import '../批次填傳票_入帳完成_20261118.js';
-import '../受款人填寫設定_20250902.js';
-import '../流程自動推進_20260810.js';
-import '../作廢防呆_20260506.js';
+import '../批次填傳票_入帳完成.js';
+import '../受款人填寫設定.js';
+import '../流程自動推進.js';
+import '../作廢防呆.js';
 import '../print.show顯示單據編號_請款單據編號.js';
 import '../發票號碼寫入獨立欄位檢查.js';
 import '../開發人員用群組欄位.js';
-import '../表頭查詢連結_20261105.js';
+import '../表頭查詢連結.js';
 // 欄位標籤結尾的括號說明收進「?」（2026-11-16 起請款單也用；同一支也單獨上傳到規則主檔）；只有桌面版
-import '../欄位標籤說明圖示_20261104.js';
+import '../欄位標籤說明圖示.js';
 // 詳細頁主表欄位外框寬度改 auto（取代 SetFieldWidth）；只有桌面版
-import '../詳細頁欄位寬度自動_20261112.js';
-import '../請款單作廢_style_20260506.js';
+import '../詳細頁欄位寬度自動.js';
+import '../請款單作廢_style.js';
 // 列表頁「JS 自定義設定」「流程管理」按鈕（2026-11-12 起打包；排在檔案批次後面，要找它的下載按鈕）
 import '../coding_tools.js';
 
 // ③ 無 Config 依賴的獨立工具檔（順序不影響）──────────────────────────────
 import '../file_reader.js';
-import '../轉至其他會計單位按鈕處理_20250723.js';
+import '../轉至其他會計單位按鈕處理.js';

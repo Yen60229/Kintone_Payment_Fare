@@ -80,9 +80,9 @@ const loadSigning = () => {
   eval(readSrc('payment_request_config.js'));
   env.C = global.window.PR_CONFIG;
   // eslint-disable-next-line no-eval
-  eval(readSrc('費用歸屬部門限制_20261022.js'));
+  eval(readSrc('費用歸屬部門限制.js'));
   // eslint-disable-next-line no-eval
-  eval(readSrc('signing_personnel_manager_20260506.js'));
+  eval(readSrc('signing_personnel_manager.js'));
   const ACC = env.C.REF_FIELDS.ACCOUNTING_MAP;
   env.accountingRecord = { [ACC.APPLY_UNIT]: { value: 'U' }, [ACC.ACCOUNTING_UNIT]: { value: 'ACC_TPE' }, [ACC.ACCOUNTING_STAFF]: { value: [] }, [ACC.PERMISSION_USER]: { value: [] } };
   return { env, handlers };

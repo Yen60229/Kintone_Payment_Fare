@@ -8,7 +8,7 @@
 //   開發者工具都能繞過。這支工具讀出已存檔的請款單，用「同一份」前端程式重算一次，列出存檔值與重算值不同的單。
 //
 //   重算方式：用 tests/lib/pr_env.cjs 的 vm 沙箱載入原始模組（不複製邏輯）
-//     payment_request_config.js、費用歸屬部門限制_20261022.js、signing_personnel_manager_20260506.js、部長上一階主管_20261116.js
+//     payment_request_config.js、費用歸屬部門限制.js、signing_personnel_manager.js、部長上一階主管.js
 //   每筆記錄複製一份、把狀態清空（讓「只在可編輯狀態重算」的檢查放行），再依存檔時的順序呼叫：
 //     PR_SIGNING_CHAIN.applyOnSave → applyAccountingOnSave → PR_DIRECTOR_UPLINE.apply → PR_COST_SCOPE.validate
 //   比對六格簽核人、主管／次長人數、會計單位、會計單位承辦人、權限開放人員；規則錯誤（掛帳單位跨部、
@@ -44,7 +44,7 @@ const DEFAULT_OUT_DIR = path.join(__dirname, 'out');
 const PAGE_SIZE = 500;
 const MAX_PAGES = 200;
 
-const MODULES = ['payment_request_config.js', '費用歸屬部門限制_20261022.js', 'signing_personnel_manager_20260506.js', '部長上一階主管_20261116.js'];
+const MODULES = ['payment_request_config.js', '費用歸屬部門限制.js', 'signing_personnel_manager.js', '部長上一階主管.js'];
 
 // ── 資料來源：kintone.api(path, method, params) 的替身 ─────────────────────────
 

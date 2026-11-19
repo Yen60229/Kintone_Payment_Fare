@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：批次填傳票_入帳完成_20261118.js（2026-11-18 從請購庶務搬來，欄位換成 749 的） —— 列表頁「📋 批次填傳票／入帳完成」
+// 測試：批次填傳票_入帳完成.js（2026-11-18 從請購庶務搬來，欄位換成 749 的） —— 列表頁「📋 批次填傳票／入帳完成」
 //   查詢字串、列分類（未收到鎖定／已填只簽核／只補空欄）、輸入驗證、payload 不覆蓋、
 //   每 100 筆分批、整批失敗逐筆重試、index.show 註冊與載入順序。
 // 單獨執行：node tests/batch_voucher_status.test.cjs
@@ -11,7 +11,7 @@ const fs = require('fs');
 
 const rootDir = path.join(__dirname, '..');
 const readSrc = (name) => fs.readFileSync(path.join(rootDir, name), 'utf8').replace(/\r\n/g, '\n');
-const MOD = '批次填傳票_入帳完成_20261118.js';
+const MOD = '批次填傳票_入帳完成.js';
 
 const registered = [];
 global.window = {};
@@ -228,7 +228,7 @@ check('註冊與載入：按鈕在「批次動作」下拉選單（本檔不註�
   const iPrev = idx.indexOf("'../批次整理資料.js'");
   const iMod = idx.indexOf(`'../${MOD}'`);
   assert.ok(iPrev > 0 && iMod > iPrev);
-  const batch = readSrc('檔案批次_6版_PDFLib向量版_20260716.js');
+  const batch = readSrc('檔案批次.js');
   assert.ok(batch.includes('📋 批次填傳票／入帳完成') && batch.includes('window.PR_BATCH_VOUCHER.openDialog()'));
   assert.ok(fs.readdirSync(__dirname).includes('batch_voucher_status.test.cjs') && /\.test\.cjs$/.test(path.basename(__filename)), 'npm test（scripts/run-tests.cjs）會自動找到本檔');
   assert.ok(!/\b(749|752|673)\b/.test(readSrc(MOD)));

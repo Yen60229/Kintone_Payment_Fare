@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：交通費明細表頭的說明文件連結（表頭查詢連結_20261105.js）
+// 測試：交通費明細表頭的說明文件連結（表頭查詢連結.js）
 //   1. splitByLinks：單一連結、兩個連結中間留分隔字、找不到的略過
 //   2. 假 DOM：連結屬性正確、表頭文字不變、必填 * 留著、不相關的表頭不動
 //   3. 重複觸發不重複加；畫面還沒畫好會重試；列印頁不綁、找不到表頭不丟錯
@@ -13,7 +13,7 @@ const { createRunner, readSrc } = require('./lib/pr_env.cjs');
 
 const { check, done } = createRunner('table_header_links.test.cjs');
 
-const FILE = '表頭查詢連結_20261105.js';
+const FILE = '表頭查詢連結.js';
 const INVOICE_LABEL = '發票號碼／高鐵票號';
 const LAYOUT = {
   COLUMNS: [

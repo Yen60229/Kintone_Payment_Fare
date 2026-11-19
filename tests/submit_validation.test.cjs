@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：payment_request_submit_20260506.js 的存檔驗證（749 交通費請款單）
+// 測試：payment_request_submit.js 的存檔驗證（749 交通費請款單）
 //   公司名稱必填、付款方式必選且只能一種、子表格每列費用歸屬必填且要在「使用中」代碼內、
 //   發票號碼重複檢查（查本 App：狀態 not in 表單作廢、發票號碼記錄 like、排除自己）、
 //   表單作廢時跳過、驗證失敗視窗；整合交通費明細規則與掛帳單位限部內。
@@ -34,8 +34,8 @@ const loadSubmit = async ({ validCodes = ['AJ30', 'AJ31'], invoiceHits = 0, fail
     },
   });
   env.load('payment_request_config.js');
-  env.load('payment_request_main_20260521.js');
-  env.load('payment_request_submit_20260506.js');
+  env.load('payment_request_main.js');
+  env.load('payment_request_submit.js');
   return { env, calls, C: env.window.PR_CONFIG, F: env.window.PR_CONFIG.FIELDS };
 };
 
@@ -335,8 +335,8 @@ check('查 API 的兩項檢查（費用歸屬主檔、發票重複）同時送�
       }),
   });
   env.load('payment_request_config.js');
-  env.load('payment_request_main_20260521.js');
-  env.load('payment_request_submit_20260506.js');
+  env.load('payment_request_main.js');
+  env.load('payment_request_submit.js');
   const F = env.window.PR_CONFIG.FIELDS;
   // 主程式 show 時已經在載入主檔；這裡直接讓存檔去等它，並讓發票查詢同時發出
   const done_ = submit(env, goodRecord(F, { [F.INVOICE_AGG]: { value: ' / A1 / ' } }));
@@ -376,7 +376,7 @@ check('表單作廢沒勾（空陣列）→ 照常驗證', async () => {
 
 // ── 結構 ───────────────────────────────────────────────────────────────────
 check('submit 原始碼沒有 723 的殘留（借支、分攤、交際費、帶入來源單、請購金額上限）', () => {
-  const src = readSrc('payment_request_submit_20260506.js');
+  const src = readSrc('payment_request_submit.js');
   [
     'F.TYPE', 'TYPES', 'ALLOWED_TYPES', 'COMPANY_PAYMENT_REQUEST', 'SRC.', 'SOURCE_FIELDS', 'fetchOriginalData', 'PR_ENT_AMOUNT',
     'PR_COST_CENTER_SCOPE', 'EXPENSE_FILL_MODE', 'AMOUNT_CHANGE', 'ENTERTAINMENT', 'VENDOR_TABLE', 'ATTACHMENT_TEXT', 'ADVANCE',
@@ -404,7 +404,7 @@ const loadFull = async ({ groups = [], invoiceHits = 0 } = {}) => {
       return Promise.resolve({ records: Array.from({ length: invoiceHits }, () => ({ $id: { value: '1' } })) });
     },
   });
-  ['payment_request_config.js', 'payment_request_main_20260521.js', '費用歸屬部門限制_20261022.js', '發票號碼寫入獨立欄位檢查.js', '交通費明細規則_20261022.js', 'payment_request_submit_20260506.js'].forEach((f) => env.load(f));
+  ['payment_request_config.js', 'payment_request_main.js', '費用歸屬部門限制.js', '發票號碼寫入獨立欄位檢查.js', '交通費明細規則.js', 'payment_request_submit.js'].forEach((f) => env.load(f));
   return { env, calls, F: env.window.PR_CONFIG.FIELDS };
 };
 

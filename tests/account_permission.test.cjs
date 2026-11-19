@@ -1,6 +1,6 @@
 'use strict';
 
-// 測試：帳號權限設定_20260722.js
+// 測試：帳號權限設定.js
 //   ① 依登入者帳號套用顯示／編輯權限（show 事件）
 //   ② 必填未填 → event.error＝「儲存失敗」、欄位標紅；訊息用全域 SweetAlert（新增／編輯交給 PR_SAVE_ERRORS 合併顯示，列表直接編輯直接跳）
 //   ⑤ 錯誤視窗點名欄位「標籤」（kintone.app.getFormFields，沒有就打 REST，都取不到才顯示代碼）
@@ -14,7 +14,7 @@ const path = require('path');
 const fs = require('fs');
 
 const rootDir = path.join(__dirname, '..');
-const fileName = '帳號權限設定_20260722.js';
+const fileName = '帳號權限設定.js';
 const readSrc = (name) => fs.readFileSync(path.join(rootDir, name), 'utf8');
 const src = readSrc(fileName);
 

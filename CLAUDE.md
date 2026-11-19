@@ -52,9 +52,10 @@ npm test && bash tests/syntax.test.sh && npm run scan
 
 ## 建置
 `src/index.js` 是**載入順序的單一事實來源**（桌面版）；`src/mobile.js` 是手機版，模組是它的子集、順序一致。
-`npm run build` 只打包 JS：產出 `dist/payment_request_desktop.js` 與 `dist/payment_request_mobile.js`，上傳清單見 README。
+`npm run build` 只打包 JS：產出 `dist/payment_request_desktop.js` 與 `dist/payment_request_mobile.js`，上傳清單見 README。`dist/` 不進 git（上傳前現打）。
+模組檔名用固定功能名、不加日期（版本看 git）；新模組也照這個規則命名。
 **不打包、放專案最外層直接上傳**：`payment_request.css`（全部樣式只有這一個檔，PC／手機同一份）、
-`交通費明細規則主檔檢查_20261104.js`（**上傳到 App 752 規則主檔**，前面只放 `payment_request_config.js` 原始檔；
+`交通費明細規則主檔檢查.js`（**上傳到 App 752 規則主檔**，前面只放 `payment_request_config.js` 原始檔；
 讀請款單設定用 `APPS.TRAFFIC_PAYMENT`，不能用 `APPS.PAYMENT`）——不要把它們加回 `src/index.js`。
 新模組要上線才加進 `src/index.js`，並決定要不要進手機版：進就加進 `src/mobile.js`，不進就加進
 `tests/build_targets.test.cjs` 的 `DESKTOP_ONLY`。
