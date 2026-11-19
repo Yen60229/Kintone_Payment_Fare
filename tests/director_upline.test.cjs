@@ -8,6 +8,8 @@
 // 單獨執行：node tests/director_upline.test.cjs
 
 const assert = require('assert');
+const { loadInto } = require('./lib/esm_loader.cjs');
+const { stubSigningDeps } = require('./lib/signing_deps.cjs');
 const path = require('path');
 const fs = require('fs');
 
@@ -85,12 +87,13 @@ global.kintone = {
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
 env.C = global.window.PR_CONFIG;
-// eslint-disable-next-line no-eval
-eval(readSrc('signing_personnel_manager.js'));
-require('./lib/esm_loader.cjs').loadInto(null, '部長上一階主管.js');
+// 簽核人員 import 的其他模組：換成「沒載入」的替身（見 tests/lib/signing_deps.cjs）
+stubSigningDeps(null, { real: ['部長上一階主管.js'] });
+loadInto(null, 'signing_personnel_manager.js');
+loadInto(null, '部長上一階主管.js');
 const C = env.C;
 const F = C.FIELDS;
-const D = global.window.PR_DIRECTOR_UPLINE;
+const D = loadInto(null, '部長上一階主管.js', { install: false }).DIRECTOR_UPLINE;
 const ACC = C.REF_FIELDS.ACCOUNTING_MAP;
 env.accountingRecord = { [ACC.APPLY_UNIT]: { value: 'U' }, [ACC.ACCOUNTING_UNIT]: { value: 'ACC_TPE' }, [ACC.ACCOUNTING_STAFF]: { value: [] }, [ACC.PERMISSION_USER]: { value: [] } };
 
@@ -353,7 +356,7 @@ const check = async (label, fn) => {
     assert.ok(!fs.existsSync(path.join(rootDir, '部長簽核帶入_20261029.js')));
     const sig = readSrc('signing_personnel_manager.js');
     assert.ok(!sig.includes('PR_DIRECTOR_BY_CC') && !sig.includes('DIRECTOR_BY_COST_CENTER'));
-    assert.ok(readSrc('payment_request_submit.js').includes('window.PR_DIRECTOR_UPLINE'));
+    assert.ok(readSrc('payment_request_submit.js').includes("import { DIRECTOR_UPLINE } from './部長上一階主管.js';"));
     assert.ok(!/App ?\d{3}/.test(readSrc('部長上一階主管.js')));
   });
 

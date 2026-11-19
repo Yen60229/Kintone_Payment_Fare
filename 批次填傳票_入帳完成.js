@@ -10,7 +10,7 @@
 //     （流程管理的「入帳完成」動作條件是 傳票日期＝今年）
 //   - 先 PUT 欄位、再 PUT 流程狀態，各自每 100 筆一批；整批失敗就逐筆重試，收集每筆的錯誤
 // 與請購庶務版的差異：交通費請款單沒有「類型」欄位，列表那一欄改顯示受款人；樣式在 payment_request.css（pr-bvs-*），JS 不注入樣式。
-// 純函式（查詢、分類、驗證、組 payload、分批執行）全部掛在 window.PR_BATCH_VOUCHER，方便測試。
+// 純函式（查詢、分類、驗證、組 payload、分批執行）全部 export（檔案批次 import openDialog；測試直接 import）。
 
 const C = window.PR_CONFIG;
 const FIELDS = C.FIELDS;

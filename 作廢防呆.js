@@ -1,3 +1,5 @@
+import { showValidationErrors } from './payment_request_submit.js';
+
 // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
 const KT = window.PR_KT;
 
@@ -38,8 +40,8 @@ function blockMissingAttachment() {
   const label = '發票/憑證';
   const err = `請上傳**「${label}」**至少一個檔案\n※ 儲存草稿不受限制，可先儲存、之後再上傳，上傳完成後再送出。`;
   // 和存檔防呆同一個視窗樣式（payment_request_submit 提供）；沒載入時才退回簡單提示
-  if (typeof window.PR_SHOW_VALIDATION === 'function' && typeof Swal !== 'undefined') {
-    window.PR_SHOW_VALIDATION('無法送出', [err], '請修正以下問題後，再按一次流程按鈕：');
+  if (typeof showValidationErrors === 'function' && typeof Swal !== 'undefined') {
+    showValidationErrors('無法送出', [err], '請修正以下問題後，再按一次流程按鈕：');
   } else {
     window.alert(`請先上傳至少一個「${label}」檔案，才能送出。`);
   }

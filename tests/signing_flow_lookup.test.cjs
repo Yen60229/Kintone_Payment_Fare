@@ -23,7 +23,7 @@ const extract = (re, label) => {
   return m[0];
 };
 
-const fnSrc = extract(/function specialFlowName\(org, title\) \{[\s\S]*?\n  \}/, 'specialFlowName');
+const fnSrc = extract(/function specialFlowName\(org, title\) \{[\s\S]*?\n\}/, 'specialFlowName');
 const specialFlowName = new Function(`${fnSrc}\n  return specialFlowName;`)();
 
 let passed = 0;

@@ -29,7 +29,11 @@ global.kintone = {
 
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
-require('./lib/esm_loader.cjs').loadInto(null, '作廢防呆.js');
+const { loadInto, stubInto, swappable } = require('./lib/esm_loader.cjs');
+// 作廢防呆 import submit 的 showValidationErrors：換成替身（測試中途換成記錄呼叫的版本）
+const submitSwap = swappable({ showValidationErrors: () => {} });
+stubInto(null, 'payment_request_submit.js', submitSwap.exports);
+loadInto(null, '作廢防呆.js');
 
 const C = global.window.PR_CONFIG;
 const F = C.FIELDS;
@@ -81,7 +85,7 @@ check('作廢防呆：作廢動作要輸入「作廢」確認（沒有 Swal 時�
 
 check('附件防呆：草稿（未送出）按流程按鈕送出、附件沒檔案 → 擋下，用存檔防呆同一個錯誤視窗（說明改成按流程按鈕）', () => {
   const shown = [];
-  global.window.PR_SHOW_VALIDATION = (title, errors, lead) => shown.push({ title, errors, lead });
+  submitSwap.set('showValidationErrors', (title, errors, lead) => shown.push({ title, errors, lead }));
   global.Swal = {};
   try {
     assert.strictEqual(voidHandler(proceedEvent('提交單位主管3確認', '申請單位主管3確認中', { files: [] })), false);
@@ -100,7 +104,7 @@ check('附件防呆：草稿（未送出）按流程按鈕送出、附件沒檔�
     assert.strictEqual(voidHandler(start), start);
     assert.strictEqual(shown.length, 1);
   } finally {
-    delete global.window.PR_SHOW_VALIDATION;
+    submitSwap.reset('showValidationErrors');
     delete global.Swal;
   }
 });
@@ -121,9 +125,10 @@ check('附件防呆：沒有 Swal 時退回 alert', () => {
   delete global.window.alert;
 });
 
-check('submit 對外提供 PR_SHOW_VALIDATION，視窗上方說明可換', () => {
+check('submit export showValidationErrors（作廢防呆 import），視窗上方說明可換', () => {
   const src = readSrc('payment_request_submit.js');
-  assert.ok(src.includes('window.PR_SHOW_VALIDATION = showValidationErrors'));
+  assert.ok(src.includes('export { showValidationErrors };'));
+  assert.ok(readSrc('作廢防呆.js').includes("import { showValidationErrors } from './payment_request_submit.js';"));
   assert.ok(/const showValidationErrors = \(title, errors, lead\)/.test(src));
 });
 

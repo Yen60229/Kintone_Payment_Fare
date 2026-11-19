@@ -201,14 +201,14 @@ const loadSavingHint = () => {
     assert.ok(m, `找不到 ${label}`);
     return m[0];
   };
-  const getValidSrc = extract(submitSrc, /const getValidCostCenters = async \(\) => \{[\s\S]*?\n  \};/, 'getValidCostCenters');
+  const getValidSrc = extract(submitSrc, /const getValidCostCenters = async \(\) => \{[\s\S]*?\n\};/, 'getValidCostCenters');
 
   await check('submit 驗證優先用主程式已載入的費用歸屬代碼，不再自己查', async () => {
     let ownFetch = 0;
     const shared = { ensureLoaded: async () => {}, getValidCodes: () => new Set(['AJ30', 'aj31']) };
     // eslint-disable-next-line no-new-func
-    const fn = new Function('window', 'fetchValidCostCenters', `${getValidSrc}; return getValidCostCenters;`)(
-      { PR_COST_CENTER: shared },
+    const fn = new Function('COST_CENTER', 'fetchValidCostCenters', `${getValidSrc}; return getValidCostCenters;`)(
+      shared,
       async () => {
         ownFetch += 1;
         return new Set();
@@ -222,7 +222,7 @@ const loadSavingHint = () => {
   await check('主程式沒載入時，submit 驗證退回自己查', async () => {
     let ownFetch = 0;
     // eslint-disable-next-line no-new-func
-    const fn = new Function('window', 'fetchValidCostCenters', `${getValidSrc}; return getValidCostCenters;`)({}, async () => {
+    const fn = new Function('COST_CENTER', 'fetchValidCostCenters', `${getValidSrc}; return getValidCostCenters;`)(undefined, async () => {
       ownFetch += 1;
       return new Set(['AJ30']);
     });

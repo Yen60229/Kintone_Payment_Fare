@@ -11,6 +11,10 @@
 // 從查資料、排人到寫回畫面整段跑一遍。
 
 const assert = require('assert');
+const { loadInto } = require('./lib/esm_loader.cjs');
+const { stubSigningDeps } = require('./lib/signing_deps.cjs');
+/** 簽核人員相依模組的替身（見 tests/lib/signing_deps.cjs） */
+let deps;
 const path = require('path');
 const fs = require('fs');
 
@@ -81,8 +85,9 @@ const loadSigning = () => {
   // eslint-disable-next-line no-eval
   eval(readSrc('payment_request_config.js'));
   env.C = global.window.PR_CONFIG;
-  // eslint-disable-next-line no-eval
-  eval(readSrc('signing_personnel_manager.js'));
+  // 簽核人員 import 的其他模組：預設「沒載入」的替身，測試中途用 deps.set／deps.reset 換
+  deps = stubSigningDeps(null);
+  loadInto(null, 'signing_personnel_manager.js');
   const ACC = env.C.REF_FIELDS.ACCOUNTING_MAP;
   env.accountingRecord = { [ACC.APPLY_UNIT]: { value: 'U' }, [ACC.ACCOUNTING_UNIT]: { value: 'ACC_TPE' }, [ACC.ACCOUNTING_STAFF]: { value: [] }, [ACC.PERMISSION_USER]: { value: [] } };
   return { env, handlers };
@@ -429,7 +434,7 @@ const NAME = '航空貨物部-台北營業課';
 
   // ── 存檔時重排（PR_SIGNING_CHAIN.applyOnSave，2026-11-18）──────────────────
   //   只改傳進來的 record（存檔事件的 event.record），不碰畫面；結果要和畫面上排的一樣。
-  const SAVE = global.window.PR_SIGNING_CHAIN;
+  const SAVE = loadInto(null, 'signing_personnel_manager.js', { install: false }).SIGNING_CHAIN;
   /** 準備存檔用的 record（簽核格先放上一位留下的舊人），跑 applyOnSave，回傳 { errors, record } */
   const save = async ({ orgName = NAME, title, master = masterOf(FULL), queryName = orgName, owner = 'OWN', over = {} }) => {
     env.apiCalls.length = 0;
@@ -500,9 +505,9 @@ const NAME = '航空貨物部-台北營業課';
       const r = await save({ title: '課員', over: { [F.STATUS_FIELD]: { type: 'STATUS', value: status } } });
       assert.deepStrictEqual(slotsOf(r.record)['單位主管1'], ['A1'], `${status} 要重排`);
     }
-    global.window.PR_DIRECTOR_UPLINE = { groupOf: () => 'HQ_部長' };
+    deps.set('DIRECTOR_UPLINE', { groupOf: () => 'HQ_部長' });
     const upline = await save({ title: '部長' });
-    delete global.window.PR_DIRECTOR_UPLINE;
+    deps.reset('DIRECTOR_UPLINE');
     untouched(upline.record);
     assert.strictEqual(approvalCall(), undefined);
     const noOwner = await save({ title: '課員', owner: null });

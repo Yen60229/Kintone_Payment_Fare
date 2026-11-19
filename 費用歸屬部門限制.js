@@ -275,8 +275,6 @@ export const COST_SCOPE = Object.freeze({
 
 /** 入口檔 import '…?install' 時呼叫：註冊事件（載入時只定義函式） */
 export const install = () => {
-  window.PR_COST_SCOPE = COST_SCOPE; // 過渡期：給還沒改成 import 的傳統 script
-
   // ── 事件 ───────────────────────────────────────────────────────────────
 
   // 開畫面就先算好申請人是否在排除群組（存檔時直接用），組織樹也先在背景抓

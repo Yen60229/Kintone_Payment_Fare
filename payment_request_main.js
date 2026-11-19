@@ -448,8 +448,6 @@ const lockInlineEdit = (event) => {
 
 /** 入口檔 import '…?install' 時呼叫：註冊事件（載入時只定義函式） */
 export const install = () => {
-  window.PR_COST_CENTER = COST_CENTER; // 過渡期：給還沒改成 import 的傳統 script
-  window.PR_COMPANY_NAME = COMPANY_NAME; // 過渡期：給還沒改成 import 的傳統 script
 
   // =========================================================================
   // SECTION 4: Kintone 事件監聽器集中區 (Event Handlers Registration)

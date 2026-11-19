@@ -7,6 +7,8 @@
 // 單獨執行：node tests/primary_org.test.cjs
 
 const assert = require('assert');
+const { loadInto } = require('./lib/esm_loader.cjs');
+const { stubSigningDeps } = require('./lib/signing_deps.cjs');
 const { readSrc, makeElement, readOrgPicker } = require('./lib/pr_env.cjs');
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -81,8 +83,9 @@ global.kintone = {
 };
 // eslint-disable-next-line no-eval
 eval(readSrc('payment_request_config.js'));
-// eslint-disable-next-line no-eval
-eval(readSrc('signing_personnel_manager.js'));
+// 簽核人員 import 的其他模組：換成「沒載入」的替身（見 tests/lib/signing_deps.cjs）
+stubSigningDeps(null);
+loadInto(null, 'signing_personnel_manager.js');
 const C = global.window.PR_CONFIG;
 const F = C.FIELDS;
 const OWNER_EVENT = `app.record.create.change.${F.EXPENSE_OWNER}`;
@@ -121,7 +124,7 @@ const check = async (label, fn) => {
 
 (async () => {
   console.log('primary_org.test.cjs');
-  const P = global.window.PR_ORG_PICKER;
+  const P = loadInto(null, 'signing_personnel_manager.js', { install: false }).ORG_PICKER;
 
   await check('路線 A：getOrganizations 有 primary → 回該組織 id；有組織但沒有 primary → null（不再問路線 B）', async () => {
     reset();

@@ -162,8 +162,3 @@ export const DIRECTOR_UPLINE = Object.freeze({
   /** 測試用：清掉群組成員快取 */
   _reset: () => memberCache.clear(),
 });
-
-/** 入口檔 import '…?install' 時呼叫：註冊事件（載入時只定義函式） */
-export const install = () => {
-  window.PR_DIRECTOR_UPLINE = DIRECTOR_UPLINE; // 過渡期：給還沒改成 import 的傳統 script
-};

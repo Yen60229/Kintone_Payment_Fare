@@ -11,6 +11,10 @@
 // 直接用 Node 執行：node tests/signing_manual_accounting.test.cjs
 
 const assert = require('assert');
+const { loadInto } = require('./lib/esm_loader.cjs');
+const { stubSigningDeps } = require('./lib/signing_deps.cjs');
+/** 簽核人員相依模組的替身（見 tests/lib/signing_deps.cjs） */
+let deps;
 const path = require('path');
 const fs = require('fs');
 
@@ -68,8 +72,9 @@ const loadSigning = () => {
   // eslint-disable-next-line no-eval
   eval(readSrc('payment_request_config.js'));
   const C = global.window.PR_CONFIG;
-  // eslint-disable-next-line no-eval
-  eval(readSrc('signing_personnel_manager.js'));
+  // 簽核人員 import 的其他模組：預設「沒載入」的替身，測試中途用 deps.set／deps.reset 換
+  deps = stubSigningDeps(null);
+  loadInto(null, 'signing_personnel_manager.js');
   const ACC = C.REF_FIELDS.ACCOUNTING_MAP;
   env.accountingRecord = { [ACC.APPLY_UNIT]: { value: 'U' }, [ACC.ACCOUNTING_UNIT]: { value: 'ACC_TPE' }, [ACC.ACCOUNTING_STAFF]: { value: [] }, [ACC.PERMISSION_USER]: { value: [] } };
   return { C, env, handlers };
@@ -83,7 +88,7 @@ const SUBMIT = 'app.record.create.submit';
 
 /** 新的畫面資料（同時讓簽核人員程式忘掉上一個畫面的勾選狀態，模擬重新開頁） */
 const makeLive = ({ manual }) => {
-  global.window.PR_MANUAL_MODE._reset();
+  loadInto(null, 'signing_personnel_manager.js', { install: false }).MANUAL_MODE._reset();
   const r = {
     [F.EXPENSE_OWNER_ORG]: { type: 'ORGANIZATION_SELECT', value: [{ code: '航空貨物部-台北營業課', name: '航空貨物部-台北營業課' }] },
     [F.EXPENSE_OWNER]: { type: 'USER_SELECT', value: [U('ME')] },
@@ -180,7 +185,7 @@ const check = async (label, fn) => {
     const ACC = T.C.REF_FIELDS.ACCOUNTING_MAP;
     const MANUAL_ACC = T.C.MANUAL_SIGNERS.ACCOUNTING_FIELD;
     const offered = [];
-    global.window.PR_MANUAL_SIGNERS = { offerAccounting: (list) => offered.push(list.map((u) => u.code)) };
+    deps.set('MANUAL_SIGNERS', { offerAccounting: (list) => offered.push(list.map((u) => u.code)) });
     T.env.accountingRecord[ACC.ACCOUNTING_STAFF] = { value: [U('S1')] };
     T.env.live = makeLive({ manual: true });
     T.env.live[MANUAL_ACC].value = [U('PICKED')];
@@ -201,7 +206,7 @@ const check = async (label, fn) => {
     assert.deepStrictEqual(T.env.live[MANUAL_ACC].value, [], '自動模式不動手動會計承辦人');
     assert.strictEqual(offered.length, 1);
     T.env.accountingRecord[ACC.ACCOUNTING_STAFF] = { value: [] };
-    delete global.window.PR_MANUAL_SIGNERS;
+    deps.reset('MANUAL_SIGNERS');
   });
 
   await check('勾手動：會計單位清空；取消手動（按確定）：會計單位恢復填入', async () => {
@@ -232,11 +237,11 @@ const check = async (label, fn) => {
 
   // ── 二、勾選／取消手動模式（簽核人的三格與視窗在手動簽核人設定，這裡用替身確認有交給它）──
   const signerCalls = [];
-  global.window.PR_MANUAL_SIGNERS = {
+  deps.set('MANUAL_SIGNERS', {
     signersOf: () => [null, null, null],
     enter: (record, opts) => signerCalls.push({ type: 'enter', opts }),
     leave: () => signerCalls.push({ type: 'leave' }),
-  };
+  });
   const settle = async () => {
     for (let i = 0; i < 5; i++) await Promise.resolve();
   };
@@ -266,7 +271,7 @@ const check = async (label, fn) => {
   await check('不在「費用歸屬不限部門」群組的人勾手動：取消勾選、說明原因，不進手動模式', async () => {
     const alerts = [];
     global.alert = (m) => alerts.push(m);
-    global.window.PR_COST_SCOPE = { isExempt: () => false, ensureExempt: () => Promise.resolve(false), applicantCodeOf: () => 'ME' };
+    deps.set('COST_SCOPE', { isExempt: () => false, ensureExempt: () => Promise.resolve(false), applicantCodeOf: () => 'ME' });
     T.env.live = makeLive({ manual: true });
     T.env.live['單位主管3'].value = [U('AUTO')];
     signerCalls.length = 0;
@@ -281,7 +286,7 @@ const check = async (label, fn) => {
   });
 
   await check('開畫面的群組查詢還沒回來就勾手動：先取消勾選，查完確定在群組再勾回去並開視窗', async () => {
-    global.window.PR_COST_SCOPE = { isExempt: () => false, ensureExempt: () => Promise.resolve(true), applicantCodeOf: () => 'ME' };
+    deps.set('COST_SCOPE', { isExempt: () => false, ensureExempt: () => Promise.resolve(true), applicantCodeOf: () => 'ME' });
     T.env.live = makeLive({ manual: true });
     signerCalls.length = 0;
     const out = T.handlers[MANUAL_CHANGE][0]({ type: MANUAL_CHANGE, record: clone(T.env.live) });
@@ -294,13 +299,13 @@ const check = async (label, fn) => {
   });
 
   await check('群組成員勾手動：照常進手動模式', async () => {
-    global.window.PR_COST_SCOPE = { isExempt: () => true, ensureExempt: () => Promise.resolve(true), applicantCodeOf: () => 'ME' };
+    deps.set('COST_SCOPE', { isExempt: () => true, ensureExempt: () => Promise.resolve(true), applicantCodeOf: () => 'ME' });
     T.env.live = makeLive({ manual: true });
     signerCalls.length = 0;
     await fire(MANUAL_CHANGE);
     assert.deepStrictEqual(T.env.live[F.MANUAL_FLOW].value, [F.MANUAL_FLOW]);
     assert.strictEqual(signerCalls[0].type, 'enter');
-    delete global.window.PR_COST_SCOPE;
+    deps.reset('COST_SCOPE');
   });
 
   await check('取消手動按「確定」：清掉手動簽核人（交給 leave），改回自動排人', async () => {
@@ -319,7 +324,7 @@ const check = async (label, fn) => {
     signerCalls.length = 0;
     T.env.confirmAnswer = false; // 有跳確認的話會被「取消」擋住
     T.env.accountingCallbacks.length = 0;
-    global.window.PR_MANUAL_MODE.exitManualMode();
+    loadInto(null, 'signing_personnel_manager.js', { install: false }).MANUAL_MODE.exitManualMode();
     await Promise.resolve();
     T.env.accountingCallbacks.splice(0).forEach((cb) => cb());
     T.env.confirmAnswer = true;
@@ -332,7 +337,7 @@ const check = async (label, fn) => {
 
     T.env.live = makeLive({ manual: false });
     signerCalls.length = 0;
-    global.window.PR_MANUAL_MODE.exitManualMode();
+    loadInto(null, 'signing_personnel_manager.js', { install: false }).MANUAL_MODE.exitManualMode();
     assert.strictEqual(signerCalls.length, 0, '已經是自動就不動');
   });
 
@@ -340,7 +345,7 @@ const check = async (label, fn) => {
     let asked = 0;
     global.Swal = { fire: () => { asked += 1; return Promise.resolve({ isConfirmed: false }); } };
     T.env.live = makeLive({ manual: true });
-    global.window.PR_MANUAL_MODE.exitManualMode();
+    loadInto(null, 'signing_personnel_manager.js', { install: false }).MANUAL_MODE.exitManualMode();
     T.env.accountingCallbacks.length = 0;
     // kintone 在 set() 之後會對勾選欄位再觸發一次 change（這時已是未勾選）
     await fire(MANUAL_CHANGE);
@@ -358,7 +363,7 @@ const check = async (label, fn) => {
   await check('kintone 的 set() 也會觸發勾選的 change（值沒變也會）：回音不再開視窗、不確認；視窗按取消改回自動後不會又被勾回去', async () => {
     let asked = 0;
     global.Swal = { fire: () => { asked += 1; return Promise.resolve({ isConfirmed: false }); } };
-    global.window.PR_COST_SCOPE = { isExempt: () => true, ensureExempt: () => Promise.resolve(true), applicantCodeOf: () => 'ME' };
+    deps.set('COST_SCOPE', { isExempt: () => true, ensureExempt: () => Promise.resolve(true), applicantCodeOf: () => 'ME' });
     const origSet = global.kintone.app.record.set;
     let sets = 0;
     global.kintone.app.record.set = (r) => {
@@ -383,14 +388,14 @@ const check = async (label, fn) => {
     await settleAll();
     assert.deepStrictEqual(signerCalls.map((c) => [c.type, c.opts?.openNow]), [['enter', true]]);
 
-    global.window.PR_MANUAL_MODE.exitManualMode(); // 視窗按取消、沒選人
+    loadInto(null, 'signing_personnel_manager.js', { install: false }).MANUAL_MODE.exitManualMode(); // 視窗按取消、沒選人
     await settleAll();
     assert.deepStrictEqual(T.env.live[F.MANUAL_FLOW].value, [], '取消後維持未勾選');
     assert.deepStrictEqual(signerCalls.map((c) => c.type), ['enter', 'leave'], '沒有再進手動、再開視窗');
     assert.strictEqual(asked, 0, '沒有跳「改回自動？」確認');
 
     global.kintone.app.record.set = origSet;
-    delete global.window.PR_COST_SCOPE;
+    deps.reset('COST_SCOPE');
     delete global.Swal;
   });
 

@@ -33,7 +33,7 @@ const loadMain = async ({ loginCode = 'someone', costCenters = [] } = {}) => {
   });
   env.load('payment_request_config.js');
   const main = env.load('payment_request_main.js');
-  await env.window.PR_COST_CENTER.ensureLoaded();
+  await env.import('payment_request_main.js').COST_CENTER.ensureLoaded();
   return { env, main, C: env.window.PR_CONFIG, F: env.window.PR_CONFIG.FIELDS };
 };
 

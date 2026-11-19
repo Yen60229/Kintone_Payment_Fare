@@ -629,6 +629,8 @@ const changeEvents = [TRAFFIC.CODE, COLS.VEHICLE, COLS.AMOUNT, COLS.FEE, COLS.RE
 // 發票號碼／賣方統編：只留英文、數字；號碼格式不對（高鐵 8 碼數字、發票 10 碼）就在欄位上標錯（存檔時 validate 再擋）
 const cleanEvents = CLEAN_COLS.flatMap((code) => [`app.record.create.change.${code}`, `app.record.edit.change.${code}`]);
 
+export const TRAFFIC_RULES = Object.freeze({ cleanCode, invoiceNoError, calcTax, recalcRowTax, changedRow, hasTaxi, rulesFromConfig, rulesFromMaster, loadRules, getActiveRules, _resetForTest, allowedReceiptTypes, lockedColsOf, isFeeAllowed, filterMenuItems, menuContext, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
+
 /** 入口檔 import '…?install' 時呼叫：註冊事件（載入時只定義函式） */
 export const install = () => {
   installMenuFilter();
@@ -671,6 +673,4 @@ export const install = () => {
     }
     return event;
   });
-
-  window.PR_TRAFFIC_RULES = Object.freeze({ cleanCode, invoiceNoError, calcTax, recalcRowTax, changedRow, hasTaxi, rulesFromConfig, rulesFromMaster, loadRules, getActiveRules, _resetForTest, allowedReceiptTypes, lockedColsOf, isFeeAllowed, filterMenuItems, menuContext, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
 };

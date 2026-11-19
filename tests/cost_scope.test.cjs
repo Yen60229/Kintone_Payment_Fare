@@ -62,7 +62,7 @@ const setup = ({ groups = {}, groupFail = false, orgFail = false, validCodes = O
     },
   });
   env.load('費用歸屬部門限制.js');
-  return { env, calls, S: env.window.PR_COST_SCOPE, C: env.window.PR_CONFIG };
+  return { env, calls, S: env.import('費用歸屬部門限制.js').COST_SCOPE, C: env.window.PR_CONFIG };
 };
 
 const { C } = setup();

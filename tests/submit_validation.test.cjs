@@ -8,6 +8,7 @@
 
 const assert = require('assert');
 const { createEnv, createRunner, readSrc } = require('./lib/pr_env.cjs');
+const { stubSubmitDeps } = require('./lib/signing_deps.cjs');
 
 const { check, done } = createRunner('submit_validation.test.cjs');
 
@@ -35,6 +36,8 @@ const loadSubmit = async ({ validCodes = ['AJ30', 'AJ31'], invoiceHits = 0, fail
   });
   env.load('payment_request_config.js');
   env.load('payment_request_main.js');
+  // submit import 的其他檢查模組：這支測試只看 submit 本身，換成「沒載入」的替身
+  stubSubmitDeps(env.context);
   env.load('payment_request_submit.js');
   return { env, calls, C: env.window.PR_CONFIG, F: env.window.PR_CONFIG.FIELDS };
 };
@@ -336,6 +339,8 @@ check('查 API 的兩項檢查（費用歸屬主檔、發票重複）同時送�
   });
   env.load('payment_request_config.js');
   env.load('payment_request_main.js');
+  // submit import 的其他檢查模組：這支測試只看 submit 本身，換成「沒載入」的替身
+  stubSubmitDeps(env.context);
   env.load('payment_request_submit.js');
   const F = env.window.PR_CONFIG.FIELDS;
   // 主程式 show 時已經在載入主檔；這裡直接讓存檔去等它，並讓發票查詢同時發出
@@ -404,6 +409,8 @@ const loadFull = async ({ groups = [], invoiceHits = 0 } = {}) => {
       return Promise.resolve({ records: Array.from({ length: invoiceHits }, () => ({ $id: { value: '1' } })) });
     },
   });
+  // 這組整合測試用真的費用歸屬部門限制與交通費明細規則；簽核人員、部長、手動簽核人換成「沒載入」的替身
+  stubSubmitDeps(env.context, { real: ['費用歸屬部門限制.js', '交通費明細規則.js'] });
   ['payment_request_config.js', 'payment_request_main.js', '費用歸屬部門限制.js', '發票號碼寫入獨立欄位檢查.js', '交通費明細規則.js', 'payment_request_submit.js'].forEach((f) => env.load(f));
   return { env, calls, F: env.window.PR_CONFIG.FIELDS };
 };

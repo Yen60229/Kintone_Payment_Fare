@@ -85,4 +85,33 @@ const loadInto = (context, file, { install = true } = {}) => {
 /** loadInto 用的同一份快取裡，指定某支檔的 exports 用替身（見 createModuleLoader 的 load.stub） */
 const stubInto = (context, file, exports) => loaderOf(context).stub(file, exports);
 
-module.exports = { createModuleLoader, loadInto, stubInto, isEsm, normalize };
+/**
+ * 測試中途可以換掉的替身 exports（配合 stub／stubInto 使用）：
+ *   const swap = swappable({ MANUAL_SIGNERS: { enter() {}, leave() {} } });
+ *   env.stub('手動簽核人設定.js', swap.exports);   // 要在載入使用端之前
+ *   swap.set('MANUAL_SIGNERS', mock); …; swap.reset('MANUAL_SIGNERS');
+ * 每個名稱都是 Proxy：讀屬性、呼叫（函式型的 export）都轉給「目前」設定的值。
+ * @param {Object} defaults 名稱 → 預設值（物件或函式）
+ */
+const swappable = (defaults) => {
+  const current = { ...defaults };
+  const exports = {};
+  Object.keys(defaults).forEach((name) => {
+    exports[name] = new Proxy(function () {}, {
+      get: (t, key) => current[name]?.[key],
+      has: (t, key) => current[name] != null && key in current[name],
+      apply: (t, self, args) => current[name](...args),
+    });
+  });
+  return {
+    exports,
+    set: (name, value) => {
+      current[name] = value;
+    },
+    reset: (name) => {
+      current[name] = defaults[name];
+    },
+  };
+};
+
+module.exports = { createModuleLoader, loaderOf, loadInto, stubInto, swappable, isEsm, normalize };

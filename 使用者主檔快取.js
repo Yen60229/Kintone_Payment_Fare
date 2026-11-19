@@ -9,9 +9,7 @@
 //   使用端：受款人填寫設定（選擇員工）、手動簽核人設定（指定簽核人視窗）。
 //   不依賴 PR_CONFIG。
 //
-// ES module：使用端 import { loadAll } from './使用者主檔快取.js'。
-//   過渡期：使用端還是傳統 script，install() 另外掛 window.PR_USERS 給它們用
-//   （入口檔用 import '…?install' 載入，要排在使用端前面）；使用端都改成 import 後，拿掉 install 與入口那一行。
+// ES module：使用端 import { loadAll } from './使用者主檔快取.js'（只提供函式，沒有 install）。
 // =============================================================================
 
 const USERS_API = '/v1/users.json';
@@ -46,9 +44,4 @@ export const loadAll = () => {
       });
   }
   return usersPromise;
-};
-
-/** 過渡期：給還沒改成 import 的使用端（受款人填寫設定、手動簽核人設定） */
-export const install = () => {
-  window.PR_USERS = Object.freeze({ PAGE_SIZE, fetchAll, loadAll });
 };

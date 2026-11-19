@@ -11,6 +11,10 @@
 // 作法：載入整支簽核人員程式，kintone／Swal 換成假的，從 change 事件一路跑到簽核流程主檔查詢。
 
 const assert = require('assert');
+const { loadInto } = require('./lib/esm_loader.cjs');
+const { stubSigningDeps } = require('./lib/signing_deps.cjs');
+/** 簽核人員相依模組的替身（見 tests/lib/signing_deps.cjs） */
+let deps;
 const path = require('path');
 const fs = require('fs');
 const { makeElement, readOrgPicker } = require('./lib/pr_env.cjs');
@@ -113,8 +117,9 @@ const loadSigning = () => {
   // eslint-disable-next-line no-eval
   eval(readSrc('payment_request_config.js'));
   env.C = global.window.PR_CONFIG;
-  // eslint-disable-next-line no-eval
-  eval(readSrc('signing_personnel_manager.js'));
+  // 簽核人員 import 的其他模組：預設「沒載入」的替身，測試中途用 deps.set／deps.reset 換
+  deps = stubSigningDeps(null);
+  loadInto(null, 'signing_personnel_manager.js');
   const ACC = env.C.REF_FIELDS.ACCOUNTING_MAP;
   env.accountingRecord = { [ACC.APPLY_UNIT]: { value: 'U' }, [ACC.ACCOUNTING_UNIT]: { value: 'ACC_TPE' }, [ACC.ACCOUNTING_STAFF]: { value: [] }, [ACC.PERMISSION_USER]: { value: [] } };
   return { env, handlers };
@@ -269,19 +274,19 @@ const check = async (label, fn) => {
     reset();
     env.orgs.u1 = [ORG_A];
     const applied = [];
-    global.window.PR_COMPANY_NAME = {
+    deps.set('COMPANY_NAME', {
       apply: (record) => {
         applied.push(record[F.EXPENSE_OWNER_ORG].value[0].code);
         record[F.COMPANY_NAME] = { type: 'DROP_DOWN', value: '推導結果', disabled: true };
       },
-    };
+    });
     try {
       handler(changeEvent('u1'));
       await flush();
       assert.deepStrictEqual(applied, ['A'], '用新帶入的部門推導');
       assert.strictEqual(env.live[F.COMPANY_NAME].value, '推導結果');
     } finally {
-      delete global.window.PR_COMPANY_NAME;
+      deps.reset('COMPANY_NAME');
     }
   });
 
@@ -497,10 +502,10 @@ const check = async (label, fn) => {
     reset({ useSwal: false });
     env.orgs.u1 = [ORG_A];
     const applied = [];
-    global.window.PR_COMPANY_NAME = { apply: (r) => applied.push(r[F.EXPENSE_OWNER_ORG].value) };
+    deps.set('COMPANY_NAME', { apply: (r) => applied.push(r[F.EXPENSE_OWNER_ORG].value) });
     showHandler(showEvent('u1', []));
     await flush();
-    delete global.window.PR_COMPANY_NAME;
+    deps.reset('COMPANY_NAME');
     assert.deepStrictEqual(applied, [[U('A', ORG_A.organization.name)]]);
   });
 

@@ -27,26 +27,26 @@ const newRecord = (F, orgCode) => ({
 // ── 純函式 derive ───────────────────────────────────────────────────────────
 check('部門代碼開頭為「聯海」→ 公司名稱＝聯海通運', () => {
   const { env, F } = loadMain();
-  assert.strictEqual(env.window.PR_COMPANY_NAME.derive(newRecord(F, '聯海通運股份有限公司')), '聯海通運');
+  assert.strictEqual(env.import('payment_request_main.js').COMPANY_NAME.derive(newRecord(F, '聯海通運股份有限公司')), '聯海通運');
 });
 
 check('部門代碼不是以「聯海」開頭 → ＮＸ臺灣國際物流（「聯海」出現在中間也不算）', () => {
   const { env, F } = loadMain();
-  assert.strictEqual(env.window.PR_COMPANY_NAME.derive(newRecord(F, '日通國際物流部')), 'ＮＸ臺灣國際物流');
-  assert.strictEqual(env.window.PR_COMPANY_NAME.derive(newRecord(F, 'NX聯海')), 'ＮＸ臺灣國際物流');
+  assert.strictEqual(env.import('payment_request_main.js').COMPANY_NAME.derive(newRecord(F, '日通國際物流部')), 'ＮＸ臺灣國際物流');
+  assert.strictEqual(env.import('payment_request_main.js').COMPANY_NAME.derive(newRecord(F, 'NX聯海')), 'ＮＸ臺灣國際物流');
 });
 
 check('費用所屬人部門為空（尚未選擇）或欄位不存在 → 預設為ＮＸ臺灣國際物流，不誤判為聯海', () => {
   const { env, F } = loadMain();
-  assert.strictEqual(env.window.PR_COMPANY_NAME.derive(newRecord(F, '')), 'ＮＸ臺灣國際物流');
-  assert.strictEqual(env.window.PR_COMPANY_NAME.derive({}), 'ＮＸ臺灣國際物流');
+  assert.strictEqual(env.import('payment_request_main.js').COMPANY_NAME.derive(newRecord(F, '')), 'ＮＸ臺灣國際物流');
+  assert.strictEqual(env.import('payment_request_main.js').COMPANY_NAME.derive({}), 'ＮＸ臺灣國際物流');
 });
 
 check('依「費用所屬人部門」而不是「申請人部門」判斷', () => {
   const { env, F } = loadMain();
   const record = newRecord(F, '總務部');
   record[F.APPLICANT_ORG] = orgValue('聯海業務部');
-  assert.strictEqual(env.window.PR_COMPANY_NAME.derive(record), 'ＮＸ臺灣國際物流');
+  assert.strictEqual(env.import('payment_request_main.js').COMPANY_NAME.derive(record), 'ＮＸ臺灣國際物流');
 });
 
 // ── 事件接線 ────────────────────────────────────────────────────────────────
@@ -92,10 +92,10 @@ check('edit.show：只鎖住公司名稱、不重算（不蓋掉單據原本存�
 check('PR_COMPANY_NAME.apply：給其他模組（例如簽核人員程式帶入部門後）重算用', () => {
   const { env, F } = loadMain();
   const record = newRecord(F, '聯海營運部');
-  env.window.PR_COMPANY_NAME.apply(record);
+  env.import('payment_request_main.js').COMPANY_NAME.apply(record);
   assert.strictEqual(record[F.COMPANY_NAME].value, '聯海通運');
   assert.strictEqual(record[F.COMPANY_NAME].disabled, true);
-  assert.doesNotThrow(() => env.window.PR_COMPANY_NAME.apply({}), '沒有公司名稱欄位時不報錯');
+  assert.doesNotThrow(() => env.import('payment_request_main.js').COMPANY_NAME.apply({}), '沒有公司名稱欄位時不報錯');
 });
 
 // ── 結構：不再依賴已刪除的欄位 ──────────────────────────────────────────────

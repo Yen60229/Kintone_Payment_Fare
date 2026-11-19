@@ -9,6 +9,7 @@
 // 單獨執行：node tests/manual_signers.test.cjs
 
 const assert = require('assert');
+const { swappable } = require('./lib/esm_loader.cjs');
 const { createEnv, createRunner } = require('./lib/pr_env.cjs');
 
 const { check, done } = createRunner('manual_signers.test.cjs');
@@ -98,10 +99,13 @@ const setup = ({ loginCode = 'u1', exempt = true, users = USERS, storage } = {})
   const { swal, popups } = fakeSwal();
   env.window.Swal = swal;
   env.load('payment_request_config.js');
-  env.window.PR_COST_SCOPE = { applicantCodeOf: (r) => r['申請人']?.value?.[0]?.code, ensureExempt: () => Promise.resolve(exempt), isExempt: () => exempt };
+  // 手動簽核人 import 的模組用替身：費用歸屬部門限制（排除群組）、簽核人員（MANUAL_MODE，測試中途可換）
+  env.stub('費用歸屬部門限制.js', { COST_SCOPE: { applicantCodeOf: (r) => r['申請人']?.value?.[0]?.code, ensureExempt: () => Promise.resolve(exempt), isExempt: () => exempt } });
+  const modeSwap = swappable({ MANUAL_MODE: { exitManualMode() {} } });
+  env.stub('signing_personnel_manager.js', modeSwap.exports);
   env.load('使用者主檔快取.js');
   env.load('手動簽核人設定.js');
-  return { env, M: env.window.PR_MANUAL_SIGNERS, C: env.window.PR_CONFIG, apiCalls, popups, store };
+  return { env, M: env.import('手動簽核人設定.js').MANUAL_SIGNERS, C: env.window.PR_CONFIG, apiCalls, popups, store, modeSwap };
 };
 
 const recordOf = ({ manual = true, signers = [], status = '草稿（未送出）', staff = [U('ACC1')], voided = false } = {}) => {
@@ -468,7 +472,7 @@ check('人員名單：分頁抓到最後一頁、抓過就不再抓；抓不到�
   failing.load('payment_request_config.js');
   failing.load('使用者主檔快取.js');
   failing.load('手動簽核人設定.js');
-  failing.window.PR_MANUAL_SIGNERS.openDialog({ initial: [], applicant: U('ME'), accounting: [] });
+  failing.import('手動簽核人設定.js').MANUAL_SIGNERS.openDialog({ initial: [], applicant: U('ME'), accounting: [] });
   await settle();
   assert.match(find(fs.popups[0].opts.html, 'pr-signer__results').children[0].textContent, /讀不到人員名單/);
 
@@ -476,7 +480,7 @@ check('人員名單：分頁抓到最後一頁、抓過就不再抓；抓不到�
   noSwal.load('payment_request_config.js');
   noSwal.load('使用者主檔快取.js');
   noSwal.load('手動簽核人設定.js');
-  assert.strictEqual(await noSwal.window.PR_MANUAL_SIGNERS.openDialog({ initial: [], applicant: null, accounting: [] }), null);
+  assert.strictEqual(await noSwal.import('手動簽核人設定.js').MANUAL_SIGNERS.openDialog({ initial: [], applicant: null, accounting: [] }), null);
   assert.match(noSwal.logs.error.join('|'), /找不到 SweetAlert/);
 });
 
@@ -571,7 +575,7 @@ check('視窗開著時取消了手動 → 按完成也不寫回；視窗已開�
 check('視窗按取消：一位簽核人都沒有 → 請簽核人員程式取消勾選（PR_MANUAL_MODE.exitManualMode）；原本就有人 → 維持手動', async () => {
   const t = setup();
   let exits = 0;
-  t.env.window.PR_MANUAL_MODE = { exitManualMode: () => (exits += 1) };
+  t.modeSwap.set('MANUAL_MODE', { exitManualMode: () => (exits += 1) });
   t.env.currentRecord = recordOf({ signers: [] });
   const empty = t.M.open();
   await settle();

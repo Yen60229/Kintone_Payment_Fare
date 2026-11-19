@@ -31,14 +31,14 @@ import '../帳號權限設定.js?install';
 import '../payment_request_main.js?install';
 // 公司卡支付／受款人明細：存檔錯誤交給 PR_SAVE_ERRORS，要排在 submit 前面才會併進同一個錯誤視窗
 import '../公司卡付款來源.js?install';
-import '../payment_request_submit.js';
+import '../payment_request_submit.js?install';
 import '../費用歸屬部門限制.js?install';
-import '../signing_personnel_manager.js';
+import '../signing_personnel_manager.js?install';
 // 費用所屬人是對照表裡的部長：上一階主管群組帶進單位主管3（C.DIRECTOR_UPLINE），由 submit 與簽核人員程式呼叫
-import '../部長上一階主管.js?install';
-// 使用者主檔快取（PR_USERS：/v1/users.json 同一頁面只抓一次）：手動簽核人與受款人選擇員工共用，排在兩者前面
-import '../使用者主檔快取.js?install';
-import '../手動簽核人設定.js';
+import '../部長上一階主管.js';
+// 使用者主檔快取（/v1/users.json 同一頁面只抓一次；手動簽核人與受款人 import 它，只提供函式）
+import '../使用者主檔快取.js';
+import '../手動簽核人設定.js?install';
 // 申請人部門依申請人帶入：用簽核人員程式提供的 PR_ORG_PICKER，排在它後面
 import '../申請人部門帶入.js?install';
 import '../交通費明細規則.js?install';

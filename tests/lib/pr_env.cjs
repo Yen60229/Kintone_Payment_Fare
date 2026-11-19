@@ -9,7 +9,7 @@
 const path = require('path');
 const fs = require('fs');
 const vm = require('vm');
-const { createModuleLoader, isEsm } = require('./esm_loader.cjs');
+const { loaderOf, isEsm } = require('./esm_loader.cjs');
 
 const rootDir = path.join(__dirname, '..', '..');
 const readSrc = (name) => fs.readFileSync(path.join(rootDir, name), 'utf8');
@@ -166,9 +166,12 @@ const createEnv = ({ appId = 749, loginCode = '24136', api, swalAnswer } = {}) =
     getComputedStyle: () => ({ display: '', visibility: '' }),
   };
   vm.createContext(sandbox);
-  const importModule = createModuleLoader(sandbox);
+  // 和 esm_loader 的 loadInto／stubInto(env.context, …) 共用同一份模組快取
+  const importModule = loaderOf(sandbox);
 
   const env = {
+    /** vm 沙箱（給 stubInto／stubSigningDeps 用） */
+    context: sandbox,
     window: sandbox.window,
     document: documentStub,
     spaces,

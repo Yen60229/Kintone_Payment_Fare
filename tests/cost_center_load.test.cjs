@@ -42,8 +42,8 @@ const loadWith = async (records, { pages = null } = {}) => {
   env.load('payment_request_config.js');
   env.load('payment_request_main.js');
   const CC = env.window.PR_CONFIG.REF_FIELDS.COST_CENTER;
-  await env.window.PR_COST_CENTER.ensureLoaded();
-  return { env, calls, CC, validCodes: [...env.window.PR_COST_CENTER.getValidCodes()] };
+  await env.import('payment_request_main.js').COST_CENTER.ensureLoaded();
+  return { env, calls, CC, validCodes: [...env.import('payment_request_main.js').COST_CENTER.getValidCodes()] };
 };
 
 check('只向費用歸屬主檔要 CODE／NAME／DEPT 三個欄位，且只查「使用中」', async () => {
@@ -58,7 +58,7 @@ check('只向費用歸屬主檔要 CODE／NAME／DEPT 三個欄位，且只查�
 
 check('對外只暴露 ensureLoaded／getValidCodes／getDeptsOfCode／getDeptNames（舊的 getMaps 已拿掉），且物件被凍結', async () => {
   const { env } = await loadWith([]);
-  const api = env.window.PR_COST_CENTER;
+  const api = env.import('payment_request_main.js').COST_CENTER;
   assert.deepStrictEqual(Object.keys(api).sort(), ['ensureLoaded', 'getDeptNames', 'getDeptsOfCode', 'getValidCodes']);
   assert.ok(Object.isFrozen(api));
 });
@@ -97,8 +97,8 @@ check('多筆記錄的名稱一致時不警告', async () => {
 
 check('重複呼叫 ensureLoaded 共用同一次載入（只查一次）', async () => {
   const { env, calls } = await loadWith([]);
-  await env.window.PR_COST_CENTER.ensureLoaded();
-  await env.window.PR_COST_CENTER.ensureLoaded();
+  await env.import('payment_request_main.js').COST_CENTER.ensureLoaded();
+  await env.import('payment_request_main.js').COST_CENTER.ensureLoaded();
   assert.strictEqual(calls.length, 1);
 });
 
@@ -113,10 +113,10 @@ check('載入失敗：丟出錯誤，且不快取失敗結果，下次呼叫會�
   });
   env.load('payment_request_config.js');
   env.load('payment_request_main.js');
-  await assert.rejects(() => env.window.PR_COST_CENTER.ensureLoaded(), /boom/);
+  await assert.rejects(() => env.import('payment_request_main.js').COST_CENTER.ensureLoaded(), /boom/);
   fail = false;
-  await env.window.PR_COST_CENTER.ensureLoaded();
-  assert.deepStrictEqual([...env.window.PR_COST_CENTER.getValidCodes()], ['X1']);
+  await env.import('payment_request_main.js').COST_CENTER.ensureLoaded();
+  assert.deepStrictEqual([...env.import('payment_request_main.js').COST_CENTER.getValidCodes()], ['X1']);
 });
 
 check('所屬部門：代號（大寫）→ 部門組織代碼陣列，同代號多筆各屬不同部門全部保留（去重）；部門代碼 → 名稱', async () => {
@@ -126,17 +126,17 @@ check('所屬部門：代號（大寫）→ 部門組織代碼陣列，同代號
     rec({ code: 'AJ30', dept: { code: 'GA', name: '總務部' } }),
     rec({ code: 'AJ40' }),
   ]);
-  const deptsOf = env.window.PR_COST_CENTER.getDeptsOfCode();
+  const deptsOf = env.import('payment_request_main.js').COST_CENTER.getDeptsOfCode();
   assert.deepStrictEqual(JSON.parse(JSON.stringify(deptsOf)), { AJ30: ['GA', 'LOG'] });
-  assert.strictEqual(env.window.PR_COST_CENTER.getDeptNames().GA, '總務部');
-  assert.strictEqual(env.window.PR_COST_CENTER.getDeptNames().LOG, '物流部');
+  assert.strictEqual(env.import('payment_request_main.js').COST_CENTER.getDeptNames().GA, '總務部');
+  assert.strictEqual(env.import('payment_request_main.js').COST_CENTER.getDeptNames().LOG, '物流部');
 });
 
 check('所屬部門：一筆記錄的組織欄位選了好幾個部門 → 全部收進來', async () => {
   const { env } = await loadWith([
     { ...rec({ code: 'AJ30' }), [CCf.DEPT]: { value: [{ code: 'STR', name: '營業戰略部' }, { code: 'QA', name: '安全品質推動部' }] } },
   ]);
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(env.window.PR_COST_CENTER.getDeptsOfCode())), { AJ30: ['STR', 'QA'] });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(env.import('payment_request_main.js').COST_CENTER.getDeptsOfCode())), { AJ30: ['STR', 'QA'] });
 });
 
 check('主檔欄位代碼走 REF_FIELDS.COST_CENTER，不寫死；部長／主管部門的讀取已全數移除（所屬部門 2026-10-22 起為掛帳單位限部內重新讀取）', () => {

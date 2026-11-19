@@ -1,3 +1,5 @@
+import { ORG_PICKER } from './signing_personnel_manager.js';
+
 // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
 const KT = window.PR_KT;
 
@@ -34,7 +36,7 @@ const syncApplicantOrg = (event, { keepIfValid = false } = {}) => {
     return event;
   }
 
-  const picker = window.PR_ORG_PICKER;
+  const picker = ORG_PICKER;
   if (!picker) return event;
 
   picker
