@@ -31,6 +31,11 @@ function isDraftMissingAttachment(event) {
   const attField = cfg.FIELDS && cfg.FIELDS.ATTACHMENT;
   if (!draftStatus || !attField) return false;
   if (getSafeValue(event.status) !== draftStatus) return false;
+  // 交通費明細有列、且每列憑證種類都是「無」→ 沒有憑證可傳，不檢查附件
+  const tbl = cfg.FIELDS.TRAFFIC_TABLE;
+  const rows = (event.record && event.record[tbl.CODE] && event.record[tbl.CODE].value) || [];
+  const none = cfg.OPTIONS.RECEIPT_TYPE.NONE;
+  if (rows.length > 0 && rows.every((r) => r.value[tbl.COLS.RECEIPT_TYPE] && r.value[tbl.COLS.RECEIPT_TYPE].value === none)) return false;
   const field = event.record && event.record[attField];
   return !(field && Array.isArray(field.value) && field.value.length > 0);
 }
