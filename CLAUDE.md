@@ -27,7 +27,7 @@
 ```bash
 npm test && bash tests/syntax.test.sh && npm run scan
 ```
-目前基準：**41 支測試／842 項斷言**、語法檢查 **32 檔**、硬編碼掃描 **12 處**。
+目前基準：**42 支測試／858 項斷言**、語法檢查 **33 檔**、硬編碼掃描 **12 處**。
 掃描數字若無故上升，多半是**註解裡寫了 App ID 數字**（規則 1 刻意連註解一起掃）——
 註解請改引用常數名（如 `APPS.APPROVAL_FLOW`），不要寫 App 的數字。
 測試檔命名 `tests/*.test.cjs`（plug-in 為 `plugins/*/tests/*.test.cjs`），`scripts/run-tests.cjs` 會自動找到，不用改 `package.json`。

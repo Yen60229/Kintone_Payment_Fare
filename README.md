@@ -56,6 +56,8 @@ npm run check:process
 - 會跑三項：結構檢查、把所有合法假資料從「報銷人填單」走到會計、每個狀態的按鈕。
 - 從 kintone 下載新版流程設定後，放進 `process_management/exports/` 再跑一次。
 - 目前 749 rev 1795 本身有已知問題，所以會回傳結束代碼 1（見 docs 待決事項）。
+- 產生「費用所屬人確認中」的流程提案檔（只產生檔案，後台照著改）：
+  `node process_management/owner_confirm_proposal.cjs <來源匯出檔> <輸出檔>`；提案檔放 `process_management/proposals/`。
 
 ### 冒煙測試（Playwright，不連 kintone）
 ```bash

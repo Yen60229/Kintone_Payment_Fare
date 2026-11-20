@@ -21,6 +21,7 @@ const { checkAll, enumerateRecords, MANUAL_ACCOUNTING_ORGS, MANAGER_COUNT_FIELD,
 const { checkButtons } = require('./lib/process_buttons.cjs');
 const { loadConfig, APP_ID } = require('../process_management/load_config.cjs');
 const { latestExport } = require('../process_management/check_process.cjs');
+const { buildProposal, CONFIRM: OWNER_CONFIRMING, REJECT: OWNER_REJECT } = require('../process_management/owner_confirm_proposal.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const EXPORTS_DIR = path.join(ROOT, 'process_management', 'exports');
@@ -139,7 +140,10 @@ check('749 revision 1821：結構檢查 0 個問題（24 個狀態、110 條動�
 });
 
 check('749 revision 1821：config 的 STATUS 都是流程裡真的有的狀態（「點擊流程開始」後是「草稿（未送出）」，與其他 App 一致）', () => {
-  Object.values(CONFIG.STATUS).forEach((name) => assert.ok(EXPORT_CURRENT.states[name], `流程裡沒有狀態「${name}」`));
+  // 費用所屬人確認中是新關卡（2026-11-20），還在提案檔，後台改好、換新匯出檔後拿掉這個例外
+  Object.values(CONFIG.STATUS)
+    .filter((name) => name !== CONFIG.STATUS.OWNER_CONFIRMING)
+    .forEach((name) => assert.ok(EXPORT_CURRENT.states[name], `流程裡沒有狀態「${name}」`));
   assert.strictEqual(EXPORT_CURRENT.states['申請開始'], undefined);
   const start = EXPORT_CURRENT.actions.find((a) => a.name === CONFIG.ACTIONS.APPLY_START);
   assert.deepStrictEqual([start.from, start.to], [CONFIG.STATUS.REIMBURSEMENT_FILL, CONFIG.STATUS.APPLY_START]);
@@ -514,6 +518,68 @@ check('命令列：749 的複本通過（結束代碼 0、輸出「通過」）�
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ── 8. 費用所屬人確認中（提案：process_management/owner_confirm_proposal.cjs）──────────────
+const PROPOSAL = buildProposal(EXPORT_CURRENT);
+const toAccounting = { stopWhen: (s) => s.startsWith('單位會計處理中') };
+
+check('費用所屬人確認提案：狀態名稱和 config 一致，作業者分別是費用所屬人、申請人；不改來源', () => {
+  assert.strictEqual(OWNER_CONFIRMING, CONFIG.STATUS.OWNER_CONFIRMING);
+  assert.deepStrictEqual(PROPOSAL.states[OWNER_CONFIRMING].assignee.entities.map((e) => e.entity.code), [F.EXPENSE_OWNER]);
+  assert.deepStrictEqual(PROPOSAL.states[OWNER_REJECT].assignee.entities.map((e) => e.entity.code), [F.APPLICANT]);
+  assert.strictEqual(EXPORT_CURRENT.states[OWNER_CONFIRMING], undefined);
+  assert.throws(() => buildProposal(PROPOSAL), /已經有/);
+});
+
+check('費用所屬人確認提案：草稿往前送的動作都加上「不需要」條件，確認中照原條件複製一份', () => {
+  const draftForward = EXPORT_CURRENT.actions.filter((a) => a.from === S.START && a.to !== S.VOID);
+  const after = PROPOSAL.actions.filter((a) => a.from === S.START && a.to !== S.VOID && a.to !== OWNER_CONFIRMING);
+  assert.strictEqual(after.length, draftForward.length);
+  after.forEach((a) => assert.ok(a.filterCond.endsWith(`${F.OWNER_CONFIRM} not in ("需要")`), a.filterCond));
+  const copied = PROPOSAL.actions.filter((a) => a.from === OWNER_CONFIRMING && a.to !== S.VOID && a.to !== OWNER_REJECT);
+  assert.deepStrictEqual(
+    copied.map((a) => [a.name, a.to, a.filterCond, a.type]),
+    draftForward.map((a) => [a.name, a.to, a.filterCond, a.type]),
+  );
+  const toConfirm = PROPOSAL.actions.filter((a) => a.to === OWNER_CONFIRMING);
+  assert.deepStrictEqual(
+    toConfirm.map((a) => [a.from, a.filterCond, a.type]),
+    [
+      [S.START, `${F.OWNER_CONFIRM} in ("需要")`, 'PRIMARY'],
+      [S.START, `${F.OWNER_CONFIRM} in ("需要")`, 'SECONDARY'],
+    ],
+  );
+});
+
+check('費用所屬人確認提案（套在 rev 1821）：結構 0 問題，252 種假資料走一遍、按鈕都 0 問題', () => {
+  assert.deepStrictEqual(lintProcess(PROPOSAL, CONFIG), []);
+  const { total, failures } = checkAll(PROPOSAL, CONFIG);
+  assert.strictEqual(total, 252);
+  assert.deepStrictEqual(failures.map((f) => `${f.id}：${f.message}`), []);
+  const buttons = checkButtons(PROPOSAL, CONFIG);
+  assert.deepStrictEqual(buttons.failures.map((f) => `${f.id}：${f.message}`), []);
+  assert.deepStrictEqual(buttons.unreached, []);
+  [OWNER_CONFIRMING, OWNER_REJECT].forEach((state) => assert.ok(buttons.reached.has(state), state));
+});
+
+check('費用所屬人確認提案：需要的單一定先到確認中，確認後的路線和不需要時一樣；不需要的不經過確認中', () => {
+  const { NEED, NO_NEED } = CONFIG.OPTIONS.OWNER_CONFIRM;
+  for (const { id, record } of enumerateRecords(CONFIG, PROPOSAL)) {
+    const taken = sim.walk(PROPOSAL, S.START, record, toAccounting);
+    const skip = sim.walk(PROPOSAL, S.START, { ...record, [F.OWNER_CONFIRM]: NO_NEED }, toAccounting);
+    if (record[F.OWNER_CONFIRM] === NEED) {
+      assert.strictEqual(taken[1], OWNER_CONFIRMING, id);
+      assert.deepStrictEqual([taken[0], ...taken.slice(2)], skip, id);
+    } else {
+      assert.ok(!taken.includes(OWNER_CONFIRMING), id);
+    }
+  }
+});
+
+check('舊版流程（沒用到費用所屬人確認）維持 126 種假資料，提案流程 252 種', () => {
+  assert.strictEqual([...enumerateRecords(CONFIG, EXPORT_CURRENT)].length, 126);
+  assert.strictEqual([...enumerateRecords(CONFIG, PROPOSAL)].length, 252);
 });
 
 console.log(`\n${passed} assertions passed.`);

@@ -373,6 +373,8 @@
     APPLICANT_ORG: '申請人部門', // ORGANIZATION_SELECT；標籤「申請部門」
     EXPENSE_OWNER: '費用所屬人', // USER_SELECT；簽核人員依此人排
     EXPENSE_OWNER_ORG: '費用所屬人部門', // ORGANIZATION_SELECT；簽核流程、會計單位、公司名稱依此部門
+    // DROP_DOWN（需要／不需要）；程式寫入、畫面鎖住。流程管理：需要 → 草稿先送「費用所屬人確認中」（見 OWNER_CONFIRM）
+    OWNER_CONFIRM: '費用所屬人確認',
     PAYMENT_DATE: '請款日期',
     PAY_METHOD: '付款方式',
     PAYEE: '受款人',
@@ -544,6 +546,7 @@
     VOID: '表單作廢',
     REIMBURSEMENT_FILL: '報銷人填單',
     APPLY_START: '草稿（未送出）',
+    OWNER_CONFIRMING: '費用所屬人確認中',
   });
 
   // ── 流程動作名稱註冊表（kintone 流程管理「按鈕上的字」）──────────────────────
@@ -596,6 +599,8 @@
   // ── 欄位選項字串註冊表（Checkbox / Radio / Dropdown 選項值單一事實來源）──────
   const OPTIONS = Object.freeze({
     MANUAL_FLOW: Object.freeze({ ON: '手動設定簽核流程' }),
+    // 主表「費用所屬人確認」
+    OWNER_CONFIRM: Object.freeze({ NEED: '需要', NO_NEED: '不需要' }),
     // 子表格「交通工具」
     VEHICLE: Object.freeze({
       HSR: '高鐵',
@@ -740,6 +745,19 @@
     USER_PAGE_SIZE: 100, // /v1/users.json 一次最多 100 筆
   });
 
+  // ── 費用所屬人確認（費用所屬人確認.js 用，2026-11-20）──────────────────────
+  //   申請人≠費用所屬人，且費用所屬人不在 EXEMPT_GROUP 群組 → FIELDS.OWNER_CONFIRM＝需要，
+  //   草稿送出時先到 STATUS.OWNER_CONFIRMING（作業者＝費用所屬人），確認後再照原本的主管流程走；其他情況＝不需要。
+  //   只在新增、EDITABLE_STATUSES 與駁回狀態（REJECT_SUFFIX 結尾）重算；表單作廢不處理。
+  //   查群組失敗 → 擋存檔（不能靜默略過確認）。
+  const OWNER_CONFIRM = Object.freeze({
+    EXEMPT_GROUP: '費用所屬人免確認', // kintone 群組（角色）；比對群組代碼或名稱
+    EDITABLE_STATUSES: Object.freeze([STATUS.REIMBURSEMENT_FILL, STATUS.APPLY_START]),
+    REJECT_SUFFIX: '駁回',
+    // 停在費用所屬人確認中時鎖住（改了會讓已排好的流程對不上）
+    LOCK_FIELDS: Object.freeze([FIELDS.APPLICANT, FIELDS.EXPENSE_OWNER, FIELDS.EXPENSE_OWNER_ORG]),
+  });
+
   window.PR_CONFIG = Object.freeze({
     ENV, // 目前環境名稱（'test'／'prod'），除錯用
     ENV_SETTINGS,
@@ -765,6 +783,7 @@
     DIRECTOR_UPLINE,
     CARD_PAY,
     MANUAL_SIGNERS,
+    OWNER_CONFIRM,
     directorUplineGroupOf,
     isAdmin,
   });

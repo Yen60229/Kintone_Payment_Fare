@@ -89,8 +89,9 @@ const autoShapes = () => fullShapes().filter((shape) => shape.hasHead || (shape.
  * @param {boolean} o.hasHead  單位部長_支店長有沒有人
  * @param {Object<string,Array>} [o.slotValues]  主管1～3、次長、次長1 各格的人（沒列的就是空的）
  * @param {string} [o.staffOrg]  手動的單，會計單位承辦人所屬的組織（預設第一個，見 MANUAL_ACCOUNTING_ORGS）
+ * @param {string} [o.ownerConfirm]  費用所屬人確認（需要／不需要；空字串＝流程還沒有這個關卡）
  */
-const makeProcessRecord = (config, { manual, accounting, managers, deputies, hasHead, slotValues = {}, staffOrg = MANUAL_ACCOUNTING_ORGS[0] }) => {
+const makeProcessRecord = (config, { manual, accounting, managers, deputies, hasHead, slotValues = {}, staffOrg = MANUAL_ACCOUNTING_ORGS[0], ownerConfirm = '' }) => {
   const F = config.FIELDS;
   const record = {
     [F.ACCOUNTING_UNIT]: accounting,
@@ -100,6 +101,8 @@ const makeProcessRecord = (config, { manual, accounting, managers, deputies, has
     [HEAD_FIELD]: hasHead ? HEAD_GROUP : '',
     [F.ACCOUNTING_STAFF]: manual ? staffOrg : '',
     [F.APPLICANT]: FAKE_USER,
+    [F.EXPENSE_OWNER]: FAKE_USER,
+    [F.OWNER_CONFIRM]: ownerConfirm,
     [CREATOR_FIELD]: FAKE_USER,
   };
   SIGNING_FIELDS.forEach((code) => {
@@ -108,12 +111,17 @@ const makeProcessRecord = (config, { manual, accounting, managers, deputies, has
   return record;
 };
 
+/** 流程有沒有用到「費用所屬人確認」（有才把需要／不需要各走一遍；舊版流程維持原本的筆數） */
+const usesOwnerConfirm = (proc, config) => Boolean(proc) && proc.actions.some((a) => String(a.filterCond || '').includes(config.FIELDS.OWNER_CONFIRM));
+
 /**
  * 每一種合法的假資料。每筆是 { id, record }，id 是給人看的描述。
  * @param {Object} config  PR_CONFIG
+ * @param {Object} [proc]  流程管理設定：用到費用所屬人確認時，每筆再分需要／不需要
  */
-function* enumerateRecords(config) {
+function* enumerateRecords(config, proc) {
   const accountingGroups = Object.values(config.ACCOUNTING.MAP);
+  const confirmValues = usesOwnerConfirm(proc, config) ? Object.values(config.OPTIONS.OWNER_CONFIRM) : [''];
 
   for (const manual of [false, true]) {
     // 手動的單會計單位是空的，只列一次，但會計單位承辦人每個組織各列一次；自動的單每個會計單位各列一次
@@ -122,19 +130,23 @@ function* enumerateRecords(config) {
     for (const shape of manual ? fullShapes() : autoShapes()) {
       for (const acc of accounts) {
         for (const staffOrg of staffOrgs) {
-          const slotValues = {};
-          shape.slots.forEach((code) => (slotValues[code] = FAKE_USER));
-          const record = makeProcessRecord(config, {
-            manual,
-            accounting: acc,
-            managers: shape.managers,
-            deputies: shape.deputies,
-            hasHead: shape.hasHead,
-            slotValues,
-            staffOrg,
-          });
-          const id = [manual ? '手動' : '自動', shape.label, manual ? `會計單位=（清空）／承辦人組織=${staffOrg}` : acc].join('／');
-          yield { id, record };
+          for (const ownerConfirm of confirmValues) {
+            const slotValues = {};
+            shape.slots.forEach((code) => (slotValues[code] = FAKE_USER));
+            const record = makeProcessRecord(config, {
+              manual,
+              accounting: acc,
+              managers: shape.managers,
+              deputies: shape.deputies,
+              hasHead: shape.hasHead,
+              slotValues,
+              staffOrg,
+              ownerConfirm,
+            });
+            const parts = [manual ? '手動' : '自動', shape.label, manual ? `會計單位=（清空）／承辦人組織=${staffOrg}` : acc];
+            if (ownerConfirm) parts.push(`費用所屬人確認=${ownerConfirm}`);
+            yield { id: parts.join('／'), record };
+          }
         }
       }
     }
@@ -216,7 +228,7 @@ const checkAll = (proc, config, opts = {}) => {
   const failures = [];
   let total = 0;
 
-  for (const { id, record: original } of enumerateRecords(config)) {
+  for (const { id, record: original } of enumerateRecords(config, proc)) {
     total += 1;
     const record = opts.mapRecord ? opts.mapRecord({ ...original }) : original;
     walkAndCheck(proc, config, record, accountingStates).problems.forEach((message) => failures.push({ id, record, message }));
@@ -235,6 +247,7 @@ module.exports = {
   makeProcessRecord,
   walkAndCheck,
   checkAll,
+  usesOwnerConfirm,
   accountingStateByGroup,
   isFilled,
   SIGNING_FIELDS,

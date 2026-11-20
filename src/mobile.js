@@ -28,6 +28,7 @@ import '../payment_request_submit.js?install';
 import '../費用歸屬部門限制.js?install';
 import '../signing_personnel_manager.js?install';
 import '../部長上一階主管.js';
+import '../費用所屬人確認.js?install';
 import '../使用者主檔快取.js';
 import '../手動簽核人設定.js?install';
 import '../申請人部門帶入.js?install';

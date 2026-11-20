@@ -153,7 +153,7 @@ const checkButtons = (proc, config, opts = {}) => {
   const notes = new Set();
   let total = 0;
 
-  for (const { id, record } of enumerateRecords(config)) {
+  for (const { id, record } of enumerateRecords(config, proc)) {
     total += 1;
     const result = exploreRecord(proc, config, record, year);
     result.reached.forEach((s) => reached.add(s));

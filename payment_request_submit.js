@@ -3,6 +3,7 @@ import { COST_SCOPE } from './費用歸屬部門限制.js';
 import { SIGNING_CHAIN } from './signing_personnel_manager.js';
 import { DIRECTOR_UPLINE } from './部長上一階主管.js';
 import { MANUAL_SIGNERS } from './手動簽核人設定.js';
+import { OWNER_CONFIRM } from './費用所屬人確認.js';
 import { TRAFFIC_RULES } from './交通費明細規則.js';
 
 // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
@@ -376,7 +377,9 @@ export const install = () => {
             return ['手動簽核人檢查失敗：請稍後再試或聯絡系統管理員'];
           })
         : Promise.resolve([]);
-      const [costCenters, invoiceErrors, scopeErrors, chainErrors, accountingErrors, directorErrors, manualErrors] = await Promise.all([
+      // 費用所屬人確認：申請人≠費用所屬人且所屬人不在免確認群組 → 需要（直接寫進 record；查不到群組回錯誤）
+      const ownerConfirmTask = OWNER_CONFIRM ? OWNER_CONFIRM.apply(record) : Promise.resolve([]);
+      const [costCenters, invoiceErrors, scopeErrors, chainErrors, accountingErrors, directorErrors, manualErrors, ownerConfirmErrors] = await Promise.all([
         costCentersTask,
         invoiceTask,
         scopeTask,
@@ -384,6 +387,7 @@ export const install = () => {
         accountingTask,
         directorTask,
         manualTask,
+        ownerConfirmTask,
       ]);
 
       if (costCenters.error) allErrors.push(costCenters.error);
@@ -407,6 +411,9 @@ export const install = () => {
 
       // 6. 費用所屬人是對照表裡的部長時的上一階主管（單位部長_支店長）
       allErrors.push(...directorErrors);
+
+      // 6-1. 費用所屬人確認旗標
+      allErrors.push(...ownerConfirmErrors);
 
       // 7. 手動設定簽核流程的簽核人
       allErrors.push(...manualErrors);

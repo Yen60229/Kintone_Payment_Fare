@@ -37,6 +37,8 @@ import '../費用歸屬部門限制.js?install';
 import '../signing_personnel_manager.js?install';
 // 費用所屬人是對照表裡的部長：上一階主管群組帶進單位主管3（C.DIRECTOR_UPLINE），由 submit 與簽核人員程式呼叫
 import '../部長上一階主管.js';
+// 費用所屬人確認：申請人≠費用所屬人 → 草稿先送費用所屬人確認中（C.OWNER_CONFIRM）；submit 呼叫 apply()
+import '../費用所屬人確認.js?install';
 // 使用者主檔快取（/v1/users.json 同一頁面只抓一次；手動簽核人與受款人 import 它，只提供函式）
 import '../使用者主檔快取.js';
 import '../手動簽核人設定.js?install';

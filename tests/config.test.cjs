@@ -47,13 +47,13 @@ console.log('config.test.cjs');
 check('PR_CONFIG 的頂層鍵恰為這 26 個（多了或少了都要有意識地改這裡）', () => {
   assert.deepStrictEqual(
     Object.keys(c).sort(),
-    ['ENV', 'ENV_SETTINGS', 'ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'BATCH_VOUCHER', 'CARD_PAY', 'COST_SCOPE', 'DIRECTOR_UPLINE', 'EXPECTED_PAY_DATE', 'FIELDS', 'INLINE_EDIT', 'MANUAL_SIGNERS', 'OPTIONS', 'REF_FIELDS', 'SEP', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'TRAFFIC_RULES', 'TRAFFIC_TABLE_LAYOUT', 'VOID_FIELD', 'directorUplineGroupOf', 'isAdmin'].sort(),
+    ['ENV', 'ENV_SETTINGS', 'ACCOUNTING', 'ACTIONS', 'ADMIN_USERS', 'APPS', 'AUTO_ADVANCE', 'BATCH_VOUCHER', 'CARD_PAY', 'COST_SCOPE', 'DIRECTOR_UPLINE', 'EXPECTED_PAY_DATE', 'FIELDS', 'INLINE_EDIT', 'MANUAL_SIGNERS', 'OPTIONS', 'OWNER_CONFIRM', 'REF_FIELDS', 'SEP', 'SPACES', 'STATUS', 'SUPER_ADMIN', 'TRAFFIC_RULES', 'TRAFFIC_TABLE_LAYOUT', 'VOID_FIELD', 'directorUplineGroupOf', 'isAdmin'].sort(),
   );
 });
 
 check('PR_CONFIG 與各註冊表皆為凍結物件（不會被其他模組意外改寫）', () => {
   assert.ok(Object.isFrozen(c));
-  ['ENV_SETTINGS', 'APPS', 'ACCOUNTING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'TRAFFIC_TABLE_LAYOUT', 'INLINE_EDIT', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'BATCH_VOUCHER', 'OPTIONS', 'TRAFFIC_RULES', 'COST_SCOPE', 'DIRECTOR_UPLINE', 'CARD_PAY', 'MANUAL_SIGNERS'].forEach((key) => {
+  ['ENV_SETTINGS', 'APPS', 'ACCOUNTING', 'EXPECTED_PAY_DATE', 'REF_FIELDS', 'ADMIN_USERS', 'SPACES', 'FIELDS', 'TRAFFIC_TABLE_LAYOUT', 'INLINE_EDIT', 'STATUS', 'ACTIONS', 'AUTO_ADVANCE', 'BATCH_VOUCHER', 'OPTIONS', 'TRAFFIC_RULES', 'COST_SCOPE', 'DIRECTOR_UPLINE', 'CARD_PAY', 'MANUAL_SIGNERS', 'OWNER_CONFIRM'].forEach((key) => {
     assert.ok(isDeepFrozen(c[key]), `${key} 應為深層凍結`);
   });
 });
@@ -287,6 +287,7 @@ check('FIELDS 主表欄位代碼正確', () => {
       DEV_ONLY_DATA: '帶入的資料_開發人員用',
       SIGN_FLOW_GROUP: '簽核流程',
       MANUAL_FLOW: '手動設定簽核流程',
+      OWNER_CONFIRM: '費用所屬人確認',
       PERMISSION_STAFF: '權限開放人員',
       EXPECTED_PAY_DATE: '預計付款日',
       STATUS_FIELD: '狀態',
@@ -352,8 +353,8 @@ check('費用所屬人與申請人是兩組獨立欄位（簽核、會計單位�
 });
 
 // ── STATUS／ACTIONS／AUTO_ADVANCE ───────────────────────────────────────────
-check("STATUS 只剩三個流程狀態值；STATUS.VOID 與 VOID_FIELD 字串相同但語意分開（狀態值 vs 欄位代碼）", () => {
-  assert.deepStrictEqual({ ...c.STATUS }, { VOID: '表單作廢', REIMBURSEMENT_FILL: '報銷人填單', APPLY_START: '草稿（未送出）' });
+check("STATUS 只剩四個流程狀態值（費用所屬人確認中 2026-11-20 加入）；STATUS.VOID 與 VOID_FIELD 字串相同但語意分開（狀態值 vs 欄位代碼）", () => {
+  assert.deepStrictEqual({ ...c.STATUS }, { VOID: '表單作廢', REIMBURSEMENT_FILL: '報銷人填單', APPLY_START: '草稿（未送出）', OWNER_CONFIRMING: '費用所屬人確認中' });
   assert.strictEqual(c.STATUS.VOID, c.VOID_FIELD);
   assert.notStrictEqual(F.STATUS_FIELD, c.STATUS.VOID, '「狀態」是欄位代碼，不是狀態值');
   ['ACCOUNTING', 'UNIT_ACCOUNTING', 'IN_PROGRESS', 'DONE', 'FLOW_DONE'].forEach((key) => assert.ok(!(key in c.STATUS), `STATUS 不應有 ${key}`));
@@ -392,6 +393,7 @@ check('AUTO_ADVANCE 行為開關與重試參數為合理值', () => {
 check('OPTIONS：手動簽核流程、交通工具（7 種）、憑證種類（5 種，與 749 rev1819 下拉選項一致）、紙本憑證「是」；723 選項已刪', () => {
   assert.deepStrictEqual(JSON.parse(JSON.stringify(c.OPTIONS)), {
     MANUAL_FLOW: { ON: '手動設定簽核流程' },
+    OWNER_CONFIRM: { NEED: '需要', NO_NEED: '不需要' },
     VEHICLE: { HSR: '高鐵', MRT_BUS: '捷運／公車', PARKING: '停車費', TRAIN: '火車', TAXI: '計程車', UBER: 'Uber', RENTAL: '汽機車短租' },
     RECEIPT_TYPE: { HSR_TICKET: '高鐵票', TICKET: '車票（高鐵外）', INVOICE: '發票', RECEIPT: '收據', NONE: '無' },
     PAPER_RECEIPT: { YES: '是', NO: '否' },
