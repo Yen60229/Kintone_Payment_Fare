@@ -404,7 +404,7 @@ const changedRow = (event) => {
 const NO_COPY_COLS = [COLS.INVOICE_NO, COLS.TAX];
 
 /**
- * 新增畫面按「＋」加列：新列（全部空白）複製上一列的內容，方便連續填寫。
+ * 新增／編輯畫面按「＋」加列：新列（全部空白）複製上一列的內容，方便連續填寫。
  * 只複製 value，不動 disabled（鎖定由後面的 applyRecordRules 依交通工具／憑證種類重套）。
  * 不是新增列（刪除列、改欄位、新列不是空白、沒有上一列）→ 不動。
  * @param {Object} event create.change.<子表格> 的 event
@@ -677,8 +677,8 @@ export const install = () => {
   });
 
   KT.on(changeEvents, (event) => {
-    // 新增畫面加列 → 先複製上一列，再套規則與重算稅額（新列就是 changedRow）
-    if (event.type === `app.record.create.change.${TRAFFIC.CODE}`) copyPrevRowOnAdd(event);
+    // 新增／編輯畫面加列 → 先複製上一列，再套規則與重算稅額（新列就是 changedRow）
+    if (event.type === `app.record.create.change.${TRAFFIC.CODE}` || event.type === `app.record.edit.change.${TRAFFIC.CODE}`) copyPrevRowOnAdd(event);
     applyRecordRules(event.record, true);
     toggleNotApplicableOption(event.record);
     // 稅額只重算被改的那一列（憑證種類可能剛被上面的規則清空或帶入，所以排在後面）

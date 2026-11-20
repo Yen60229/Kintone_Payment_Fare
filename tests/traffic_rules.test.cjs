@@ -47,7 +47,7 @@ const record = (rows, over = {}) => ({
 });
 
 // ── 新增列複製上一列（只在新增畫面）────────────────────────────────────────
-check('create 加列：新列複製上一列（發票號碼不帶、稅額依金額重算）；edit、非空白列、第一列不動', async () => {
+check('create／edit 加列：新列複製上一列（發票號碼不帶、稅額依金額重算）；非空白列、第一列不動', async () => {
   const prev = () => row({ 拜訪客戶: '台積電', [COLS.VEHICLE]: '計程車', 起訖點: '台北-新竹', 費用歸屬: 'AJ30', 憑證日期: '2026-11-19', [COLS.RECEIPT_TYPE]: '發票', [COLS.INVOICE_NO]: 'AB12345678', [COLS.AMOUNT]: '1050' });
   const { env } = setup();
   let r = record([prev(), row()]);
@@ -61,7 +61,8 @@ check('create 加列：新列複製上一列（發票號碼不帶、稅額依金
 
   r = record([prev(), row()]);
   ev = await fireRowChange(env, `app.record.edit.change.${T.CODE}`, r, 1);
-  assert.strictEqual(ev.record[T.CODE].value[1].value.拜訪客戶.value, '', 'edit 不複製');
+  assert.strictEqual(ev.record[T.CODE].value[1].value.拜訪客戶.value, '台積電', 'edit 也複製');
+  assert.strictEqual(ev.record[T.CODE].value[1].value[COLS.INVOICE_NO].value, '', 'edit 也不帶發票號碼');
 
   r = record([prev(), row({ 拜訪客戶: '別家' })]);
   ev = await fireRowChange(env, `app.record.create.change.${T.CODE}`, r, 1);
@@ -138,7 +139,7 @@ check('新增列（子表格變更）→ 只算新的那一列，舊列手改的
   const r = record([row({ [COLS.AMOUNT]: '1050', [COLS.RECEIPT_TYPE]: '發票', [COLS.TAX]: '49' }), row()]);
   let ev = await fireRowChange(env, `app.record.edit.change.${T.CODE}`, r, 1);
   assert.strictEqual(taxOf(ev.record, 0), '49');
-  assert.strictEqual(taxOf(ev.record, 1), '0', '新列沒有憑證種類 → 0');
+  assert.strictEqual(taxOf(ev.record, 1), '50', '新列複製上一列（發票 1050）→ 稅額重算，不沿用手改的 49');
   ev = await env.fire(`app.record.edit.change.${T.CODE}`, { record: ev.record, changes: { row: null } });
   assert.strictEqual(taxOf(ev.record, 0), '49');
 });
