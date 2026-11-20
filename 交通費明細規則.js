@@ -400,6 +400,35 @@ const changedRow = (event) => {
   return rows.find((row) => row === target) || (target.id ? rows.find((row) => row.id === target.id) : null) || target;
 };
 
+// 新增列複製上一列時不帶的欄位：發票號碼不能重複；稅額由 recalcRowTax 依複製來的金額重算
+const NO_COPY_COLS = [COLS.INVOICE_NO, COLS.TAX];
+
+/**
+ * 新增畫面按「＋」加列：新列（全部空白）複製上一列的內容，方便連續填寫。
+ * 只複製 value，不動 disabled（鎖定由後面的 applyRecordRules 依交通工具／憑證種類重套）。
+ * 不是新增列（刪除列、改欄位、新列不是空白、沒有上一列）→ 不動。
+ * @param {Object} event create.change.<子表格> 的 event
+ * @returns {boolean} 有複製
+ */
+const copyPrevRowOnAdd = (event) => {
+  const row = changedRow(event);
+  const rows = getRows(event.record);
+  const index = rows.indexOf(row);
+  if (!row?.value || index < 1) return false;
+  const isBlank = Object.values(row.value).every((cell) => {
+    const v = cell?.value;
+    return v === '' || v == null || (Array.isArray(v) && v.length === 0);
+  });
+  if (!isBlank) return false;
+  const prev = rows[index - 1].value;
+  Object.keys(row.value).forEach((code) => {
+    if (NO_COPY_COLS.includes(code) || !prev[code]) return;
+    const v = prev[code].value;
+    row.value[code].value = Array.isArray(v) ? [...v] : v;
+  });
+  return true;
+};
+
 /**
  * 套用整張單的規則：每一列＋計程車 → 是否有紙本憑證選「是」。
  * @param {Object} record
@@ -629,7 +658,7 @@ const changeEvents = [TRAFFIC.CODE, COLS.VEHICLE, COLS.AMOUNT, COLS.FEE, COLS.RE
 // 發票號碼／賣方統編：只留英文、數字；號碼格式不對（高鐵 8 碼數字、發票 10 碼）就在欄位上標錯（存檔時 validate 再擋）
 const cleanEvents = CLEAN_COLS.flatMap((code) => [`app.record.create.change.${code}`, `app.record.edit.change.${code}`]);
 
-export const TRAFFIC_RULES = Object.freeze({ cleanCode, invoiceNoError, calcTax, recalcRowTax, changedRow, hasTaxi, rulesFromConfig, rulesFromMaster, loadRules, getActiveRules, _resetForTest, allowedReceiptTypes, lockedColsOf, isFeeAllowed, filterMenuItems, menuContext, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
+export const TRAFFIC_RULES = Object.freeze({ cleanCode, invoiceNoError, calcTax, recalcRowTax, changedRow, copyPrevRowOnAdd, hasTaxi, rulesFromConfig, rulesFromMaster, loadRules, getActiveRules, _resetForTest, allowedReceiptTypes, lockedColsOf, isFeeAllowed, filterMenuItems, menuContext, applyRowRules, applyRecordRules, normalize, validate, updateReasonRequiredMark });
 
 /** 入口檔 import '…?install' 時呼叫：註冊事件（載入時只定義函式） */
 export const install = () => {
@@ -648,6 +677,8 @@ export const install = () => {
   });
 
   KT.on(changeEvents, (event) => {
+    // 新增畫面加列 → 先複製上一列，再套規則與重算稅額（新列就是 changedRow）
+    if (event.type === `app.record.create.change.${TRAFFIC.CODE}`) copyPrevRowOnAdd(event);
     applyRecordRules(event.record, true);
     toggleNotApplicableOption(event.record);
     // 稅額只重算被改的那一列（憑證種類可能剛被上面的規則清空或帶入，所以排在後面）
