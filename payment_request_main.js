@@ -57,43 +57,43 @@ const updateSpaceNotifications = () => {
 
 // 費用歸屬中文名稱（綠字）／代碼不存在（紅字）提示的樣式在 payment_request.css（.department-hint／.department-error）
 
-const clearCostFieldHints = () => {
-  document.querySelectorAll('.department-hint, .department-error').forEach((hint) => hint.remove());
+/** 一個費用歸屬代碼的提示：{ className, text } */
+const costHintOf = (code) => {
+  const name = NAME_OF_CODE[code];
+  return name ? { className: 'department-hint', text: name.replace(/\(/g, '\n(') } : { className: 'department-error', text: `⚠ 代碼 "${code}" 不存在` };
 };
 
 /**
- * 在畫面上值等於 costValue 的費用歸屬輸入框下方，掛上中文名稱（綠字）或「代碼不存在」（紅字）
+ * 依 codes（目前各列的費用歸屬代碼）同步畫面上的提示，只改有差異的格子：
+ *   提示內容一樣 → 不動（不會閃）；不一樣 → 改文字；輸入框的值不在 codes 裡 → 拿掉提示。
+ * 原本「先全部清掉、0.5 秒後再一列一列掛回去」會讓每一列閃一下（加列、改任一列都會），改成這樣避免連鎖重畫。
+ * 加列（複製上一列）時新列的費用歸屬是程式寫的、不會觸發 change，所以子表格變更也呼叫本函式補上提示。
+ * @param {string[]} codes
  */
-function findAndUpdateAllCostFields(costValue, departmentName, isError = false) {
+const syncCostHints = (codes) => {
+  const wanted = new Set(codes.filter(Boolean));
   setTimeout(() => {
     document.querySelectorAll('.subtable-gaia input[type="text"], table input[type="text"]').forEach((input) => {
-      if (!input.value || input.value.toUpperCase() !== costValue.toUpperCase()) return;
-
-      const targetContainer = input.closest('td') || input.closest('.field-inner-gaia') || input.closest('.field-gaia') || input.parentElement;
-      if (!targetContainer) return;
-
-      targetContainer.querySelectorAll('.department-hint, .department-error').forEach((hint) => hint.remove());
-
-      const hintElement = document.createElement('div');
-      hintElement.className = isError ? 'department-error' : 'department-hint';
-      hintElement.textContent = isError ? `⚠ 代碼 "${costValue}" 不存在` : departmentName.replace(/\(/g, '\n(');
-      try {
-        targetContainer.appendChild(hintElement);
-      } catch (error) {
-        console.error('添加提示失敗:', error);
+      const container = input.closest('td') || input.closest('.field-inner-gaia') || input.closest('.field-gaia') || input.parentElement;
+      if (!container) return;
+      const existing = container.querySelector('.department-hint, .department-error');
+      const code = String(input.value || '').trim().toUpperCase();
+      if (!wanted.has(code)) {
+        existing?.remove();
+        return;
       }
+      const hint = costHintOf(code);
+      if (existing && existing.className === hint.className && existing.textContent === hint.text) return;
+      const el = existing || document.createElement('div');
+      el.className = hint.className;
+      el.textContent = hint.text;
+      if (!existing) container.appendChild(el);
     });
-  }, 500);
-}
-
-/**
- * 依代號是否存在於費用歸屬主檔，掛上對應提示
- */
-const showCostCenterHint = (costValue) => {
-  const name = NAME_OF_CODE[costValue];
-  if (name) findAndUpdateAllCostFields(costValue, name, false);
-  else findAndUpdateAllCostFields(costValue, '', true);
+  }, 100);
 };
+
+/** record 各列的費用歸屬代碼（轉大寫、去空白） */
+const costCodesOf = (record) => (record?.[TRAFFIC.CODE]?.value || []).map((row) => String(row?.value?.[TRAFFIC.COLS.EXPENSE]?.value || '').trim().toUpperCase());
 
 // ── 詳細頁／列印頁：交通費明細子表格的欄寬（資料驅動）─────────────────────
 //   欄位順序、表頭文字、型別來自 config 的 TRAFFIC_TABLE_LAYOUT（kintone MCP 讀 749 表單，form_snapshots/ 有快照），
@@ -340,12 +340,8 @@ function refreshAllCostCenterHints() {
     const record = KT.record().get()?.record;
     if (!record) return;
 
-    const rows = record[TRAFFIC.CODE]?.value;
-    if (!Array.isArray(rows)) return;
-    rows.forEach((row) => {
-      const costValue = row?.value?.[TRAFFIC.COLS.EXPENSE]?.value?.trim()?.toUpperCase();
-      if (costValue) showCostCenterHint(costValue);
-    });
+    if (!Array.isArray(record[TRAFFIC.CODE]?.value)) return;
+    syncCostHints(costCodesOf(record));
   } catch (e) {
     // 頁面未完全渲染完畢時靜默相容
   }
@@ -473,22 +469,24 @@ export const install = () => {
     return event;
   });
 
+  // 子表格加列／刪列：kintone 重畫表格，提示依各列費用歸屬同步（加列複製上一列時新列也補上名稱）
+  KT.on([`app.record.create.change.${TRAFFIC.CODE}`, `app.record.edit.change.${TRAFFIC.CODE}`], (event) => {
+    syncCostHints(costCodesOf(event.record));
+    return event;
+  });
+
   // 費用歸屬變更 → 轉大寫、顯示中文名稱／代碼不存在提示
   //   會計單位一律依費用所屬人部門，由 signing_personnel_manager 查會計對應主檔帶入，這裡不動
   KT.on([`app.record.create.change.${TRAFFIC.COLS.EXPENSE}`, `app.record.edit.change.${TRAFFIC.COLS.EXPENSE}`], (event) => {
     loadCostCenterMaps().catch(() => {});
     try {
       const rows = event.record[TRAFFIC.CODE]?.value || [];
-
-      clearCostFieldHints();
       rows.forEach((row) => {
         const cell = row?.value?.[TRAFFIC.COLS.EXPENSE];
         const costValue = cell?.value?.trim().toUpperCase();
-        if (!costValue) return;
-        cell.value = costValue;
-        showCostCenterHint(costValue);
+        if (costValue) cell.value = costValue;
       });
-
+      syncCostHints(costCodesOf(event.record)); // 只改有差異的格子，不全部清掉重掛（避免每列閃一下）
       return event;
     } catch (error) {
       console.error('Error in cost allocation:', error);

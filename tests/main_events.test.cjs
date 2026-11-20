@@ -227,7 +227,7 @@ check('代碼存在 → 在該格下方掛綠字中文名稱；不存在 → 掛
   const appended = [];
   // 替身 DOM：每個值一個輸入框，各自掛在一個 td 下
   const inputs = ['TPE1', 'NOPE'].map((value) => {
-    const td = { querySelectorAll: () => [], appendChild: (el) => appended.push(el) };
+    const td = { querySelector: () => null, appendChild: (el) => appended.push(el) };
     return { value, closest: (sel) => (sel === 'td' ? td : null), parentElement: td };
   });
   env.setQuerySelectorAll((sel) => (sel.includes('input[type="text"]') ? inputs : []));
@@ -237,13 +237,39 @@ check('代碼存在 → 在該格下方掛綠字中文名稱；不存在 → 掛
   assert.deepStrictEqual(classes, ['department-hint|台北一課', 'department-error|⚠ 代碼 "NOPE" 不存在']);
 });
 
-check('空白列不產生提示；變更時先清掉畫面上舊的提示', async () => {
+check('只改有差異的格子：提示相同不重掛（不閃）、內容不同改文字、值不在各列費用歸屬裡就拿掉', async () => {
   const { env, F } = await loadMain({ costCenters: CENTERS });
+  const appended = [];
   const removed = [];
-  env.setQuerySelectorAll((sel) => (sel === '.department-hint, .department-error' ? [{ remove: () => removed.push(1) }, { remove: () => removed.push(2) }] : []));
-  await fireCost(env, F, baseRecord(F, { codes: [''] }));
-  assert.deepStrictEqual(removed, [1, 2]);
-  assert.strictEqual(env.timers.length, 0, '沒有任何列有值，就不排提示');
+  const hint = (className, textContent) => ({ className, textContent, remove: () => removed.push(textContent) });
+  const same = hint('department-hint', '台北一課');
+  const stale = hint('department-error', '舊的');
+  const gone = hint('department-hint', '拿掉我');
+  const cell = (value, existing) => {
+    const td = { querySelector: () => existing, appendChild: (el) => appended.push(el) };
+    return { value, closest: (sel) => (sel === 'td' ? td : null), parentElement: td };
+  };
+  const inputs = [cell('TPE1', same), cell('NOPE', stale), cell('拜訪客戶文字', gone)];
+  env.setQuerySelectorAll((sel) => (sel.includes('input[type="text"]') ? inputs : []));
+  await fireCost(env, F, baseRecord(F, { codes: ['tpe1', 'nope'] }));
+  env.flushTimers();
+  assert.deepStrictEqual(appended, [], '已有提示的格子不新增元素');
+  assert.strictEqual(same.textContent, '台北一課');
+  assert.strictEqual(stale.textContent, '⚠ 代碼 "NOPE" 不存在', '內容不同 → 原元素改文字');
+  assert.deepStrictEqual(removed, ['拿掉我']);
+});
+
+check('子表格加列／刪列也同步提示（加列複製上一列的費用歸屬會補上名稱）', async () => {
+  const { env, F } = await loadMain({ costCenters: CENTERS });
+  const types = env.registeredTypes();
+  assert.ok(types.includes(`app.record.create.change.${F.TRAFFIC_TABLE.CODE}`));
+  assert.ok(types.includes(`app.record.edit.change.${F.TRAFFIC_TABLE.CODE}`));
+  const appended = [];
+  const td = { querySelector: () => null, appendChild: (el) => appended.push(el) };
+  env.setQuerySelectorAll((sel) => (sel.includes('input[type="text"]') ? [{ value: 'TPE1', closest: (s) => (s === 'td' ? td : null), parentElement: td }] : []));
+  await env.fire(`app.record.create.change.${F.TRAFFIC_TABLE.CODE}`, { record: baseRecord(F, { codes: ['TPE1', 'TPE1'] }) });
+  env.flushTimers();
+  assert.deepStrictEqual(appended.map((el) => el.textContent), ['台北一課']);
 });
 
 // ── 5. 詳細頁／列印頁：交通費明細子表格欄寬（資料驅動）、取消按鈕 ─────────────
@@ -506,9 +532,14 @@ check('稅額、總金額、借支等 723 功能已刪：沒有註冊稅額／�
   const { env, F } = await loadMain();
   const T = F.TRAFFIC_TABLE;
   const registered = env.registeredTypes().join('\n');
-  [T.COLS.AMOUNT, T.COLS.TAX, T.COLS.RECEIPT_TYPE, T.CODE, F.PAY_METHOD].forEach((code) => {
+  [T.COLS.AMOUNT, T.COLS.TAX, T.COLS.RECEIPT_TYPE, F.PAY_METHOD].forEach((code) => {
     assert.ok(!registered.includes(`change.${code}`), `不應註冊 ${code} 的 change 事件`);
   });
+  // 子表格 change 只用來同步費用歸屬提示（2026-11-20），不能改到任何值
+  const record = baseRecord(F, { codes: ['TPE1'] });
+  const before = JSON.stringify(record);
+  await env.fire(`app.record.edit.change.${T.CODE}`, { record });
+  assert.strictEqual(JSON.stringify(record), before, '子表格 change 不改任何值');
 });
 
 check('稅額維持手填：費用歸屬變更不會改動金額或稅額', async () => {
