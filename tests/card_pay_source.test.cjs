@@ -7,6 +7,7 @@
 //   - 存檔：明細合計＝總金額（交通費明細 金額＋手續費）、至少一列公司信用卡與一列員工代墊、員工代墊只能一位、格式
 //   - 錯誤交給 PR_SAVE_ERRORS，和 payment_request_submit 同一個視窗（載入順序在 submit 前）
 //   - 員工代墊列 → 開共用的員工選人視窗（PR_PAYEE.openUserPicker）
+//   - 存檔：受款人要已建立匯款帳號（員工匯款帳號主檔）：非公司卡查主表受款人、部分支付查員工代墊列、全額支付不查
 // 單獨執行：node tests/card_pay_source.test.cjs
 
 const assert = require('assert');
@@ -14,7 +15,17 @@ const { createEnv, createRunner, readSrc } = require('./lib/pr_env.cjs');
 
 const { check, done } = createRunner('card_pay_source.test.cjs');
 
-const env = createEnv({ api: () => Promise.resolve({ users: [] }) });
+// 員工匯款帳號主檔：只有 knownAccounts 裡的編號查得到
+const knownAccounts = new Set(['00546', '00777']);
+const accountCalls = [];
+const env = createEnv({
+  api: (url, method, params) => {
+    if (url !== '/k/v1/records') return Promise.resolve({ users: [] });
+    accountCalls.push(params);
+    const codes = [...String(params.query).matchAll(/"(\d{5})"/g)].map((m) => m[1]);
+    return Promise.resolve({ records: codes.filter((c) => knownAccounts.has(c)).map((c) => ({ five_digit_num: { value: c } })) });
+  },
+});
 env.load('payment_request_config.js');
 env.load('使用者主檔快取.js');
 env.load('受款人填寫設定.js');
@@ -53,6 +64,9 @@ const makeRecord = ({ flag = false, mode = [], rows = [blankRow()], traffic = [t
   return r;
 };
 const PARTIAL = [P.OPTIONS.MODE.PARTIAL];
+// 沙箱裡的物件換成本地物件再比（deepStrictEqual 會比原型）
+const toCheck = (r) => JSON.parse(JSON.stringify(M.payeesToCheck(r)));
+const accountErrors = async (...a) => [...(await M.checkPayeeAccounts(...a))];
 const FULL = [P.OPTIONS.MODE.FULL];
 const rowsOf = (r) => [...r[P.TABLE.CODE].value].map((row) => [row.value[COLS.PAY_SOURCE].value, row.value[COLS.PAYEE].value, row.value[COLS.AMOUNT].value]);
 const submit = async (record) => {
@@ -160,6 +174,144 @@ check('存檔：勾公司卡但支付方式沒選 → 擋下；全額支付清�
   const voided = makeRecord({ flag: true, mode: [] });
   voided[C.VOID_FIELD].value = ['作廢'];
   assert.deepStrictEqual(await submit(voided), []);
+});
+
+check('匯款帳號：要查的受款人——非公司卡查主表、全額不查、部分只查格式正確的員工代墊列', () => {
+  assert.deepStrictEqual(toCheck(makeRecord()), [{ label: F.PAYEE, payee: '00546 王小明', code: '00546', rowIndex: -1 }]);
+  assert.deepStrictEqual(toCheck(makeRecord({ installed: false, payee: '王小明' })), [{ label: F.PAYEE, payee: '王小明', code: '', rowIndex: -1 }]);
+  assert.deepStrictEqual(toCheck(makeRecord({ payee: '' })), []);
+  const full = makeRecord({ flag: true, mode: FULL, payee: P.TEXT.FULL_PAYEE });
+  assert.deepStrictEqual(toCheck(full), []);
+  const partial = makeRecord({
+    flag: true,
+    mode: PARTIAL,
+    payee: P.TEXT.PARTIAL_PAYEE,
+    rows: [payeeRow(S.CARD, P.TEXT.CARD_PAYEE, 20), payeeRow(S.EMPLOYEE, '00777 陳大文', 500), payeeRow(S.EMPLOYEE, '王', 500)],
+  });
+  assert.deepStrictEqual(toCheck(partial), [{ label: `${P.TABLE.CODE}第 2 行受款人`, payee: '00777 陳大文', code: '00777', rowIndex: 1 }]);
+});
+
+check('匯款帳號：查不到的編號報「尚未建立匯款帳號」；主表沒有 5 碼報格式；作廢不查', async () => {
+  const find = async (codes) => codes.filter((c) => c !== '00546');
+  assert.deepStrictEqual(await accountErrors(makeRecord(), find), []);
+  const missing = await accountErrors(makeRecord({ payee: '12345 新同仁' }), find);
+  assert.strictEqual(missing.length, 1);
+  assert.ok(missing[0].includes('12345 新同仁') && missing[0].includes('尚未建立匯款帳號') && missing[0].includes('新增員工帳號'));
+  const noCode = await accountErrors(makeRecord({ payee: '王小明' }), find);
+  assert.ok(noCode[0].includes('選擇員工') && noCode[0].includes('王小明'));
+  const voided = makeRecord({ payee: '12345 新同仁' });
+  voided[C.VOID_FIELD].value = ['作廢'];
+  assert.deepStrictEqual(await accountErrors(voided, () => assert.fail('作廢不該查')), []);
+});
+
+check('匯款帳號：存檔時只查用到的編號（一次查詢），查不到併進同一個錯誤視窗；查詢失敗也擋下', async () => {
+  accountCalls.length = 0;
+  const ok = makeRecord({ flag: true, mode: PARTIAL, rows: [payeeRow(S.CARD, '', 520), payeeRow(S.EMPLOYEE, '00777 陳大文', 500)] });
+  assert.deepStrictEqual(await submit(ok), []);
+  assert.strictEqual(accountCalls.length, 1);
+  assert.strictEqual(accountCalls[0].app, C.APPS.EMPLOYEE_ACCOUNT);
+  assert.ok(accountCalls[0].query.includes('"00777"'));
+  const bad = makeRecord({ flag: true, mode: PARTIAL, rows: [payeeRow(S.CARD, '', 520), payeeRow(S.EMPLOYEE, '99999 沒帳號', 500)] });
+  const errs = await submit(bad);
+  assert.strictEqual(errs.length, 1);
+  assert.ok(errs[0].includes('第 2 行受款人') && errs[0].includes('99999 沒帳號'));
+  accountCalls.length = 0;
+  assert.deepStrictEqual(await submit(makeRecord({ flag: true, mode: FULL, payee: P.TEXT.FULL_PAYEE })), []);
+  assert.strictEqual(accountCalls.length, 0, '全額支付不查');
+});
+
+check('存檔查不到匯款帳號：沒有其他錯誤 → 跳確認視窗（編號＋姓名填好）；確認 → 新增、改過的值寫回原欄位、重開儲存中提示、不擋', async () => {
+  const r = makeRecord({ payee: '12345 新同仁' });
+  const asked = [];
+  let reopened = 0;
+  const deps = {
+    find: async (codes) => codes,
+    confirm: async (m) => (asked.push(JSON.parse(JSON.stringify(m))), [{ code: '12346', name: '新同事' }]),
+    reopen: () => (reopened += 1),
+  };
+  assert.deepStrictEqual([...(await M.handlePayeeAccountsOnSubmit(r, false, deps))], []);
+  assert.deepStrictEqual(asked, [[{ label: F.PAYEE, payee: '12345 新同仁', code: '12345', name: '新同仁', rowIndexes: [-1] }]]);
+  assert.strictEqual(r[F.PAYEE].value, '12346 新同事', '改過的值寫回主表受款人');
+  assert.strictEqual(reopened, 1);
+  // 部分支付：同一位員工兩列都寫回
+  const p = makeRecord({ flag: true, mode: PARTIAL, rows: [payeeRow(S.CARD, '', 20), payeeRow(S.EMPLOYEE, '21211 大小小', 500), payeeRow(S.EMPLOYEE, '21211 大小小', 500)] });
+  await M.handlePayeeAccountsOnSubmit(p, false, { ...deps, confirm: async () => [{ code: '21212', name: '大小中' }] });
+  assert.deepStrictEqual(rowsOf(p).map((x) => x[1]), ['', '21212 大小中', '21212 大小中']);
+  // 取消 → 擋下、受款人不動
+  const c = makeRecord({ payee: '12345 新同仁' });
+  const cancel = await M.handlePayeeAccountsOnSubmit(c, false, { ...deps, confirm: async () => null });
+  assert.ok(cancel.length === 1 && cancel[0].includes('尚未建立匯款帳號'));
+  assert.strictEqual(c[F.PAYEE].value, '12345 新同仁');
+  // 已有其他錯誤 → 不跳視窗，直接當錯誤
+  asked.length = 0;
+  const other = await M.handlePayeeAccountsOnSubmit(makeRecord({ payee: '12345 新同仁' }), true, deps);
+  assert.strictEqual(asked.length, 0);
+  assert.strictEqual(other.length, 1);
+});
+
+check('確認視窗：編號姓名可修改；檢查 5 碼／中文姓名／重複；改成主檔已有的編號不新增；失敗不關並顯示原因；成功回最後的值', async () => {
+  const missing = [{ label: F.PAYEE, payee: '12345 新同仁', code: '12345', name: '新同仁', rowIndexes: [-1] }];
+  const html = M.buildConfirmHtml(missing);
+  assert.ok(html.includes('value="12345"') && html.includes('value="新同仁"') && !html.includes('readonly') && html.includes('3個工作天'));
+  const v = (code, name) => ({ code, name });
+  const two = [missing[0], { ...missing[0], label: '第二位' }];
+  assert.ok(M.validateConfirmInputs([v('1234', '新同仁')], missing).includes('5 碼'));
+  assert.ok(M.validateConfirmInputs([v('12345', 'Amy')], missing).includes('中文'));
+  assert.ok(M.validateConfirmInputs([v('12345', '新同仁'), v('12345', '別人')], two).includes('重複'));
+  assert.strictEqual(M.validateConfirmInputs([v('12345', '新同仁')], missing), '');
+
+  const shown = [];
+  let opts = null;
+  let inputs = { code: '12345', name: '新同仁' };
+  const popup = { querySelector: (sel) => ({ value: sel.includes('new-code') ? inputs.code : inputs.name }) };
+  W.origSwal = env.run('this.Swal'); // 測完換回 env 的 Swal 替身（後面的測試要看 swalCalls）
+  W.Swal = {
+    fire: async (o) => {
+      opts = o;
+      let out = await o.preConfirm();
+      if (out === false) out = await o.preConfirm();
+      return { isConfirmed: out !== false, value: out };
+    },
+    getPopup: () => popup,
+    showValidationMessage: (m) => shown.push(m),
+  };
+  env.run('this.Swal = window.Swal;');
+  const created = [];
+  let calls = 0;
+  const create = async (x) => {
+    calls += 1;
+    if (calls === 1) throw { code: 'CB_NO02' };
+    created.push({ ...x });
+  };
+  inputs = { code: '12346', name: '新同事' };
+  const out = await M.confirmCreateAccounts(missing, { create, find: async (codes) => codes });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(out)), [{ code: '12346', name: '新同事' }]);
+  assert.strictEqual(opts.confirmButtonText, '新增匯款帳號並儲存');
+  assert.deepStrictEqual(created, [{ code: '12346', name: '新同事' }], '用修改後的值新增；失敗後再按一次才成功');
+  assert.ok(shown[0].includes('權限'));
+  // 改成主檔已有的編號 → 不新增，直接回傳
+  created.length = 0;
+  inputs = { code: '00546', name: '王小明' };
+  const exist = await M.confirmCreateAccounts(missing, { create, find: async () => [] });
+  assert.strictEqual(created.length, 0);
+  assert.strictEqual(exist[0].code, '00546');
+  env.run('delete this.Swal;');
+  delete W.Swal;
+  assert.strictEqual(await M.confirmCreateAccounts(missing, { create }), null, '沒有 SweetAlert → 不新增');
+  env.run('this.Swal = window.origSwal; delete window.origSwal;');
+});
+
+check('員工代墊列的受款人鎖住、其他來源解開：show、改付款來源、加列都會套用', async () => {
+  const r = makeRecord({ flag: true, mode: PARTIAL, rows: [payeeRow(S.CARD, '', 20), payeeRow(S.EMPLOYEE, '00546 王小明', 1000)] });
+  await env.fire('app.record.edit.show', { record: r });
+  assert.deepStrictEqual(r[P.TABLE.CODE].value.map((row) => row.value[COLS.PAYEE].disabled), [false, true]);
+  const row = r[P.TABLE.CODE].value[0];
+  row.value[COLS.PAY_SOURCE].value = S.EMPLOYEE;
+  await env.fire(`app.record.edit.change.${COLS.PAY_SOURCE}`, { record: r, changes: { row } });
+  assert.strictEqual(row.value[COLS.PAYEE].disabled, true);
+  r[P.TABLE.CODE].value.push(payeeRow(S.CARD, '', 1));
+  await env.fire(`app.record.edit.change.${P.TABLE.CODE}`, { record: r });
+  assert.deepStrictEqual(r[P.TABLE.CODE].value.map((x) => x.value[COLS.PAYEE].disabled), [true, true, false]);
 });
 
 check('員工代墊列：改付款來源 → 開共用的員工選人視窗；受款人已是合格格式就不再開', async () => {

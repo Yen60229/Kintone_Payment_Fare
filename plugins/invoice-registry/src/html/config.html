@@ -30,6 +30,16 @@
     <select class="nx-ir__input" id="nx-ir-self-voidcheck"></select>
   </div>
 
+  <h3 class="nx-ir__h3">員工匯款帳號主檔（選填）</h3>
+  <p class="nx-ir__hint">
+    填了之後，請款單的受款人選人視窗、公司卡存檔檢查會用這組 API Token（Administrator 權限：新增、編輯、檢視）讀寫主檔，填單人不用有主檔權限。
+    Token 只能新增、編輯、檢視，不給刪除。已設定過的 Token 不會顯示；留空＝沿用原本的。
+  </p>
+  <div class="nx-ir__grid">
+    <label class="nx-ir__label" for="nx-ir-ea-token">主檔 API Token</label>
+    <input class="nx-ir__input" id="nx-ir-ea-token" type="password" autocomplete="off" placeholder="（留空沿用原本的）" />
+  </div>
+
   <p class="nx-ir__error" id="nx-ir-error" role="alert"></p>
   <div class="nx-ir__actions">
     <button class="nx-ir__btn nx-ir__btn--sub" id="nx-ir-cancel" type="button">取消</button>

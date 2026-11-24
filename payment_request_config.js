@@ -159,14 +159,16 @@
 
   // ── 測試區／正式區設定（執行時依目前 App ID 自動判斷）──────────────────────────
   //   【只有這裡的值會因環境不同】，其他常數兩區共用；兩區的鍵必須完全一致（config.test 會檢查）。
-  //   判斷：目前 App ID ＝ 某環境的 APPS.TRAFFIC_PAYMENT（請款單）或 APPS.TRAFFIC_RULE_MASTER
-  //     （規則主檔，752 存檔檢查在那裡跑）→ 用那個環境。
+  //   判斷：目前 App ID ＝ 某環境的 APPS.TRAFFIC_PAYMENT（請款單）、APPS.TRAFFIC_RULE_MASTER
+  //     （規則主檔，存檔檢查在那裡跑）或 APPS.EMPLOYEE_ACCOUNT（員工匯款帳號主檔，匯入／存檔 trim 在那裡跑）→ 用那個環境。
   //   都對不到 → 用 test（維持現況），Console 警告一次。要強制指定可在本檔前設 window.PR_ENV = 'test' | 'prod'。
-  //   prod 先全填 null：正式區 App 建好後把 null 全換成正式值。null 永遠對不到 App ID，所以沒填完不會被選到；
-  //     選到的環境若還有 null，本檔直接報錯（不帶著錯的設定跑）。
+  //   正式區和測試區共用同一批主檔、管理員與群組：prod 照抄 test，只有 TRAFFIC_PAYMENT（請款單本身）不同。
+  //     哪一項之後要分開，就在 prod 裡覆寫那一項。null 永遠對不到 App ID；選到的環境若還有 null，本檔直接報錯。
+  //   主檔共用 → 在規則主檔／員工匯款帳號主檔執行時兩區都對得到，取先列的 test（TRAFFIC_PAYMENT＝測試區請款單）；
+  //     規則主檔檢查因此讀測試區請款單的下拉選項，兩區請款單的子表格選項要保持一致。
   //   DIRECTOR_UPLINE_RULES 與請款單（請購_庶務_轉請款單）的 DIRECTOR_UPLINE 相同，改一邊要同步另一邊。
-  const ENV_SETTINGS = Object.freeze({
-    test: Object.freeze({
+  const ENV_SETTINGS = (() => {
+    const test = Object.freeze({
       APPS: Object.freeze({
         COST_CENTER: 661, // 費用歸屬代碼（CostCenter）
         ACCOUNTING_MAP: 433, // 申請單位 → 會計單位／承辦人 對應
@@ -179,6 +181,9 @@
         // 交通費請款單的固定 App ID：判斷環境用，以及【在規則主檔執行的檢查程式】用（交通費明細規則主檔檢查.js；
         //   在規則主檔裡 getId() 拿到的是規則主檔自己的 ID）。請款單自己的程式一律用 APPS.PAYMENT。
         TRAFFIC_PAYMENT: 749,
+        // 員工匯款帳號主檔（SYS-01-6_NXAS-G員工帳號）：受款人選人視窗從這裡查；查不到＝尚未建立匯款帳號，可在視窗內新增
+        //   （新增後由該 App 的 kintone 記錄通知告知承辦人建立匯款資料）
+        EMPLOYEE_ACCOUNT: 754,
       }),
       ADMIN_USERS: Object.freeze(['24136', '24136T', '24145', '24145T']),
       SUPER_ADMIN: '24136', // 唯一開發者本人；比 ADMIN_USERS 更窄的權限（僅限「JS 自定義設定」按鈕），刻意不與四人白名單混用
@@ -196,34 +201,17 @@
       ),
       // 會計單位代號 → kintone 會計群組代碼（ACCOUNTING.MAP）
       ACCOUNTING_MAP: Object.freeze({ TPE: 'ACC_TPE', TPE海運: 'ACC_TPE海運', CKS: 'ACC_CKS', KHH: 'ACC_KHH', TEPZ: 'ACC_TEPZ', NEXT: 'ACC_NEXT' }),
-    }),
-    // 正式區：App 尚未建立，全部待填（鍵與 test 相同；ADMIN_USERS／DIRECTOR_UPLINE_RULES／ACCOUNTING_MAP 要確認正式區名單與群組後填，不要直接照抄 test）
-    prod: Object.freeze({
+    });
+    // 正式區：主檔、名單、群組都和 test 共用，只有請款單 App 不同
+    const prod = Object.freeze({
+      ...test,
       APPS: Object.freeze({
-        COST_CENTER: null,
-        ACCOUNTING_MAP: null,
-        APPROVAL_FLOW: null,
-        SAP_MAPPING: null,
-        PDF_FONT: null,
-        PERMISSION: null,
-        HOLIDAY_CALENDAR: null,
-        TRAFFIC_RULE_MASTER: null,
-        TRAFFIC_PAYMENT: null,
+        ...test.APPS,
+        TRAFFIC_PAYMENT: 758,
       }),
-      ADMIN_USERS: null,
-      SUPER_ADMIN: null,
-      DIRECTOR_UPLINE_RULES: null,
-      // 會計單位代號照 test（流程管理用同一組代號），群組代碼待填
-      ACCOUNTING_MAP: Object.freeze({
-        TPE: null,
-        TPE海運: null,
-        CKS: null,
-        KHH: null,
-        TEPZ: null,
-        NEXT: null,
-      }),
-    }),
-  });
+    });
+    return Object.freeze({ test, prod });
+  })();
 
   const CURRENT_APP_ID = PR_KT.app().getId();
 
@@ -237,7 +225,7 @@
     const appId = Number(CURRENT_APP_ID);
     const matched = Object.keys(ENV_SETTINGS).find((name) => {
       const apps = ENV_SETTINGS[name].APPS;
-      return [apps.TRAFFIC_PAYMENT, apps.TRAFFIC_RULE_MASTER].some((id) => id !== null && id === appId);
+      return [apps.TRAFFIC_PAYMENT, apps.TRAFFIC_RULE_MASTER, apps.EMPLOYEE_ACCOUNT].some((id) => id !== null && id === appId);
     });
     if (matched) return matched;
     if (typeof console !== 'undefined') console.warn(`交通費請款單設定：App ${CURRENT_APP_ID} 不在任何環境的對照裡，先用測試區（test）設定`);
@@ -297,6 +285,13 @@
       MAIN_DEPT: '主要管理部門',
       MAIN_DEPT_ON: '是',
       BUSINESS_AREA: 'BusinessArea', // SINGLE_LINE_TEXT：Cost Center 對應的 Business Area（交通費轉出 J 欄）
+    }),
+    // 員工匯款帳號主檔（APPS.EMPLOYEE_ACCOUNT）：一筆＝一位員工；受款人文字＝「員工編號 中文姓名」
+    EMPLOYEE_ACCOUNT: Object.freeze({
+      CODE: 'five_digit_num', // SINGLE_LINE_TEXT（必填、唯一）：5 碼員工編號
+      NAME: 'chinese_name', // SINGLE_LINE_TEXT（必填）：中文姓名
+      BP_CODE: 'bp_code', // SINGLE_LINE_TEXT（唯一）：標籤 BP_CODE
+      BANK_DETAIL_ID: 'BANK_DETAIL_ID', // SINGLE_LINE_TEXT
     }),
     // 交通費明細規則主檔（APPS.TRAFFIC_RULE_MASTER）：一筆記錄＝一個交通工具或一個憑證種類。
     //   名稱要和 749 子表格下拉選項一字不差；只讀「使用中」。讀不到或資料不合法時退回 TRAFFIC_RULES。

@@ -53,8 +53,8 @@ const DESKTOP_ONLY = [
   'coding_tools.js',
 ];
 // 放在專案最外層、不打包，PC 單獨上傳（排在 bundle 後面）
-// （交通費明細規則主檔檢查是上傳到規則主檔 App 的，前面只放 payment_request_config.js 原始檔）
-const STANDALONE = ['交通費明細規則主檔檢查.js'];
+// （交通費明細規則主檔檢查上傳到規則主檔、員工帳號匯入上傳到員工匯款帳號主檔，前面只放 payment_request_config.js 原始檔）
+const STANDALONE = ['交通費明細規則主檔檢查.js', '員工帳號匯入.js'];
 // 直接上傳原始檔（不經打包）的檔：必須維持傳統 script（不能 import／export），其他檔靠它們掛的 window.PR_*
 //   config：App 752 排第一；欄位標籤說明圖示：752 單獨上傳（請款單打包進桌面版）
 const RAW_UPLOAD = ['payment_request_config.js', '欄位標籤說明圖示.js', ...STANDALONE];

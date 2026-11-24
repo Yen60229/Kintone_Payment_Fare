@@ -89,6 +89,7 @@ npm run build
 |---|---|
 | [`payment_request.css`](payment_request.css) | **全部樣式只有這一個檔**，PC 和手機都上傳同一份 |
 | [`交通費明細規則主檔檢查.js`](交通費明細規則主檔檢查.js) | **上傳到 App 752（規則主檔），不是請款單**：存檔時檢查名稱與請款單下拉選項一字不差等（只有 PC） |
+| [`員工帳號匯入.js`](員工帳號匯入.js) | **上傳到員工匯款帳號主檔（`APPS.EMPLOYEE_ACCOUNT`），不是請款單**：列表頁 Excel 匯入（預覽、可修改）、存檔去頭尾空白（只有 PC） |
 
 - 只打一套：`npm run build:desktop`、`npm run build:mobile`（`build:mobile` 不會清空 `dist/`）。
 - 輸出經 terser 壓縮（另有 `.map`）；要在 kintone 上看未壓縮的程式碼除錯：`npm run build:debug`。
@@ -122,6 +123,19 @@ npm run build
 - 手機版、CSS 不用上傳。
 - 這支在 752 的新增、編輯、列表直接編輯存檔時，檢查「名稱」和請款單子表格的「交通工具」「憑證種類」下拉選項一字不差（含前後空白、類型選錯）、可選憑證種類、固定格式與統編、類型不用的欄位要留空。
 - 讀請款單欄位設定用 `APPS.TRAFFIC_PAYMENT`（不能用 `APPS.PAYMENT`，在 752 裡那是 752 自己）；維護 752 的人要讀得到請款單的欄位設定，讀不到會擋下 752 的存檔。
+
+#### 員工匯款帳號主檔（`APPS.EMPLOYEE_ACCOUNT`）
+
+| 區塊 | 依序上傳 |
+|---|---|
+| JavaScript（PC） | ① SweetAlert2 ② SheetJS（`XLSX`）③ `payment_request_config.js`（原始檔）④ `員工帳號匯入.js` |
+| CSS（PC） | ① SweetAlert2 的 CSS（同上）② `payment_request.css`（和請款單同一個檔） |
+
+- 手機版不用上傳。
+- 存檔（新增、編輯、列表直接編輯）時每個文字類欄位去頭尾空白（含全形空白、零寬字元）。
+- 列表頁「📥 匯入 Excel」：第一張工作表、第一列標題（員工編號／中文姓名／BP_CODE／BANK_DETAIL_ID，或欄位代碼）；預覽視窗每格可改、可取消勾選；
+  已有的員工只更新有填且不同的欄位（空白格不清值）；有錯誤的列要修正或取消勾選才能匯入。
+- 請款單的受款人選人視窗與存檔確認視窗會在這個 App 新增記錄：填單的人要有新增權限；「新增記錄」通知設定給建立匯款帳號的承辦人。
 - PDFLib／fontkit／JSZip／SheetJS 只有列表頁批次下載、PDF、SAP 轉檔用，手機版沒有這些功能，不用上傳。
 - 換版時把舊的 `payment_request_bundle.min.js`、`payment_request_desktop.css`／`payment_request_mobile.css` 從後台刪掉（舊 bundle 和新的同時存在會重複註冊事件）。
 
@@ -133,5 +147,5 @@ npm run build
 ### 其他
 1. **載入順序的單一事實來源是 [`src/index.js`](src/index.js)**（手機版 [`src/mobile.js`](src/mobile.js) 是它的子集，順序一致）。打包後已把順序固化，上傳打包好的檔即可；不打包的兩支照上表排在 bundle 後面。
 2. 模組一律寫桌面版的事件名稱，透過 `window.PR_KT`（`payment_request_config.js`）註冊與取用 kintone API；手機版打包時自動換成 `mobile.*` 事件與 `kintone.mobile.app.record`。
-3. `APPS.PAYMENT` 用 `PR_KT.app().getId()` 動態取得，同一份檔可上傳到測試區或正式區。其他會因環境不同的值（主檔 App ID、管理員名單、部長上一階主管對照、會計群組）寫在 config 的 `ENV_SETTINGS { test, prod }`，執行時依 App ID 自動選；**正式區上線前要把 `ENV_SETTINGS.prod` 的 null 全部填好**（見現況文件 §6.7）。
+3. `APPS.PAYMENT` 用 `PR_KT.app().getId()` 動態取得，同一份檔可上傳到測試區或正式區。其他會因環境不同的值（主檔 App ID、管理員名單、部長上一階主管對照、會計群組）寫在 config 的 `ENV_SETTINGS { test, prod }`，執行時依 App ID 自動選；正式區請款單是 App 758，主檔與名單和測試區共用（見現況文件 §6.7）。
 4. 模組是 ES module：事件註冊放在 `export const install`，入口檔寫 `import '../x.js?install';`（`vite.config.js` 的 `installEntries` 依入口順序呼叫 `install()`），模組之間用 `import`。config 與 752 要單獨上傳的兩支維持傳統 script。

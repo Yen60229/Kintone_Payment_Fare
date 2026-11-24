@@ -1,4 +1,5 @@
-import { openUserPicker } from './受款人填寫設定.js';
+import { openUserPicker, findMissingAccounts, createAccount, createErrorText, escapeHtml, CREATE_NOTE } from './受款人填寫設定.js';
+import { openSaving } from './存檔等待提示.js';
 
 // 桌面版／手機版共用的 kintone 入口（見 payment_request_config.js 的 PR_KT）
 const KT = window.PR_KT;
@@ -228,6 +229,18 @@ const syncMainPayee = (record, mode) => {
   }
 };
 
+/**
+ * 員工代墊列的受款人鎖住（只能用選人視窗填）；其他來源的列解開。就地修改，回傳 record。
+ * 寫回畫面要經由 event 回傳或 record.set 才生效。
+ */
+const lockEmployeePayees = (record) => {
+  rowsOf(record, TABLE).forEach((row) => {
+    const payee = row?.value?.[COLS.PAYEE];
+    if (payee) payee.disabled = cellOf(row, COLS.PAY_SOURCE) === SOURCE.EMPLOYEE;
+  });
+  return record;
+};
+
 /** 清空選項欄位（核取方塊清成空陣列；單選／下拉不能清，留給存檔檢查） */
 const clearChoice = (record, code) => {
   if (Array.isArray(record?.[code]?.value)) record[code].value = [];
@@ -278,6 +291,7 @@ const applyFieldState = (record, editable) => {
   } else {
     resetToBlankRow(record);
   }
+  lockEmployeePayees(record);
   syncMainPayee(record, modeOf(record));
   lastModes = [...checkedOf(record, P.MODE)];
 };
@@ -320,6 +334,7 @@ const writePayee = (index, payee) => {
   const row = current.record?.[TABLE]?.value?.[index];
   if (!row || row.value?.[COLS.PAY_SOURCE]?.value !== SOURCE.EMPLOYEE) return;
   row.value[COLS.PAYEE].value = payee;
+  lockEmployeePayees(current.record); // set 會照 record 裡的 disabled 重畫，員工代墊列維持鎖住
   KT.record().set(current);
 };
 
@@ -336,6 +351,7 @@ const fillCardPayee = (event) => {
   if (!payee) return event;
   if (row.value[COLS.PAY_SOURCE]?.value === SOURCE.CARD) payee.value = P.TEXT.CARD_PAYEE;
   else if (text(payee.value) === P.TEXT.CARD_PAYEE) payee.value = '';
+  payee.disabled = row.value[COLS.PAY_SOURCE]?.value === SOURCE.EMPLOYEE; // 員工代墊只能用選人視窗填
   return event;
 };
 
@@ -362,7 +378,181 @@ const checkOnSubmit = (record) => {
   return validatePayeeDetail(record);
 };
 
-export { isValidEmployeePayee, modeOf, totalOf, validatePayeeDetail, validateMode, applyFieldState, pickerRequest, checkOnSubmit, formatAmount };
+// ── 存檔：受款人要已建立匯款帳號（員工匯款帳號主檔，2026-11-23）─────────────────
+//   要查的受款人：
+//     不是公司卡支付 → 主表受款人（要有 5 碼員工編號開頭）；
+//     公司卡全額支付 → 主表受款人是自動字樣（不是員工），不查；
+//     公司卡部分支付 → 受款人明細的員工代墊列（格式不對的列由 validatePayeeDetail 報，這裡略過）。
+//   取前 5 碼和主檔員工編號比對，查不到＝尚未建立匯款帳號。
+
+/**
+ * 要查匯款帳號的受款人 [{ label, payee, code, rowIndex }]：rowIndex＝受款人明細第幾列（主表受款人是 -1）；
+ * 主表受款人沒有 5 碼開頭時 code 是空字串（另報格式錯誤）
+ */
+const payeesToCheck = (record) => {
+  const mode = isInstalled(record) ? modeOf(record) : 'none';
+  if (mode === 'full') return [];
+  const codeOf = (payee) => (/^(\d{5})/.exec(payee) || [])[1] || '';
+  if (mode === 'partial') {
+    return rowsOf(record, TABLE)
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => !isBlankRow(row) && cellOf(row, COLS.PAY_SOURCE) === SOURCE.EMPLOYEE && isValidEmployeePayee(cellOf(row, COLS.PAYEE)))
+      .map(({ row, index }) => {
+        const payee = text(cellOf(row, COLS.PAYEE));
+        return { label: `${TABLE}第 ${index + 1} 行受款人`, payee, code: codeOf(payee), rowIndex: index };
+      });
+  }
+  const payee = text(record?.[F.PAYEE]?.value);
+  if (payee === '' || AUTO_PAYEE_TEXTS.includes(payee)) return [];
+  return [{ label: F.PAYEE, payee, code: codeOf(payee), rowIndex: -1 }];
+};
+
+const missingMessage = (t) => `「${t.label}」${t.payee} 尚未建立匯款帳號：請在選人視窗按「＋ 新增員工帳號」建立後再存檔`;
+
+/**
+ * 找出格式不對的受款人與查不到匯款帳號的受款人。作廢的單不查。
+ * @param {Function} [find] 查不到的編號（預設 受款人填寫設定 的 findMissingAccounts），測試時注入
+ * @returns {Promise<{ errors: string[], missing: Array<{ label, payee, code, name, rowIndexes }> }>}
+ *   missing 同編號只留一筆，rowIndexes 是用到這個編號的所有位置（寫回用）
+ */
+const findPayeeProblems = async (record, find = findMissingAccounts) => {
+  if (record?.[C.VOID_FIELD]?.value?.length > 0) return { errors: [], missing: [] };
+  const targets = payeesToCheck(record);
+  const errors = targets.filter((t) => t.code === '').map((t) => `「${t.label}」請用「選擇員工」選擇（要有 5 碼員工編號），目前是「${t.payee}」`);
+  const withCode = targets.filter((t) => t.code !== '');
+  if (withCode.length === 0) return { errors, missing: [] };
+  const notFound = new Set(await find(withCode.map((t) => t.code)));
+  const byCode = new Map();
+  withCode
+    .filter((t) => notFound.has(t.code))
+    .forEach((t) => {
+      if (!byCode.has(t.code)) byCode.set(t.code, { label: t.label, payee: t.payee, code: t.code, name: text(t.payee.slice(5)), rowIndexes: [] });
+      byCode.get(t.code).rowIndexes.push(t.rowIndex);
+    });
+  return { errors, missing: [...byCode.values()] };
+};
+
+/** 受款人匯款帳號檢查：回傳錯誤訊息陣列（空陣列＝通過）；查不到的也當錯誤（不跳確認視窗） */
+const checkPayeeAccounts = async (record, find = findMissingAccounts) => {
+  const { errors, missing } = await findPayeeProblems(record, find);
+  return [...errors, ...missing.map(missingMessage)];
+};
+
+/** 存檔時的確認視窗內容：每位一組可修改的員工編號／中文姓名（data-index 對應 missing 的位置） */
+const buildConfirmHtml = (missing) =>
+  '<p class="pr-emp-msg">以下受款人尚未建立匯款帳號，請確認員工編號與姓名，確認後會新增並繼續儲存：</p>' +
+  missing
+    .map(
+      (t, i) =>
+        '<div class="pr-emp-create-form">' +
+        `<p class="pr-emp-msg">${escapeHtml(t.label)}</p>` +
+        `<label class="pr-emp-field">員工編號（5 碼）<input type="text" class="pr-emp-new-code" data-index="${i}" inputmode="numeric" maxlength="5" value="${escapeHtml(t.code)}"></label>` +
+        `<label class="pr-emp-field">中文姓名<input type="text" class="pr-emp-new-name" data-index="${i}" value="${escapeHtml(t.name)}"></label>` +
+        '</div>',
+    )
+    .join('') +
+  `<p class="pr-emp-create-note">${CREATE_NOTE}</p>`;
+
+/** 讀確認視窗裡第 i 組的值（找不到輸入框就用原本的值） */
+const readConfirmInputs = (popup, missing) =>
+  missing.map((t, i) => ({
+    code: text(popup?.querySelector?.(`.pr-emp-new-code[data-index="${i}"]`)?.value ?? t.code),
+    name: text(popup?.querySelector?.(`.pr-emp-new-name[data-index="${i}"]`)?.value ?? t.name),
+  }));
+
+/** 確認視窗的值檢查：編號 5 碼數字、姓名是中文（至少 2 個字）、不同組不能同編號；回傳錯誤訊息（沒問題回空字串） */
+const validateConfirmInputs = (values, missing) => {
+  for (let i = 0; i < values.length; i += 1) {
+    const { code, name } = values[i];
+    const label = missing[i].label;
+    if (!/^\d{5}$/.test(code)) return `${label}：員工編號請輸入 5 碼數字`;
+    if (!isValidEmployeePayee(`${code} ${name}`)) return `${label}：中文姓名請填中文（至少 2 個字）`;
+    if (values.findIndex((v) => v.code === code) !== i) return `${label}：員工編號 ${code} 重複`;
+  }
+  return '';
+};
+
+/**
+ * 跳確認視窗（編號／姓名已帶入、可修改），使用者按「新增匯款帳號並儲存」就逐筆新增
+ * （改成主檔已有的編號就不新增，直接用）。
+ * 回傳每組最後的 [{ code, name }]（和 missing 同順序）；取消或沒有 SweetAlert 回 null。
+ * 新增失敗時視窗不關、顯示原因（已新增的下次不再新增）。
+ * @param {{ create?: Function, find?: Function }} [deps] 測試時注入
+ */
+const confirmCreateAccounts = async (missing, deps = {}) => {
+  const { create = createAccount, find = findMissingAccounts } = deps;
+  if (typeof Swal === 'undefined' || typeof Swal.fire !== 'function') return null;
+  const done = new Set();
+  const result = await Swal.fire({
+    icon: 'warning',
+    title: '受款人尚未建立匯款帳號',
+    html: buildConfirmHtml(missing),
+    showCancelButton: true,
+    confirmButtonText: '新增匯款帳號並儲存',
+    cancelButtonText: '取消',
+    allowOutsideClick: false,
+    showLoaderOnConfirm: true,
+    customClass: { popup: 'pr-emp-picker' },
+    preConfirm: async () => {
+      const values = readConfirmInputs(Swal.getPopup?.(), missing);
+      const invalid = validateConfirmInputs(values, missing);
+      if (invalid) {
+        Swal.showValidationMessage(invalid);
+        return false;
+      }
+      let stillMissing;
+      try {
+        stillMissing = new Set(await find(values.map((v) => v.code).filter((c) => !done.has(c))));
+      } catch (err) {
+        console.error('[公司卡付款來源] 存檔時查詢員工帳號失敗:', err);
+        Swal.showValidationMessage('查詢員工帳號失敗，請稍後再試');
+        return false;
+      }
+      for (const v of values) {
+        if (done.has(v.code) || !stillMissing.has(v.code)) continue; // 已新增過、或主檔本來就有
+        try {
+          await create(v);
+          done.add(v.code);
+        } catch (err) {
+          console.error('[公司卡付款來源] 存檔時新增員工帳號失敗:', err);
+          Swal.showValidationMessage(`${v.code} ${v.name}：${createErrorText(err)}`);
+          return false;
+        }
+      }
+      return values;
+    },
+  });
+  return result?.isConfirmed && Array.isArray(result.value) ? result.value : null;
+};
+
+/** 確認視窗最後的值寫回原本的欄位（主表受款人或受款人明細那幾列的受款人），寫成「編號 姓名」 */
+const writeBackPayees = (record, missing, values) => {
+  missing.forEach((t, i) => {
+    const payee = `${values[i].code} ${values[i].name}`;
+    t.rowIndexes.forEach((index) => {
+      const field = index < 0 ? record?.[F.PAYEE] : record?.[TABLE]?.value?.[index]?.value?.[COLS.PAYEE];
+      if (field) field.value = payee;
+    });
+  });
+};
+
+/**
+ * 存檔時的匯款帳號處理：格式錯誤直接擋；查不到的在沒有其他錯誤時跳確認視窗（可修改），
+ * 新增後把值寫回原本的欄位、繼續儲存；取消（或已有其他錯誤）就擋下。回傳要加進 PR_SAVE_ERRORS 的訊息。
+ */
+const handlePayeeAccountsOnSubmit = async (record, hasOtherErrors, deps = {}) => {
+  const { find = findMissingAccounts, confirm = confirmCreateAccounts, reopen = openSaving } = deps;
+  const { errors, missing } = await findPayeeProblems(record, find);
+  if (missing.length === 0) return errors;
+  if (errors.length > 0 || hasOtherErrors) return [...errors, ...missing.map(missingMessage)];
+  const values = await confirm(missing);
+  if (!values) return missing.map(missingMessage);
+  writeBackPayees(record, missing, values);
+  reopen(); // 確認視窗蓋掉了「儲存中」提示，繼續儲存前再開回來
+  return [];
+};
+
+export { isValidEmployeePayee, modeOf, totalOf, validatePayeeDetail, validateMode, applyFieldState, pickerRequest, checkOnSubmit, payeesToCheck, findPayeeProblems, checkPayeeAccounts, buildConfirmHtml, validateConfirmInputs, confirmCreateAccounts, writeBackPayees, handlePayeeAccountsOnSubmit, lockEmployeePayees, formatAmount };
 
 /** 入口檔 import '…?install' 時呼叫：註冊事件（載入時只定義函式） */
 export const install = () => {
@@ -388,15 +578,32 @@ export const install = () => {
     });
   });
   KT.on(['create', 'edit'].map((mode) => `app.record.${mode}.change.${COLS.PAY_SOURCE}`), fillCardPayee);
+  // 加列／刪列後重新套員工代墊列的鎖定（加列複製來的員工代墊列也要鎖）
+  KT.on(['create', 'edit'].map((mode) => `app.record.${mode}.change.${TABLE}`), (event) => {
+    lockEmployeePayees(event.record);
+    return event;
+  });
 
   // 錯誤交給 PR_SAVE_ERRORS，由 payment_request_submit 在同一個視窗顯示（本檔排在它前面）
-  KT.on(['app.record.create.submit', 'app.record.edit.submit'], (event) => {
+  KT.on(['app.record.create.submit', 'app.record.edit.submit'], async (event) => {
+    let hasOtherErrors;
     try {
       const errors = checkOnSubmit(event.record);
-      if (errors.length > 0) window.PR_SAVE_ERRORS.add(errors);
+      hasOtherErrors = errors.length > 0;
+      if (hasOtherErrors) window.PR_SAVE_ERRORS.add(errors);
     } catch (err) {
       console.error('[公司卡付款來源] 存檔檢查失敗:', err);
+      hasOtherErrors = true;
       window.PR_SAVE_ERRORS.add(['公司卡支付檢查失敗：請稍後再試或聯絡系統管理員']);
+    }
+    // 受款人匯款帳號：在 checkOnSubmit 整理完主表受款人之後查；查不到 → 確認視窗新增後繼續儲存
+    //   （kintone 會等這個 Promise，再跑 payment_request_submit）
+    try {
+      const errors = await handlePayeeAccountsOnSubmit(event.record, hasOtherErrors);
+      if (errors.length > 0) window.PR_SAVE_ERRORS.add(errors);
+    } catch (err) {
+      console.error('[公司卡付款來源] 受款人匯款帳號檢查失敗:', err);
+      window.PR_SAVE_ERRORS.add(['受款人匯款帳號檢查失敗：請稍後再試或聯絡系統管理員']);
     }
     return event;
   });

@@ -124,7 +124,7 @@ export const setRequiredFields = (v) => {
   requiredFields = v;
 };
 
-export { onSubmitStart, onSubmitEnd, onLeave, closeSaving, parseRequiredFields, hasMissingRequired, POPUP_CLASS, SAFETY_CLOSE_MS };
+export { onSubmitStart, onSubmitEnd, onLeave, openSaving, closeSaving, parseRequiredFields, hasMissingRequired, POPUP_CLASS, SAFETY_CLOSE_MS };
 
 /** 入口檔 import '…?install' 時呼叫：註冊事件（載入時只定義函式） */
 export const install = () => {

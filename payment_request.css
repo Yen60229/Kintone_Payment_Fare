@@ -174,6 +174,36 @@
 .pr-emp-more,
 .pr-emp-msg { color: #666; margin: 8px 2px; }
 .pr-emp-error { color: #c62828; margin: 8px 2px; line-height: 1.6; }
+/* 查不到 → 新增員工帳號（員工匯款帳號主檔） */
+.pr-emp-create,
+.pr-emp-create-submit {
+  padding: 8px 14px;
+  margin: 4px 2px;
+  border: 1px solid #1e88e5;
+  border-radius: 6px;
+  background: #fff;
+  color: #1e88e5;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pr-emp-create-submit { background: #1e88e5; color: #fff; }
+.pr-emp-create:hover { background: #e3f2fd; }
+.pr-emp-create-form { margin: 4px 0; }
+.pr-emp-field { display: block; margin: 8px 2px; color: #333; }
+.pr-emp-new-code,
+.pr-emp-new-name {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  font-size: 16px;
+  padding: 8px 10px;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+}
+.pr-emp-create-error:empty { display: none; }
+.pr-emp-create-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.pr-emp-create-note { color: #e65100; font-size: 13px; }
 
 /* ── 「理由」動態必填的紅色 *（交通費明細規則）──────────────────────────────── */
 .pr-required-mark {
@@ -1156,3 +1186,50 @@ body.pr-hide-paper-na .control-value-gaia:has(input[value="不適用"]) { width:
 .pr-tcol-w-304 { width: 304px !important; min-width: 304px !important; }
 .pr-tcol-w-312 { width: 312px !important; min-width: 312px !important; }
 .pr-tcol-w-320 { width: 320px !important; min-width: 320px !important; }
+
+/* ── 員工匯款帳號主檔：Excel 匯入（員工帳號匯入.js，上傳到員工匯款帳號主檔）──────────── */
+.pr-imp-btn {
+  padding: 6px 14px;
+  margin: 0 6px;
+  border: 1px solid #1e88e5;
+  border-radius: 6px;
+  background: #fff;
+  color: #1e88e5;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pr-imp-btn:hover { background: #e3f2fd; }
+.pr-imp-file { display: none; }
+.pr-imp-popup { width: min(1100px, 96vw) !important; }
+.pr-imp-popup .swal2-html-container { text-align: left !important; margin: 8px 0 0 !important; }
+.pr-imp-summary { font-weight: 700; margin: 4px 2px; }
+.pr-imp-hint { color: #666; font-size: 13px; margin: 4px 2px 8px; line-height: 1.5; }
+.pr-imp-table-wrap { max-height: 60vh; overflow: auto; border: 1px solid #ddd; border-radius: 6px; }
+.pr-imp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pr-imp-table th {
+  position: sticky;
+  top: 0;
+  background: #f5f5f5;
+  padding: 6px;
+  border-bottom: 1px solid #ddd;
+  white-space: nowrap;
+  z-index: 1;
+}
+.pr-imp-table td { padding: 3px 6px; border-bottom: 1px solid #eee; vertical-align: middle; }
+.pr-imp-input {
+  width: 100%;
+  min-width: 90px;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.pr-imp-include { width: 16px; height: 16px; cursor: pointer; }
+.pr-imp-status { min-width: 110px; }
+.pr-imp-row[data-kind='add'] .pr-imp-status { color: #2e7d32; font-weight: 700; }
+.pr-imp-row[data-kind='update'] .pr-imp-status { color: #1565c0; font-weight: 700; }
+.pr-imp-row[data-kind='same'] .pr-imp-status { color: #888; }
+.pr-imp-row[data-kind='skip'] { opacity: 0.5; }
+.pr-imp-row[data-kind='error'] { background: #fff3f3; }
+.pr-imp-row[data-kind='error'] .pr-imp-status { color: #c62828; font-weight: 700; }

@@ -105,10 +105,10 @@ check('INLINE_EDIT.EDITABLE：列表上只留傳票編號、傳票日期、表�
 });
 
 // ── APPS ────────────────────────────────────────────────────────────────────
-check('APPS 共 10 個鍵，已刪的請購／庶務／出差／交際費／供應商／分攤 App 全不在', () => {
+check('APPS 共 11 個鍵，已刪的請購／庶務／出差／交際費／供應商／分攤 App 全不在', () => {
   assert.deepStrictEqual(
     Object.keys(c.APPS).sort(),
-    ['ACCOUNTING_MAP', 'APPROVAL_FLOW', 'COST_CENTER', 'HOLIDAY_CALENDAR', 'PAYMENT', 'PDF_FONT', 'PERMISSION', 'SAP_MAPPING', 'TRAFFIC_PAYMENT', 'TRAFFIC_RULE_MASTER'].sort(),
+    ['ACCOUNTING_MAP', 'APPROVAL_FLOW', 'COST_CENTER', 'EMPLOYEE_ACCOUNT', 'HOLIDAY_CALENDAR', 'PAYMENT', 'PDF_FONT', 'PERMISSION', 'SAP_MAPPING', 'TRAFFIC_PAYMENT', 'TRAFFIC_RULE_MASTER'].sort(),
   );
   ['PURCHASE', 'PURCHASE_LH', 'MAINTENANCE', 'BUSINESS_TRIP', 'ENTERTAINMENT', 'SUPPLIER_DB', 'ALLOC_TEMPLATE', 'ALLOC_CONFIG', 'ALLOC_FAVORITE', 'ALLOC_STORE'].forEach((key) => {
     assert.ok(!(key in c.APPS), `APPS 不應有 ${key}`);
@@ -125,6 +125,7 @@ check('APPS 各值正確；PAYMENT 用 kintone.app.getId() 動態取得（換 Ap
   assert.strictEqual(c.APPS.PDF_FONT, 488);
   assert.strictEqual(c.APPS.PERMISSION, 673);
   assert.strictEqual(c.APPS.HOLIDAY_CALENDAR, 620);
+  assert.strictEqual(c.APPS.EMPLOYEE_ACCOUNT, 754);
   assert.strictEqual(c.APPS.TRAFFIC_PAYMENT, 749);
   assert.strictEqual(loadConfig(752).APPS.TRAFFIC_PAYMENT, 749, '在規則主檔執行時 TRAFFIC_PAYMENT 仍是請款單、PAYMENT 才跟著換');
   loadConfig(749);
@@ -174,50 +175,36 @@ check('App ID 對不到任何環境 → 退回 test 並警告；window.PR_ENV �
   loadConfig(749);
 });
 
-check('prod 還沒填完：App ID 對不到 prod（null 不比對）；強制選 prod 或只填一半 → 直接報錯列出未填的鍵', () => {
-  assert.throws(() => loadConfig(749, 'x', { forcedEnv: 'prod' }), (e) => /prod 環境還有未填的值/.test(e.message) && e.message.includes('prod.APPS.COST_CENTER') && e.message.includes('prod.ADMIN_USERS'));
-  // 只填了請款單 App ID：對到 prod，但其他還是 null → 報錯，不帶著錯的設定跑
-  const prodStart = src.indexOf('prod: Object.freeze({');
-  assert.ok(prodStart > 0);
-  const partial = src.slice(0, prodStart) + src.slice(prodStart).replace('TRAFFIC_PAYMENT: null', 'TRAFFIC_PAYMENT: 9009');
-  assert.throws(() => loadConfig(9009, 'x', { source: partial }), /prod 環境還有未填的值/);
+check('正式區（共用測試區主檔）：只有 TRAFFIC_PAYMENT 不同；正式區請款單 → prod，共用主檔 → test', () => {
+  const { test, prod } = c.ENV_SETTINGS;
+  const prodPayment = prod.APPS.TRAFFIC_PAYMENT;
+  assert.ok(Number.isInteger(prodPayment) && prodPayment > 0 && prodPayment !== test.APPS.TRAFFIC_PAYMENT, '正式區請款單 App ID 要和測試區不同');
+  assert.deepStrictEqual({ ...prod.APPS, TRAFFIC_PAYMENT: test.APPS.TRAFFIC_PAYMENT }, { ...test.APPS }, '其他主檔和測試區共用');
+  ['ADMIN_USERS', 'SUPER_ADMIN', 'DIRECTOR_UPLINE_RULES', 'ACCOUNTING_MAP'].forEach((k) => assert.strictEqual(prod[k], test[k], k));
+  const p = loadConfig(prodPayment, '24136');
+  assert.strictEqual(p.ENV, 'prod');
+  assert.deepStrictEqual(lastWarns, []);
+  assert.strictEqual(p.APPS.PAYMENT, prodPayment);
+  assert.strictEqual(p.APPS.TRAFFIC_PAYMENT, prodPayment);
+  assert.strictEqual(p.APPS.COST_CENTER, test.APPS.COST_CENTER);
+  assert.strictEqual(p.isAdmin(), true);
+  // 規則主檔、員工匯款帳號主檔兩區共用 → 取先列的 test
+  [test.APPS.TRAFFIC_RULE_MASTER, test.APPS.EMPLOYEE_ACCOUNT].forEach((id) => {
+    const m = loadConfig(id);
+    assert.strictEqual(m.ENV, 'test', `在共用主檔 ${id} 執行 → test`);
+    assert.strictEqual(m.APPS.TRAFFIC_PAYMENT, test.APPS.TRAFFIC_PAYMENT);
+  });
+  assert.strictEqual(loadConfig(prodPayment, 'x', { forcedEnv: 'test' }).ENV, 'test', 'PR_ENV 強制指定優先');
   loadConfig(749);
 });
 
-check('prod 填完：正式區 App ID → 選 prod，APPS／ADMIN_USERS／SUPER_ADMIN／DIRECTOR_UPLINE.RULES 都換成正式值；測試區照舊', () => {
-  const prodStart = src.indexOf('prod: Object.freeze({');
-  const prodEnd = src.indexOf('const CURRENT_APP_ID', prodStart);
-  let n = 9000;
-  const accStart = src.indexOf('ACCOUNTING_MAP: Object.freeze({', prodStart);
-  assert.ok(accStart > prodStart && accStart < prodEnd);
-  const filledBlock = (
-    src.slice(prodStart, accStart) +
-    // 會計群組：填成 PROD_<代號>
-    src.slice(accStart, prodEnd).replace(/([^\s{,]+): null(?=,)/g, (all, key) => `${key}: 'PROD_${key}'`)
-  )
-    .replace(/(\b[A-Z_]+): null(?=,)/g, (all, key) => {
-      if (key === 'ADMIN_USERS') return "ADMIN_USERS: Object.freeze(['P001'])";
-      if (key === 'SUPER_ADMIN') return "SUPER_ADMIN: 'P001'";
-      if (key === 'DIRECTOR_UPLINE_RULES') return "DIRECTOR_UPLINE_RULES: Object.freeze([Object.freeze({ org: '正式部', title: '部長', group: 'PROD_部長' })])";
-      n += 1;
-      return `${key}: ${n}`;
-    });
-  assert.ok(!/: null/.test(filledBlock), '替身應把 prod 的 null 全填掉');
-  const filled = src.slice(0, prodStart) + filledBlock + src.slice(prodEnd);
-  const p = loadConfig(9009, 'P001', { source: filled }); // TRAFFIC_PAYMENT 是第 9 個 App 鍵 → 9009
-  assert.strictEqual(p.ENV, 'prod');
-  assert.deepStrictEqual(lastWarns, []);
-  assert.strictEqual(p.APPS.PAYMENT, 9009);
-  assert.strictEqual(p.APPS.TRAFFIC_PAYMENT, 9009);
-  assert.strictEqual(p.APPS.COST_CENTER, 9001);
-  assert.deepStrictEqual([...p.ADMIN_USERS], ['P001']);
-  assert.strictEqual(p.isAdmin(), true);
-  assert.strictEqual(p.isAdmin('24136'), false, '測試區管理員在正式區不是管理員');
-  assert.strictEqual(p.directorUplineGroupOf('正式部', '部長'), 'PROD_部長');
-  assert.strictEqual(p.directorUplineGroupOf('台中營業部', '部長'), null);
-  assert.deepStrictEqual({ ...p.ACCOUNTING.MAP }, { TPE: 'PROD_TPE', TPE海運: 'PROD_TPE海運', CKS: 'PROD_CKS', KHH: 'PROD_KHH', TEPZ: 'PROD_TEPZ', NEXT: 'PROD_NEXT' });
-  assert.strictEqual(loadConfig(9008, 'x', { source: filled }).ENV, 'prod', '正式區規則主檔（TRAFFIC_RULE_MASTER）也判斷成 prod');
-  assert.strictEqual(loadConfig(749, 'x', { source: filled }).ENV, 'test', 'prod 填了之後測試區照舊');
+check('選到的環境還有 null → 直接報錯列出未填的鍵；沒選到的環境有 null 不影響', () => {
+  const marker = '...test.APPS,';
+  assert.ok(src.includes(marker), 'prod 的 APPS 要從 test.APPS 展開');
+  const partial = src.replace(marker, `${marker} COST_CENTER: null,`);
+  const prodPayment = c.ENV_SETTINGS.prod.APPS.TRAFFIC_PAYMENT;
+  assert.throws(() => loadConfig(prodPayment, 'x', { source: partial }), (e) => /prod 環境還有未填的值/.test(e.message) && e.message.includes('prod.APPS.COST_CENTER'));
+  assert.strictEqual(loadConfig(749, 'x', { source: partial }).ENV, 'test');
   loadConfig(749);
 });
 
@@ -507,8 +494,9 @@ check('SIGNING（「所／中心 → 部」補前綴對應）已刪：簽核流�
 });
 
 // ── REF_FIELDS／EXPECTED_PAY_DATE ───────────────────────────────────────────
-check('REF_FIELDS 有簽核流程、費用歸屬、會計對應、行事曆、交通費明細規則主檔五份；費用歸屬主檔有代碼／中文名稱／使用狀況／所屬部門四個欄位（據點不再讀）', () => {
-  assert.deepStrictEqual(Object.keys(c.REF_FIELDS).sort(), ['ACCOUNTING_MAP', 'APPROVAL_FLOW', 'COST_CENTER', 'HOLIDAY_CALENDAR', 'TRAFFIC_RULE_MASTER']);
+check('REF_FIELDS 有簽核流程、費用歸屬、會計對應、行事曆、交通費明細規則主檔、員工匯款帳號主檔六份；費用歸屬主檔有代碼／中文名稱／使用狀況／所屬部門四個欄位（據點不再讀）', () => {
+  assert.deepStrictEqual(Object.keys(c.REF_FIELDS).sort(), ['ACCOUNTING_MAP', 'APPROVAL_FLOW', 'COST_CENTER', 'EMPLOYEE_ACCOUNT', 'HOLIDAY_CALENDAR', 'TRAFFIC_RULE_MASTER']);
+  assert.deepStrictEqual({ ...c.REF_FIELDS.EMPLOYEE_ACCOUNT }, { CODE: 'five_digit_num', NAME: 'chinese_name', BP_CODE: 'bp_code', BANK_DETAIL_ID: 'BANK_DETAIL_ID' });
   assert.deepStrictEqual({ ...c.REF_FIELDS.APPROVAL_FLOW }, { FLOW_NAME: '簽核流程名稱', ORG: '簽核所屬單位', IN_USE: '使用狀況', IN_USE_VALUE: '使用中' });
   assert.deepStrictEqual({ ...c.REF_FIELDS.COST_CENTER }, { CODE: 'CostCenter', NAME: '中文名稱', IN_USE: '使用狀況', DEPT: '所屬部門', DIRECTOR_GROUP: '部門部長', MAIN_DEPT: '主要管理部門', MAIN_DEPT_ON: '是', BUSINESS_AREA: 'BusinessArea' });
   assert.deepStrictEqual(

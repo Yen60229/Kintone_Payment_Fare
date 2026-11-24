@@ -91,8 +91,29 @@
       $('nx-ir-error').textContent = errors.join('\n');
       return;
     }
-    const config = { registryApp, pendingTtlMinutes: ttl || String(Core.DEFAULT_TTL_MINUTES), fields, self };
-    kintone.plugin.app.setConfig({ config: JSON.stringify(config) });
+    const token = $('nx-ir-ea-token').value.trim();
+    const config = { registryApp, pendingTtlMinutes: ttl || String(Core.DEFAULT_TTL_MINUTES), fields, self, employeeAccountProxy: Boolean(token) || Boolean(saved.employeeAccountProxy) };
+    const done = () => kintone.plugin.app.setConfig({ config: JSON.stringify(config) });
+    if (!token) {
+      done();
+      return;
+    }
+    // 代理設定（Token 存在伺服器端）：檢視、新增、編輯各一筆，依序存完再存一般設定
+    const origin = location.origin;
+    const headers = { 'X-Cybozu-API-Token': token, 'Content-Type': 'application/json' };
+    const rules = [
+      [`${origin}/k/v1/records.json`, 'GET'],
+      [`${origin}/k/v1/record.json`, 'POST'],
+      [`${origin}/k/v1/record.json`, 'PUT'],
+    ];
+    const next = (i) => {
+      if (i >= rules.length) {
+        done();
+        return;
+      }
+      kintone.plugin.app.setProxyConfig(rules[i][0], rules[i][1], headers, {}, () => next(i + 1));
+    };
+    next(0);
   });
 
   $('nx-ir-cancel').addEventListener('click', () => {
