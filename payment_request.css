@@ -412,16 +412,6 @@
 .pr-signer__step:focus-within { border-color: #2b7bc0; box-shadow: 0 0 0 3px rgba(43, 123, 192, 0.15); }
 .pr-signer__step.is-filled { border-color: #cfe0ef; background: #f7fbff; }
 .pr-signer__step.is-locked { border-style: dashed; background: #fafbfc; }
-.pr-signer__step--accounting { margin-top: 30px; border-color: #cde9d7; }
-.pr-signer__step--accounting.is-filled { border-color: #bfe3cc; background: #f3fbf6; }
-.pr-signer__step--accounting::before {
-  content: '簽核完成後交給會計';
-  position: absolute;
-  top: -22px;
-  left: 2px;
-  font-size: 12px;
-  color: #8a96a1;
-}
 .pr-signer__no {
   flex: none;
   width: 34px;
@@ -438,8 +428,6 @@
 }
 .pr-signer__step.is-filled .pr-signer__no { background: #2b7bc0; color: #fff; }
 .pr-signer__step.is-locked .pr-signer__no { border-color: #cfd5db; color: #b3bcc5; }
-.pr-signer__step--accounting .pr-signer__no { border-color: #27965a; color: #27965a; font-size: 11px; }
-.pr-signer__step--accounting.is-filled .pr-signer__no { background: #27965a; color: #fff; }
 .pr-signer__body { flex: 1; min-width: 0; }
 .pr-signer__label { display: flex; align-items: center; gap: 8px; margin: 6px 0 8px; font-size: 15px; font-weight: bold; }
 .pr-signer__tag { padding: 1px 8px; border-radius: 10px; background: #eef1f4; color: #7a8692; font-size: 12px; font-weight: normal; }
@@ -449,7 +437,6 @@
 
 .pr-signer__chosen { display: flex; align-items: center; gap: 10px; min-height: 40px; }
 .pr-signer__name { font-size: 16px; font-weight: bold; color: #1f3b57; }
-.pr-signer__step--accounting .pr-signer__name { color: #1e7a45; }
 .pr-signer__code { font-size: 12px; color: #8a96a1; }
 .pr-signer__change {
   margin-left: auto;

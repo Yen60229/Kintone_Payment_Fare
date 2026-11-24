@@ -104,7 +104,7 @@ const AF = C.REF_FIELDS.APPROVAL_FLOW;
 // =========================
 
 // 手動模式：簽核人改由手動簽核人設定（PR_MANUAL_SIGNERS）的三格指定，原本的 6 格與人數欄位不用
-const MANUAL_ACCOUNTING_FIELD = C.MANUAL_SIGNERS.ACCOUNTING_FIELD; // 手動模式的會計承辦人（指定簽核人視窗第 4 格）
+const MANUAL_ACCOUNTING_FIELD = C.MANUAL_SIGNERS.ACCOUNTING_FIELD; // 手動模式的會計承辦人（依會計對應主檔自動帶入，視窗不能改）
 const MANUAL_MODE_CONFIG = {
   // 核取方塊欄位名稱
   checkbox: F.MANUAL_FLOW,
@@ -494,8 +494,8 @@ const applyOnSave = async (record) => {
 /**
  * 存檔時呼叫：依目前的費用所屬人部門重帶會計單位／會計承辦人／權限開放人員（和簽核人員同一個理由：
  * 畫面上是改部門時非同步帶的，改完馬上存、舊單、會計對應主檔事後改過，存進去的都會是舊的）。
- * 手動設定簽核流程也要帶（會計承辦人、權限開放人員），會計單位照舊維持空白；手動會計承辦人不在這裡動。
- * 查不到對應 → 非手動擋存檔（流程管理要靠會計單位送件）；手動不擋。
+ * 手動設定簽核流程一樣帶（簽完也依會計單位送件），另把會計承辦人同步寫進手動會計承辦人。
+ * 查不到對應 → 擋存檔（流程管理要靠會計單位送件）。
  * @param {Object} record event.record
  * @returns {Promise<string[]>}
  */
@@ -507,7 +507,6 @@ const applyAccountingOnSave = async (record) => {
   try {
     const accountData = await fetchAccountingData(orgName);
     if (!accountData) {
-      if (isManualSigningMode(record)) return [];
       return [`「${F.EXPENSE_OWNER_ORG}」${orgName} **找不到對應的會計單位**\n※ 請確認費用所屬人部門是否正確；仍有問題請洽系統管理員`];
     }
     fillAccounting(record, accountData);
@@ -543,21 +542,24 @@ const toUsers = (list) => (list || []).map((u) => ({ code: u.code || u, name: u.
 
 /**
  * 會計對應主檔的一筆 → 寫進 record（只改 record，畫面與存檔共用）：
- *   會計單位（手動設定簽核流程時維持空白：流程管理靠它分辨「送會計」與「送單位會計處理中」）、
- *   會計承辦人、權限開放人員。
+ *   會計單位（手動設定簽核流程也帶：簽完一樣依會計單位送「單位會計處理中(…)」）、
+ *   會計承辦人、權限開放人員；手動模式另寫進手動會計承辦人。
  * @returns {{ hasAccount: boolean, isManual: boolean, staff: Array }}
  */
 function fillAccounting(record, accountData) {
   const isManual = isManualSigningMode(record);
   const unit = accountData[ACC.ACCOUNTING_UNIT]?.value;
   const hasAccount = unit?.length > 0;
-  if (!isManual) {
-    record[F.ACCOUNTING_UNIT] = { value: hasAccount ? [{ code: unit, name: unit }] : [], type: 'GROUP_SELECT', disabled: true };
-  }
+  record[F.ACCOUNTING_UNIT] = { value: hasAccount ? [{ code: unit, name: unit }] : [], type: 'GROUP_SELECT', disabled: true };
   const staff = toUsers(accountData[ACC.ACCOUNTING_STAFF]?.value);
   record[F.ACCOUNTING_STAFF] = { value: staff, type: 'USER_SELECT' };
   // 左側是請款單主表的欄位（F），右側是會計對應主檔的欄位（ACC）——同名但不同 App
   record[F.PERMISSION_STAFF] = { value: toUsers(accountData[ACC.PERMISSION_USER]?.value), type: 'USER_SELECT' };
+  // 手動模式：手動會計承辦人一律自動帶入會計承辦人（視窗不讓申請人選）
+  if (isManual && record[MANUAL_ACCOUNTING_FIELD]) {
+    record[MANUAL_ACCOUNTING_FIELD].value = staff;
+    record[MANUAL_ACCOUNTING_FIELD].disabled = true;
+  }
   return { hasAccount, isManual, staff };
 }
 
@@ -583,17 +585,10 @@ function setAccountingUnit(orgName) {
       const updateRecord = KT.record().get();
       const { hasAccount, isManual, staff } = fillAccounting(updateRecord.record, accountData);
 
-      // 手動模式另有「手動會計承辦人」（指定簽核人視窗第 4 格）：還空著才帶這個預設，申請人選過的不蓋掉
-      const manualStaffField = updateRecord.record[MANUAL_ACCOUNTING_FIELD];
-      const offerManualStaff = isManual && manualStaffField && !(manualStaffField.value?.length > 0) && staff.length > 0;
-      if (offerManualStaff) {
-        manualStaffField.value = staff;
-        manualStaffField.disabled = true;
-      }
-
-      KT.record().setFieldShown(F.ACCOUNTING_UNIT, hasAccount && !isManual);
+      KT.record().setFieldShown(F.ACCOUNTING_UNIT, hasAccount);
       KT.record().set(updateRecord);
-      if (offerManualStaff) MANUAL_SIGNERS.offerAccounting(staff);
+      // 手動模式：手動會計承辦人已在 fillAccounting 自動帶入，按鈕旁的簽核路線跟著重畫
+      if (isManual) MANUAL_SIGNERS.offerAccounting(staff);
     }).catch((err) => console.error('[簽核人員] 帶入會計單位失敗:', err)),
     function (error) {
       console.error('API錯誤:', error);
@@ -806,8 +801,6 @@ let manualShown = null;
  */
 function enterManualModeForExempt(record, { openNow = true } = {}) {
   record[F.MANUAL_FLOW].value = [OPT.MANUAL_FLOW.ON];
-  record[F.ACCOUNTING_UNIT].value = [];
-  KT.record().setFieldShown(F.ACCOUNTING_UNIT, false);
   if (typeof KT.record().setGroupFieldOpen === 'function') KT.record().setGroupFieldOpen(F.SIGN_FLOW_GROUP, true);
   // 還沒指定簽核人才跳視窗（複製的單已經有人就不吵他，要改按「更改簽核人」）
   const hasSigners = MANUAL_SIGNERS.signersOf(record).some(Boolean);
@@ -1127,8 +1120,8 @@ export const install = () => {
       }
     });
 
-    // 手動設定簽核流程時不顯示會計單位
-    KT.record().setFieldShown(F.ACCOUNTING_UNIT, record[F.MANUAL_FLOW]?.value?.length < 1);
+    // 會計單位：手動、自動都顯示（手動簽完也依它送會計）
+    KT.record().setFieldShown(F.ACCOUNTING_UNIT, true);
 
     return event;
   });
@@ -1162,10 +1155,7 @@ export const install = () => {
         return event;
       }
 
-      // 啟用手動模式
-      record[F.ACCOUNTING_UNIT].value = [];
-      KT.record().setFieldShown(F.ACCOUNTING_UNIT, false);
-
+      // 啟用手動模式（會計單位照留：手動簽完一樣依會計單位送會計）
       KT.record().setGroupFieldOpen(F.SIGN_FLOW_GROUP, true);
       event.record = initManualSigningMode(record, { openNow: true });
     } else {

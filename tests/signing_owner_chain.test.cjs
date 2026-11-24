@@ -579,19 +579,27 @@ const NAME = '航空貨物部-台北營業課';
     assert.deepStrictEqual([r.unit, r.staff, r.perm], screen);
   });
 
-  await check('存檔重帶會計單位：手動設定簽核流程 → 會計單位不動（維持原值）、承辦人與權限開放人員照帶', async () => {
-    const r = await saveAcc({ over: { [F.MANUAL_FLOW]: { type: 'CHECK_BOX', value: [C.OPTIONS.MANUAL_FLOW.ON] } } });
+  await check('存檔重帶會計單位：手動設定簽核流程 → 會計單位、承辦人、權限開放人員照帶，手動會計承辦人也自動帶入', async () => {
+    const MANUAL_ACC = C.MANUAL_SIGNERS.ACCOUNTING_FIELD;
+    const r = await saveAcc({
+      over: {
+        [F.MANUAL_FLOW]: { type: 'CHECK_BOX', value: [C.OPTIONS.MANUAL_FLOW.ON] },
+        [MANUAL_ACC]: { type: 'USER_SELECT', value: [U('PICKED')] },
+      },
+    });
     assert.deepStrictEqual(r.errors, []);
-    assert.deepStrictEqual([r.unit, r.staff, r.perm], [['ACC_OLD'], ['S1'], ['P1']]);
+    assert.deepStrictEqual([r.unit, r.staff, r.perm], [['ACC_NEW'], ['S1'], ['P1']]);
+    assert.deepStrictEqual(r.record[MANUAL_ACC].value.map((u) => u.code), ['S1'], '手動會計承辦人一律蓋成會計承辦人');
   });
 
-  await check('存檔重帶會計單位：查不到對應 → 一般擋存檔、手動不擋；API 失敗 → 擋存檔', async () => {
+  await check('存檔重帶會計單位：查不到對應 → 一般、手動都擋存檔；API 失敗 → 擋存檔', async () => {
     const miss = await saveAcc({ acc: null });
     assert.strictEqual(miss.errors.length, 1);
     assert.ok(miss.errors[0].includes('找不到對應的會計單位') && miss.errors[0].includes(NAME), miss.errors[0]);
     assert.deepStrictEqual(miss.unit, ['ACC_OLD'], '查不到時不清空');
     const manualMiss = await saveAcc({ acc: null, over: { [F.MANUAL_FLOW]: { type: 'CHECK_BOX', value: [C.OPTIONS.MANUAL_FLOW.ON] } } });
-    assert.deepStrictEqual(manualMiss.errors, []);
+    assert.strictEqual(manualMiss.errors.length, 1);
+    assert.ok(manualMiss.errors[0].includes('找不到對應的會計單位'), manualMiss.errors[0]);
     const origApi = global.kintone.api;
     // 會計對應主檔用回呼的寫法查，失敗走第二個回呼
     global.kintone.api = Object.assign(

@@ -47,6 +47,7 @@ const collectFieldCodes = (config) => {
     else if (node && typeof node === 'object') Object.values(node).forEach(visit);
   };
   visit(config.FIELDS);
+  visit({ fields: config.MANUAL_SIGNERS.FIELDS, count: config.MANUAL_SIGNERS.COUNT_FIELD, staff: config.MANUAL_SIGNERS.ACCOUNTING_FIELD });
   codes.add(config.VOID_FIELD);
   return codes;
 };
@@ -128,6 +129,7 @@ const lintProcess = (proc, config) => {
     [config.VOID_FIELD]: { label: 'ACTIONS.VOID', values: [config.ACTIONS.VOID] },
     部門主管簽核人數: { label: '部門主管簽核人數的選項', values: MANAGER_COUNT_VALUES },
     部門次長簽核人數: { label: '部門次長簽核人數的選項', values: DEPUTY_COUNT_VALUES },
+    [config.MANUAL_SIGNERS.COUNT_FIELD]: { label: '手動簽核人數的選項', values: MANAGER_COUNT_VALUES },
   };
   actions.forEach((a) => {
     let parts;

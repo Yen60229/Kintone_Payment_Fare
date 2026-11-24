@@ -31,12 +31,14 @@ const ACCOUNTING_PREFIX = '單位會計處理中';
 const BUTTON_FINISH = '入帳完成';
 const BUTTON_TRANSFER_PREFIX = '轉至';
 const BUTTON_REJECT_WORD = '駁回';
+const BUTTON_RETURN = '返回至申請人';
 const BUTTON_VOID = '作廢';
 const voucherThisYear = (year) => `${year}-06-15`; // 條件 傳票日期 = THIS_YEAR()：要是今年的日期
 const voucherLastYear = (year) => `${year - 1}-12-31`;
 
 const isAccountingState = (state) => state.startsWith(ACCOUNTING_PREFIX);
-const isRejectOrVoid = (a) => a.name.includes(BUTTON_REJECT_WORD) || a.name === BUTTON_VOID;
+// 「返回至申請人」（手動簽核人退回草稿）也是駁回類
+const isRejectOrVoid = (a) => a.name.includes(BUTTON_REJECT_WORD) || a.name === BUTTON_RETURN || a.name === BUTTON_VOID;
 const isTransfer = (a) => a.name.startsWith(BUTTON_TRANSFER_PREFIX);
 
 const describe = (list) => (list.length > 0 ? list.map((a) => `${a.name}→${a.to}`).join('、') : '（沒有）');

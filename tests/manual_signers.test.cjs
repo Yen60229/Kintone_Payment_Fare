@@ -199,9 +199,9 @@ check('存檔：申請人不在「費用歸屬不限部門」群組 → 只說�
   assert.match(errors[0], /請取消勾選/);
 });
 
-check('存檔：手動會計承辦人空白 → 一般使用者擋下，管理員略過', async () => {
+check('存檔：手動會計承辦人改自動帶入（signing_personnel_manager 檢查），這裡空白也不擋', async () => {
   const user = setup({ loginCode: 'nobody' });
-  assert.match((await user.M.validate(recordOf({ signers: [U('a01')], staff: [] }))).join('|'), /還沒指定會計承辦人/);
+  assert.strictEqual((await user.M.validate(recordOf({ signers: [U('a01')], staff: [] }))).length, 0);
   const admin = setup({ loginCode: '24136' });
   assert.strictEqual((await admin.M.validate(recordOf({ signers: [U('a01')], staff: [] }))).length, 0);
 });
@@ -240,7 +240,7 @@ const openWith = async (t, opts) => {
   return { result, popup, root, steps, type };
 };
 
-check('視窗：用 SweetAlert 開（自訂按鈕樣式、不能點外面關掉）；四格＝三位簽核人＋會計承辦人', async () => {
+check('視窗：用 SweetAlert 開（自訂按鈕樣式、不能點外面關掉）；三格＝三位簽核人，會計承辦人不在視窗裡選', async () => {
   const t = setup();
   const d = await openWith(t, { initial: [] });
   const o = d.popup.opts;
@@ -252,12 +252,9 @@ check('視窗：用 SweetAlert 開（自訂按鈕樣式、不能點外面關掉�
   assert.match(o.customClass.popup, /pr-signer-popup/);
   assert.match(o.customClass.confirmButton, /pr-signer-btn--primary/);
   assert.match(o.customClass.cancelButton, /pr-signer-btn--ghost/);
-  assert.strictEqual(d.steps().length, 4);
-  const acc = d.steps()[3];
-  assert.ok(acc.className.includes('pr-signer__step--accounting'));
-  assert.ok(acc.className.includes('is-filled'), '會計承辦人預設帶入');
-  assert.strictEqual(find(acc, 'pr-signer__name').textContent, '會計王');
-  assert.match(find(acc, 'pr-signer__hint').textContent, /單位會計處理中/);
+  assert.strictEqual(d.steps().length, 3);
+  assert.strictEqual(findAll(d.root, 'pr-signer__step--accounting').length, 0);
+  assert.deepStrictEqual(routeOf(find(d.root, 'pr-signer__route')).slice(-1), ['會計 會計王'], '路線預覽顯示自動帶入的會計承辦人');
 });
 
 check('視窗：上方「簽核會經過」一行最多 5 格、即時更新；下一個要填的那格亮呼吸燈；簽核人不到 3 位時多一格「可不填」', async () => {
@@ -267,28 +264,24 @@ check('視窗：上方「簽核會經過」一行最多 5 格、即時更新；�
   const route = () => routeOf(box());
   const next = () => findAll(box(), 'is-next').map((li) => find(li, 'pr-route__label').textContent);
   assert.strictEqual(find(d.root, 'pr-signer__route-title').textContent, '簽核會經過');
-  assert.deepStrictEqual(route(), ['申請人 申請人甲', '第 1 關 尚未指定', '會計 尚未指定']);
-  assert.strictEqual(findAll(box(), 'is-empty').length, 2);
+  assert.deepStrictEqual(route(), ['申請人 申請人甲', '第 1 關 尚未指定', '會計 自動帶入']);
+  assert.strictEqual(findAll(box(), 'is-empty').length, 1);
   assert.deepStrictEqual(next(), ['第 1 關']);
   (await d.type(0, '王小明'))[0].click();
-  assert.deepStrictEqual(route(), ['申請人 申請人甲', '第 1 關 王小明', '第 2 關 可不填', '會計 尚未指定']);
+  assert.deepStrictEqual(route(), ['申請人 申請人甲', '第 1 關 王小明', '第 2 關 可不填', '會計 自動帶入']);
   assert.deepStrictEqual(next(), ['第 2 關']);
   (await d.type(1, '李美玲'))[0].click();
-  (await d.type(3, '王大同'))[0].click();
-  assert.deepStrictEqual(route(), ['申請人 申請人甲', '第 1 關 王小明', '第 2 關 李美玲', '第 3 關 可不填', '會計 王大同']);
+  assert.deepStrictEqual(route(), ['申請人 申請人甲', '第 1 關 王小明', '第 2 關 李美玲', '第 3 關 可不填', '會計 自動帶入']);
   assert.strictEqual(findAll(box(), 'pr-route__stop').length, 5, '最多 5 格');
   assert.strictEqual(findAll(box(), 'is-empty').length, 0, '可不填是選填，不標紅');
 });
 
-check('視窗：簽核人排滿 3 位 → 不再多一格，仍是 5 格；會計還沒指定時呼吸燈在會計那格', async () => {
+check('視窗：簽核人排滿 3 位 → 不再多一格，仍是 5 格；沒有要填的格子就不亮呼吸燈', async () => {
   const t = setup();
   const d = await openWith(t, { initial: [U('a01', '王小明'), U('b01', '李美玲'), U('a02', '王大同')], accounting: [] });
   const box = find(d.root, 'pr-signer__route');
   assert.strictEqual(findAll(box, 'pr-route__stop').length, 5);
-  assert.deepStrictEqual(
-    findAll(box, 'is-next').map((li) => find(li, 'pr-route__label').textContent),
-    ['會計'],
-  );
+  assert.strictEqual(findAll(box, 'is-next').length, 0);
 });
 
 check('視窗：一開始只有第 1 位能填，第 2、3 位提示要先選前一位；游標在第 1 位', async () => {
@@ -370,43 +363,20 @@ check('視窗：舊資料有空格（1、3 有人）→ 開視窗時往前補成
   assert.ok(find(d.steps()[2], 'pr-signer__input'));
 });
 
-check('視窗：會計承辦人可換人（不限申請人、可和簽核人同一位）；空著按完成要提醒，管理員可不填', async () => {
-  const t = setup();
-  const d = await openWith(t, { initial: [U('a01', '王小明')] });
-  find(d.steps()[3], 'pr-signer__change').click();
-  assert.strictEqual(find(d.steps()[3], 'pr-signer__input').focused, true);
-  assert.strictEqual(await d.popup.confirm(), false);
-  assert.match(d.popup.validation, /請指定會計承辦人/);
-  const rows = await d.type(3, '王小明');
-  assert.ok(!rows[0].className.includes('is-blocked'));
-  rows[0].click();
-  await d.popup.confirm();
-  const out = await d.result;
-  assert.deepStrictEqual(
-    Array.from(out.accounting, (u) => u.code),
-    ['a01'],
-  );
-
-  const admin = await openWith(t, { initial: [U('a01')], accounting: [], accountingRequired: false });
-  assert.strictEqual(find(admin.steps()[3], 'pr-signer__tag').textContent, '可不填');
-  assert.ok(!find(admin.steps()[3], 'pr-signer__tag').className.includes('is-required'));
-  assert.ok(find(admin.steps()[0], 'pr-signer__tag').className.includes('is-required'), '必填標籤用紅色');
-  await admin.popup.confirm();
-  assert.strictEqual((await admin.result).accounting.length, 0);
-});
-
-check('視窗：會計承辦人比視窗晚帶入 → 空著才補上，已選的人不蓋掉', async () => {
+check('視窗：會計承辦人比視窗晚帶入 → 路線預覽跟著更新（一律用自動帶入的人）', async () => {
   const t = setup();
   t.env.currentRecord = recordOf({ signers: [] });
   const d = await openWith(t, { initial: [], accounting: [] });
-  assert.ok(find(d.steps()[3], 'pr-signer__input'));
+  const last = () => routeOf(find(d.root, 'pr-signer__route')).slice(-1)[0];
+  assert.strictEqual(last(), '會計 自動帶入');
   t.M.offerAccounting([U('ACC2', '會計李')]);
-  assert.strictEqual(find(d.steps()[3], 'pr-signer__name').textContent, '會計李');
+  assert.strictEqual(last(), '會計 會計李');
   t.M.offerAccounting([U('ACC3', '會計陳')]);
-  assert.strictEqual(find(d.steps()[3], 'pr-signer__name').textContent, '會計李');
+  assert.strictEqual(last(), '會計 會計陳');
+  assert.strictEqual(d.steps().length, 3);
 });
 
-check('視窗：按完成回傳簽核人與會計承辦人、記住最近選過；按取消回傳 null', async () => {
+check('視窗：按完成只回傳簽核人（不含會計承辦人）、記住最近選過；按取消回傳 null', async () => {
   const t = setup();
   const d = await openWith(t, { initial: [U('a01', '王小明')] });
   await d.popup.confirm();
@@ -415,10 +385,7 @@ check('視窗：按完成回傳簽核人與會計承辦人、記住最近選過�
     Array.from(out.signers, (u) => u && u.code),
     ['a01', null, null],
   );
-  assert.deepStrictEqual(
-    Array.from(out.accounting, (u) => u.code),
-    ['ACC1'],
-  );
+  assert.strictEqual(out.accounting, undefined);
   assert.strictEqual(d.popup.closed, true);
   assert.match(t.store[t.C.MANUAL_SIGNERS.RECENT_KEY], /a01/);
 
@@ -495,7 +462,7 @@ check('新增／編輯畫面：手動模式顯示三格（鎖住，只能從視�
   });
   assert.strictEqual(t.env.shown[COUNT], false);
   assert.strictEqual(t.env.shown['手動會計承辦人'], true);
-  assert.strictEqual(r['手動會計承辦人'].disabled, true, '手動會計承辦人也只能從視窗改');
+  assert.strictEqual(r['手動會計承辦人'].disabled, true, '手動會計承辦人鎖住（自動帶入）');
   const entry = t.env.spaces[t.C.SPACES.MANUAL_SIGNERS].children[0];
   assert.strictEqual(find(entry, 'pr-signer-entry__btn').textContent, '設定簽核人');
   assert.strictEqual(find(entry, 'pr-signer-entry__summary').textContent, '還沒指定簽核人');
@@ -519,9 +486,9 @@ check('詳細畫面：手動模式只顯示有填的格子', async () => {
   );
 });
 
-check('按「設定簽核人」→ 選人按完成 → 寫回畫面（三格、人數、會計承辦人並鎖住），按鈕改成「更改簽核人」並列出順序', async () => {
+check('按「設定簽核人」→ 選人按完成 → 寫回畫面（三格、人數並鎖住；會計承辦人不動），按鈕改成「更改簽核人」並列出順序', async () => {
   const t = setup();
-  t.env.currentRecord = recordOf({ signers: [] });
+  t.env.currentRecord = recordOf({ signers: [], staff: [U('a01', '王小明')] });
   await t.env.fire('app.record.create.show', { record: t.env.currentRecord });
   find(t.env.spaces[t.C.SPACES.MANUAL_SIGNERS], 'pr-signer-entry__btn').click();
   await settle();
@@ -536,8 +503,6 @@ check('按「設定簽核人」→ 選人按完成 → 寫回畫面（三格、�
   };
   await pick(0, '李美玲');
   await pick(1, '王大同');
-  find(step(3), 'pr-signer__change').click();
-  await pick(3, '王小明');
   await popup.confirm();
   await settle();
   const live = t.env.currentRecord;

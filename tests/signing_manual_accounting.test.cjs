@@ -132,13 +132,13 @@ const check = async (label, fn) => {
   console.log = () => {};
   console.error = () => {};
 
-  // ── 一、會計單位不填 ──
-  await check('手動設定簽核流程：改費用所屬人部門後會計單位維持空白，欄位也不顯示', async () => {
+  // ── 一、會計單位：手動、自動都填（手動簽完也依會計單位送「單位會計處理中(…)」）──
+  await check('手動設定簽核流程：改費用所屬人部門後會計單位照常填入並顯示', async () => {
     T.env.live = makeLive({ manual: true });
     T.env.shown = {};
     await fire(ORG_CHANGE);
-    assert.deepStrictEqual(accountingOf(), []);
-    assert.strictEqual(T.env.shown[F.ACCOUNTING_UNIT], false);
+    assert.deepStrictEqual(accountingOf(), ['ACC_TPE']);
+    assert.strictEqual(T.env.shown[F.ACCOUNTING_UNIT], true);
   });
 
   await check('自動：改費用所屬人部門後會計單位照常填入主檔查到的會計單位', async () => {
@@ -148,14 +148,14 @@ const check = async (label, fn) => {
     assert.strictEqual(T.env.live[F.ACCOUNTING_UNIT].disabled, true);
   });
 
-  await check('呼叫時是自動、API 回來前使用者勾了手動：看寫入當下，不填會計單位', async () => {
+  await check('呼叫時是自動、API 回來前使用者勾了手動：會計單位照常填入', async () => {
     T.env.live = makeLive({ manual: false });
     await fire(ORG_CHANGE, {
       flushBefore: () => {
         T.env.live[F.MANUAL_FLOW].value = [F.MANUAL_FLOW];
       },
     });
-    assert.deepStrictEqual(accountingOf(), []);
+    assert.deepStrictEqual(accountingOf(), ['ACC_TPE']);
   });
 
   await check('呼叫時是手動、API 回來前使用者取消了手動：看寫入當下，照常填入', async () => {
@@ -176,12 +176,12 @@ const check = async (label, fn) => {
     await fire(ORG_CHANGE);
     assert.deepStrictEqual(T.env.live[F.ACCOUNTING_STAFF].value.map((u) => u.code), ['S1']);
     assert.deepStrictEqual(T.env.live[F.PERMISSION_STAFF].value.map((u) => u.code), ['P1']);
-    assert.deepStrictEqual(accountingOf(), []);
+    assert.deepStrictEqual(accountingOf(), ['ACC_TPE']);
     T.env.accountingRecord[ACC.ACCOUNTING_STAFF] = { value: [] };
     T.env.accountingRecord[ACC.PERMISSION_USER] = { value: [] };
   });
 
-  await check('手動時：會計單位承辦人照舊自動帶入；手動會計承辦人已選的不蓋掉，空的才帶預設並鎖住、通知開著的視窗補上', async () => {
+  await check('手動時：會計單位承辦人照舊自動帶入；手動會計承辦人一律自動帶入（舊值也蓋掉）並鎖住、通知視窗與按鈕重畫', async () => {
     const ACC = T.C.REF_FIELDS.ACCOUNTING_MAP;
     const MANUAL_ACC = T.C.MANUAL_SIGNERS.ACCOUNTING_FIELD;
     const offered = [];
@@ -192,31 +192,31 @@ const check = async (label, fn) => {
     T.env.live[F.ACCOUNTING_STAFF].value = [U('OLD')];
     await fire(ORG_CHANGE);
     assert.deepStrictEqual(T.env.live[F.ACCOUNTING_STAFF].value.map((u) => u.code), ['S1'], '原本的欄位照舊重帶');
-    assert.deepStrictEqual(T.env.live[MANUAL_ACC].value.map((u) => u.code), ['PICKED']);
-    assert.strictEqual(offered.length, 0);
+    assert.deepStrictEqual(T.env.live[MANUAL_ACC].value.map((u) => u.code), ['S1'], '舊的手動會計承辦人也蓋成自動帶入的人');
+    assert.deepStrictEqual(offered, [['S1']]);
 
     T.env.live = makeLive({ manual: true });
     await fire(ORG_CHANGE);
     assert.deepStrictEqual(T.env.live[MANUAL_ACC].value.map((u) => u.code), ['S1']);
     assert.strictEqual(T.env.live[MANUAL_ACC].disabled, true);
-    assert.deepStrictEqual(offered, [['S1']]);
+    assert.deepStrictEqual(offered, [['S1'], ['S1']]);
 
     T.env.live = makeLive({ manual: false });
     await fire(ORG_CHANGE);
     assert.deepStrictEqual(T.env.live[MANUAL_ACC].value, [], '自動模式不動手動會計承辦人');
-    assert.strictEqual(offered.length, 1);
+    assert.strictEqual(offered.length, 2);
     T.env.accountingRecord[ACC.ACCOUNTING_STAFF] = { value: [] };
     deps.reset('MANUAL_SIGNERS');
   });
 
-  await check('勾手動：會計單位清空；取消手動（按確定）：會計單位恢復填入', async () => {
+  await check('勾手動：會計單位保留；取消手動（按確定）：會計單位照樣有值', async () => {
     T.env.live = makeLive({ manual: false });
     await fire(ORG_CHANGE);
     assert.deepStrictEqual(accountingOf(), ['ACC_TPE']);
     // 勾選手動
     T.env.live[F.MANUAL_FLOW].value = [F.MANUAL_FLOW];
     await fire(MANUAL_CHANGE);
-    assert.deepStrictEqual(accountingOf(), []);
+    assert.deepStrictEqual(accountingOf(), ['ACC_TPE']);
     // 取消手動
     T.env.live[F.MANUAL_FLOW].value = [];
     await fire(MANUAL_CHANGE);
@@ -224,7 +224,7 @@ const check = async (label, fn) => {
     await fire(MANUAL_CHANGE); // kintone 在 set() 之後會再觸發一次 change，程式自己取消的那次要直接放行
   });
 
-  await check('取消手動但按「取消」：維持手動模式（重新勾回核取方塊），會計單位仍空白', async () => {
+  await check('取消手動但按「取消」：維持手動模式（重新勾回核取方塊），會計單位不動', async () => {
     T.env.live = makeLive({ manual: true });
     await fire(MANUAL_CHANGE);
     T.env.live[F.MANUAL_FLOW].value = [];

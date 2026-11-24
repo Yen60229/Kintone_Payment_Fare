@@ -92,7 +92,7 @@ const enabledActions = (process, state, record, opts = {}) => {
  * 每一關都必須剛好只有一顆送出按鈕（駁回、作廢、轉至其他會計不算），否則丟錯。
  * @returns {string[]} 經過的狀態（含起點與終點）
  */
-const walk = (process, startState, record, { stopWhen, excludeNames = ['駁回', '作廢'], maxSteps = 20 }) => {
+const walk = (process, startState, record, { stopWhen, excludeNames = ['駁回', '作廢', '返回至申請人'], maxSteps = 20 }) => {
   const path = [startState];
   let state = startState;
   for (let i = 0; i < maxSteps; i++) {

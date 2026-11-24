@@ -6,11 +6,11 @@ import { loadAll } from './使用者主檔快取.js';
 // 手動簽核人設定
 //
 //   勾「手動設定簽核流程」後由申請人自己指定 1～3 位簽核人（MANUAL_SIGNERS.FIELDS），
-//   照順序簽，簽完送「單位會計處理中」給手動會計承辦人（MANUAL_SIGNERS.ACCOUNTING_FIELD；原本的會計單位承辦人照舊自動帶入、不動）。只限「費用歸屬不限部門」群組（COST_SCOPE.EXEMPT_GROUP）的申請人。
+//   照順序簽，簽完送「單位會計處理中」給手動會計承辦人（MANUAL_SIGNERS.ACCOUNTING_FIELD；由 signing_personnel_manager 依會計對應主檔自動帶入，申請人不能選）。只限「費用歸屬不限部門」群組（COST_SCOPE.EXEMPT_GROUP）的申請人。
 //
 //   - 「簽核流程」群組裡的空白欄位（SPACES.MANUAL_SIGNERS）放「設定簽核人」按鈕，點了開視窗（SweetAlert）選人；
-//     三個簽核人與手動會計承辦人鎖住，只能從視窗改，排法規則才不會被繞過。
-//   - 視窗：簽核人每一位一格，第 4 格是會計承辦人（預設帶會計對應主檔的人，可換）；打姓名或帳號就列出符合的人；
+//     三個簽核人鎖住，只能從視窗改，排法規則才不會被繞過；手動會計承辦人也鎖住（自動帶入）。
+//   - 視窗：簽核人每一位一格（會計承辦人不在視窗裡選，只在路線預覽顯示自動帶入的人）；打姓名或帳號就列出符合的人；
 //     第 1 位必填，前一位沒填下一格不能填，同一個人不能排兩次、申請人不能簽自己的單。
 //     人員名單第一次開視窗時才抓（使用者主檔快取 PR_USERS，/v1/users.json 同一頁面只抓一次）。
 //   - 存檔（payment_request_submit 呼叫 validate）：同上規則再檢查一次，並把實際人數寫進 COUNT_FIELD，
@@ -25,7 +25,6 @@ const F = C.FIELDS;
 const CFG = C.MANUAL_SIGNERS;
 const SPACE_ID = C.SPACES.MANUAL_SIGNERS;
 const ORDINALS = ['第 1 位', '第 2 位', '第 3 位'];
-const ACCOUNTING_SLOT = 3; // 視窗第 4 格：手動會計承辦人（MANUAL_SIGNERS.ACCOUNTING_FIELD）
 
 // ── 純函式 ──────────────────────────────────────────────────────────────
 
@@ -111,9 +110,6 @@ const validate = async (record) => {
     CFG.FIELDS.map((field) => record[field]?.value || []),
     applicantCode,
   );
-  if (!C.isAdmin() && !(record[CFG.ACCOUNTING_FIELD]?.value?.length > 0)) {
-    errors.push('還沒指定會計承辦人\n※ 請按「設定簽核人」，在最後一格「會計承辦人」選人');
-  }
 
   const countField = record[CFG.COUNT_FIELD];
   const count = countValueOf(signersOf(record));
@@ -213,20 +209,20 @@ const routeList = ({ applicant, signers, staff, live = false }) => {
   filled.forEach((u, i) => stop('signer', `第 ${i + 1} 關`, u.name));
   if (filled.length === 0) stop('signer', '第 1 關', '', { next: live });
   else if (live && filled.length < 3) stop('signer', `第 ${filled.length + 1} 關`, '', { optional: true, next: true });
-  stop('end', '會計', staff.length > 0 ? namesOf(staff) : '', { next: live && filled.length === 3 && staff.length === 0 });
+  stop('end', '會計', staff.length > 0 ? namesOf(staff) : '自動帶入');
   return list;
 };
 
 let dialogOpen = false;
-let activeDialog = null; // 開著的視窗；會計承辦人比視窗晚帶入時，用它補進第 4 格
+let activeDialog = null; // 開著的視窗；會計承辦人比視窗晚帶入時，用它更新路線預覽
 
 /**
  * 開「指定簽核人」視窗（SweetAlert，內容與按鈕樣式在 payment_request.css 的 .pr-signer*）。
- * 前三格是簽核人（依序簽），第 4 格（ACCOUNTING_SLOT）是手動會計承辦人（簽完送「單位會計處理中」由他入帳）。
- * @param {{ initial: Array<{code,name}|null>, applicant: {code,name}|null, accounting: Array<{code,name}>, accountingRequired?: boolean }} p
- * @returns {Promise<{ signers: Array<{code,name}|null>, accounting: Array<{code,name}> }|null>} 按確定回傳選好的人；取消／Esc 回傳 null
+ * 三格是簽核人（依序簽）；會計承辦人自動帶入，只顯示在路線預覽（accounting），不能在這裡選。
+ * @param {{ initial: Array<{code,name}|null>, applicant: {code,name}|null, accounting?: Array<{code,name}> }} p
+ * @returns {Promise<{ signers: Array<{code,name}|null> }|null>} 按確定回傳選好的人；取消／Esc 回傳 null
  */
-const openDialog = ({ initial, applicant, accounting, accountingRequired = true }) => {
+const openDialog = ({ initial, applicant, accounting }) => {
   const swal = window.Swal;
   if (!swal?.fire) {
     console.error('[手動簽核人] 找不到 SweetAlert，無法開指定簽核人視窗');
@@ -243,20 +239,18 @@ const openDialog = ({ initial, applicant, accounting, accountingRequired = true 
   compact();
 
   const root = el('div', 'pr-signer');
-  root.appendChild(el('p', 'pr-signer__lead', '送出後依序給下面的人簽核，最後交給會計承辦人入帳。'));
+  root.appendChild(el('p', 'pr-signer__lead', '送出後依序給下面的人簽核，最後交給會計承辦人（系統自動帶入）入帳。'));
   const preview = el('div', 'pr-signer__route');
   root.appendChild(preview);
   const steps = el('ol', 'pr-signer__steps');
   root.appendChild(steps);
 
-  const isEmpty = (slot) => (slot === ACCOUNTING_SLOT ? staff.length === 0 : !picked[slot]);
-  const isLocked = (slot) => slot > 0 && slot < ACCOUNTING_SLOT && !picked[slot - 1];
+  const isLocked = (slot) => slot > 0 && !picked[slot - 1];
   /** 下一個要填的格子（沒有就 -1） */
-  const nextEmpty = () => [0, 1, 2, ACCOUNTING_SLOT].find((slot) => isEmpty(slot) && !isLocked(slot)) ?? -1;
+  const nextEmpty = () => [0, 1, 2].find((slot) => !picked[slot] && !isLocked(slot)) ?? -1;
 
-  /** 這個人為什麼不能當簽核人（申請人本人、已經排在別格）；可以選回傳空字串。會計承辦人不限。 */
+  /** 這個人為什麼不能當簽核人（申請人本人、已經排在別格）；可以選回傳空字串。 */
   const blockedReason = (user, slot) => {
-    if (slot === ACCOUNTING_SLOT) return '';
     if (applicant && user.code === applicant.code) return '申請人本人';
     const at = picked.findIndex((u, i) => i !== slot && u && u.code === user.code);
     return at >= 0 ? `已排在${ORDINALS[at]}` : '';
@@ -265,20 +259,16 @@ const openDialog = ({ initial, applicant, accounting, accountingRequired = true 
   const clearMessage = () => swal.resetValidationMessage?.();
 
   const choose = (slot, user) => {
-    if (slot === ACCOUNTING_SLOT) staff = [toUser(user)];
-    else picked[slot] = toUser(user);
+    picked[slot] = toUser(user);
     clearMessage();
     render(nextEmpty());
   };
 
   const remove = (slot) => {
-    if (slot === ACCOUNTING_SLOT) staff = [];
-    else {
-      picked[slot] = null;
-      compact();
-    }
+    picked[slot] = null;
+    compact();
     clearMessage();
-    render(slot === ACCOUNTING_SLOT ? slot : picked.findIndex((u) => !u));
+    render(picked.findIndex((u) => !u));
   };
 
   /** 搜尋框底下的清單：有關鍵字列符合的人，沒關鍵字列最近選過的人 */
@@ -398,7 +388,7 @@ const openDialog = ({ initial, applicant, accounting, accountingRequired = true 
     return item;
   };
 
-  /** 重畫四格；focusSlot 那格如果是搜尋框就把游標放進去 */
+  /** 重畫三格；focusSlot 那格如果是搜尋框就把游標放進去 */
   const render = (focusSlot) => {
     let focusTarget = null;
     const onFocus = (input) => {
@@ -417,19 +407,6 @@ const openDialog = ({ initial, applicant, accounting, accountingRequired = true 
         onFocus,
       }),
     );
-    items.push(
-      step({
-        slot: ACCOUNTING_SLOT,
-        no: '會計',
-        title: '會計承辦人',
-        tag: accountingRequired ? '必填' : '可不填',
-        hint: '簽核人都簽完後，送到「單位會計處理中」由他入帳',
-        users: staff,
-        extraClass: 'pr-signer__step--accounting',
-        focusSlot,
-        onFocus,
-      }),
-    );
     steps.replaceChildren(...items);
     const heading = el('div', 'pr-signer__route-title', '簽核會經過');
     preview.replaceChildren(heading, routeList({ applicant, signers: picked, staff, live: true }));
@@ -441,21 +418,18 @@ const openDialog = ({ initial, applicant, accounting, accountingRequired = true 
       picked.map((u) => (u ? [u] : [])),
       applicant?.code,
     );
-    if (accountingRequired && staff.length === 0) errors.push('請指定會計承辦人');
     if (errors.length > 0) {
       swal.showValidationMessage(errors[0].split('\n')[0]);
       return false;
     }
-    rememberRecent([...picked, ...staff]);
-    return { signers: picked.slice(), accounting: staff.slice() };
+    rememberRecent(picked);
+    return { signers: picked.slice() };
   };
 
   activeDialog = {
-    /** 會計承辦人晚到（自動帶入）：第 4 格還空著才補上 */
+    /** 會計承辦人自動帶入（可能比視窗晚到）：更新路線預覽 */
     offerAccounting: (list) => {
-      const users = (list || []).map(toUser).filter(Boolean);
-      if (staff.length > 0 || users.length === 0) return;
-      staff = users;
+      staff = (list || []).map(toUser).filter(Boolean);
       render(-1);
     },
   };
@@ -502,7 +476,7 @@ const openDialog = ({ initial, applicant, accounting, accountingRequired = true 
 
 // ── 畫面 ────────────────────────────────────────────────────────────────
 
-/** 三格、手動會計承辦人與人數欄位的顯示：手動模式顯示（鎖住，只能從視窗改）；人數欄位一律不顯示 */
+/** 三格、手動會計承辦人與人數欄位的顯示：手動模式顯示（鎖住；簽核人只能從視窗改，會計承辦人自動帶入）；人數欄位一律不顯示 */
 const applyDisplay = (record, { detail = false } = {}) => {
   const manual = isManual(record);
   [...CFG.FIELDS, CFG.ACCOUNTING_FIELD].forEach((field) => {
@@ -539,7 +513,7 @@ const renderButton = (record) => {
   space.replaceChildren(wrap);
 };
 
-/** 讀畫面上的資料開視窗，按確定後寫回三格、人數與會計承辦人（change 事件不能等非同步，所以用 get()/set()） */
+/** 讀畫面上的資料開視窗，按確定後寫回三格與人數（change 事件不能等非同步，所以用 get()/set()） */
 const open = () => {
   if (dialogOpen) return Promise.resolve(null);
   const { record } = KT.record().get();
@@ -548,7 +522,6 @@ const open = () => {
     initial: signersOf(record),
     applicant,
     accounting: record[CFG.ACCOUNTING_FIELD]?.value || [],
-    accountingRequired: !C.isAdmin(),
   }).then((result) => {
     if (!result) {
       // 按取消而且一位簽核人都沒指定：手動設定沒有意義，取消勾選、改回系統自動排人
@@ -562,11 +535,6 @@ const open = () => {
     CFG.FIELDS.forEach((field) => {
       if (current.record[field]) current.record[field].disabled = true;
     });
-    const staffField = current.record[CFG.ACCOUNTING_FIELD];
-    if (staffField) {
-      staffField.value = result.accounting.map(toUser);
-      staffField.disabled = true;
-    }
     KT.record().set(current);
     renderButton(current.record);
     return result;
@@ -598,7 +566,7 @@ export const MANUAL_SIGNERS = Object.freeze({
   validate,
   openDialog,
   open,
-  /** 會計承辦人自動帶入後呼叫（signing_personnel_manager）：開著的視窗第 4 格還空著就補上，按鈕旁的順序也重畫 */
+  /** 會計承辦人自動帶入後呼叫（signing_personnel_manager）：開著的視窗路線預覽更新，按鈕旁的順序也重畫 */
   offerAccounting: (list) => {
     activeDialog?.offerAccounting(list);
     renderButton(KT.record().get().record);

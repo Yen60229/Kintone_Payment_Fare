@@ -1,0 +1,1540 @@
+{
+  "enable": true,
+  "states": {
+    "申請單位主管2駁回": {
+      "name": "申請單位主管2駁回",
+      "instructions": "",
+      "index": "22",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "申請人"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "表單作廢": {
+      "name": "表單作廢",
+      "instructions": "",
+      "index": "19",
+      "assignee": {
+        "type": "ONE",
+        "entities": []
+      }
+    },
+    "申請單位主管3駁回": {
+      "name": "申請單位主管3駁回",
+      "instructions": "",
+      "index": "23",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "申請人"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "費用所屬人確認中": {
+      "name": "費用所屬人確認中",
+      "instructions": "",
+      "index": "2",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "費用所屬人"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "單位會計駁回": {
+      "name": "單位會計駁回",
+      "instructions": "",
+      "index": "18",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "申請人"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "申請單位主管1駁回": {
+      "name": "申請單位主管1駁回",
+      "instructions": "",
+      "index": "21",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "申請人"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "費用所屬人駁回": {
+      "name": "費用所屬人駁回",
+      "instructions": "",
+      "index": "27",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "申請人"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "草稿（未送出）": {
+      "name": "草稿（未送出）",
+      "instructions": "",
+      "index": "1",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "申請人"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "簽核人確認中[2]": {
+      "name": "簽核人確認中[2]",
+      "instructions": "",
+      "index": "10",
+      "assignee": {
+        "type": "ANY",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "手動簽核人2"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "單位會計處理中(物流)": {
+      "name": "單位會計處理中(物流)",
+      "instructions": "",
+      "index": "15",
+      "assignee": {
+        "type": "ANY",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "建立人"
+            },
+            "includeSubs": false
+          },
+          {
+            "entity": {
+              "type": "GROUP",
+              "code": "ACC_NEXT"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "申請單位主管2確認中": {
+      "name": "申請單位主管2確認中",
+      "instructions": "",
+      "index": "4",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "單位主管2"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "單位會計處理中(台中)": {
+      "name": "單位會計處理中(台中)",
+      "instructions": "",
+      "index": "16",
+      "assignee": {
+        "type": "ANY",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "建立人"
+            },
+            "includeSubs": false
+          },
+          {
+            "entity": {
+              "type": "GROUP",
+              "code": "ACC_TEPZ"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "申請單位次長1確認中": {
+      "name": "申請單位次長1確認中",
+      "instructions": "",
+      "index": "7",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "單位次長1"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "單位會計處理中(桃園&新竹)": {
+      "name": "單位會計處理中(桃園&新竹)",
+      "instructions": "",
+      "index": "14",
+      "assignee": {
+        "type": "ANY",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "建立人"
+            },
+            "includeSubs": false
+          },
+          {
+            "entity": {
+              "type": "GROUP",
+              "code": "ACC_CKS"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "申請單位部長確認中": {
+      "name": "申請單位部長確認中",
+      "instructions": "",
+      "index": "8",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "單位部長_支店長"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "報銷人填單": {
+      "name": "報銷人填單",
+      "instructions": "",
+      "index": "0",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "建立人"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "簽核人確認中[1]": {
+      "name": "簽核人確認中[1]",
+      "instructions": "",
+      "index": "9",
+      "assignee": {
+        "type": "ANY",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "手動簽核人1"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "請款流程結束": {
+      "name": "請款流程結束",
+      "instructions": "",
+      "index": "20",
+      "assignee": {
+        "type": "ONE",
+        "entities": []
+      }
+    },
+    "申請單位次長確認中": {
+      "name": "申請單位次長確認中",
+      "instructions": "",
+      "index": "6",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "單位次長"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "單位會計處理中(台北)": {
+      "name": "單位會計處理中(台北)",
+      "instructions": "",
+      "index": "12",
+      "assignee": {
+        "type": "ANY",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "建立人"
+            },
+            "includeSubs": false
+          },
+          {
+            "entity": {
+              "type": "GROUP",
+              "code": "ACC_TPE"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "申請單位次長駁回": {
+      "name": "申請單位次長駁回",
+      "instructions": "",
+      "index": "24",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "申請人"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "簽核人確認中[3]": {
+      "name": "簽核人確認中[3]",
+      "instructions": "",
+      "index": "11",
+      "assignee": {
+        "type": "ANY",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "手動簽核人3"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "申請單位主管3確認中": {
+      "name": "申請單位主管3確認中",
+      "instructions": "",
+      "index": "5",
+      "assignee": {
+        "type": "ANY",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "單位主管3"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "申請單位主管1確認中": {
+      "name": "申請單位主管1確認中",
+      "instructions": "",
+      "index": "3",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "單位主管1"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "申請單位次長1駁回": {
+      "name": "申請單位次長1駁回",
+      "instructions": "",
+      "index": "25",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "申請人"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "單位會計處理中(高雄)": {
+      "name": "單位會計處理中(高雄)",
+      "instructions": "",
+      "index": "17",
+      "assignee": {
+        "type": "ANY",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "建立人"
+            },
+            "includeSubs": false
+          },
+          {
+            "entity": {
+              "type": "GROUP",
+              "code": "ACC_KHH"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "單位會計處理中(台北海運)": {
+      "name": "單位會計處理中(台北海運)",
+      "instructions": "",
+      "index": "13",
+      "assignee": {
+        "type": "ANY",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "建立人"
+            },
+            "includeSubs": false
+          },
+          {
+            "entity": {
+              "type": "GROUP",
+              "code": "ACC_TPE海運"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    },
+    "申請單位部長駁回": {
+      "name": "申請單位部長駁回",
+      "instructions": "",
+      "index": "26",
+      "assignee": {
+        "type": "ONE",
+        "entities": [
+          {
+            "entity": {
+              "type": "FIELD_ENTITY",
+              "code": "申請人"
+            },
+            "includeSubs": false
+          }
+        ]
+      }
+    }
+  },
+  "actions": [
+    {
+      "name": "點擊流程開始",
+      "from": "報銷人填單",
+      "to": "草稿（未送出）",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "報銷人填單",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "提交單位主管3確認",
+      "from": "草稿（未送出）",
+      "to": "申請單位主管3確認中",
+      "filterCond": "部門主管簽核人數 in (\"1人\") and 費用所屬人確認 not in (\"需要\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位主管2確認",
+      "from": "草稿（未送出）",
+      "to": "申請單位主管2確認中",
+      "filterCond": "部門主管簽核人數 in (\"2人\") and 費用所屬人確認 not in (\"需要\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位主管1確認",
+      "from": "草稿（未送出）",
+      "to": "申請單位主管1確認中",
+      "filterCond": "部門主管簽核人數 in (\"3人\") and 費用所屬人確認 not in (\"需要\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位次長1確認",
+      "from": "草稿（未送出）",
+      "to": "申請單位次長1確認中",
+      "filterCond": "部門主管簽核人數 in (\"0人\", \"\") and 部門次長簽核人數 in (\"1人\") and 費用所屬人確認 not in (\"需要\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位次長確認",
+      "from": "草稿（未送出）",
+      "to": "申請單位次長確認中",
+      "filterCond": "部門主管簽核人數 in (\"0人\", \"\") and 部門次長簽核人數 in (\"2人\") and 費用所屬人確認 not in (\"需要\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位部長確認",
+      "from": "草稿（未送出）",
+      "to": "申請單位部長確認中",
+      "filterCond": "部門主管簽核人數 in (\"0人\", \"\") and 部門次長簽核人數 in (\"0人\", \"\") and 單位部長_支店長 in (\" GROUP\", \"部長\") and 費用所屬人確認 not in (\"需要\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交簽核人1確認",
+      "from": "草稿（未送出）",
+      "to": "簽核人確認中[1]",
+      "filterCond": "手動設定簽核流程 in (\"手動設定簽核流程\") and 手動簽核人數 in (\"1人\", \"2人\", \"3人\") and 費用所屬人確認 not in (\"需要\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "草稿（未送出）",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "提交費用所屬人確認",
+      "from": "草稿（未送出）",
+      "to": "費用所屬人確認中",
+      "filterCond": "費用所屬人確認 in (\"需要\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位主管3確認",
+      "from": "費用所屬人確認中",
+      "to": "申請單位主管3確認中",
+      "filterCond": "部門主管簽核人數 in (\"1人\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位主管2確認",
+      "from": "費用所屬人確認中",
+      "to": "申請單位主管2確認中",
+      "filterCond": "部門主管簽核人數 in (\"2人\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位主管1確認",
+      "from": "費用所屬人確認中",
+      "to": "申請單位主管1確認中",
+      "filterCond": "部門主管簽核人數 in (\"3人\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位次長1確認",
+      "from": "費用所屬人確認中",
+      "to": "申請單位次長1確認中",
+      "filterCond": "部門主管簽核人數 in (\"0人\", \"\") and 部門次長簽核人數 in (\"1人\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位次長確認",
+      "from": "費用所屬人確認中",
+      "to": "申請單位次長確認中",
+      "filterCond": "部門主管簽核人數 in (\"0人\", \"\") and 部門次長簽核人數 in (\"2人\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位部長確認",
+      "from": "費用所屬人確認中",
+      "to": "申請單位部長確認中",
+      "filterCond": "部門主管簽核人數 in (\"0人\", \"\") and 部門次長簽核人數 in (\"0人\", \"\") and 單位部長_支店長 in (\" GROUP\", \"部長\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交簽核人1確認",
+      "from": "費用所屬人確認中",
+      "to": "簽核人確認中[1]",
+      "filterCond": "手動設定簽核流程 in (\"手動設定簽核流程\") and 手動簽核人數 in (\"1人\", \"2人\", \"3人\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "駁回",
+      "from": "費用所屬人確認中",
+      "to": "費用所屬人駁回",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "費用所屬人確認中",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "再申請",
+      "from": "費用所屬人駁回",
+      "to": "草稿（未送出）",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "費用所屬人駁回",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "提交單位主管2確認",
+      "from": "申請單位主管1確認中",
+      "to": "申請單位主管2確認中",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "駁回",
+      "from": "申請單位主管1確認中",
+      "to": "申請單位主管1駁回",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "申請單位主管1確認中",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "提交單位主管3確認",
+      "from": "申請單位主管2確認中",
+      "to": "申請單位主管3確認中",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "駁回",
+      "from": "申請單位主管2確認中",
+      "to": "申請單位主管2駁回",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "申請單位主管2確認中",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "提交單位部長確認",
+      "from": "申請單位主管3確認中",
+      "to": "申請單位部長確認中",
+      "filterCond": "部門次長簽核人數 in (\"0人\", \"\") and 單位部長_支店長 in (\" GROUP\", \"部長\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位次長1確認",
+      "from": "申請單位主管3確認中",
+      "to": "申請單位次長1確認中",
+      "filterCond": "部門次長簽核人數 in (\"1人\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位次長確認",
+      "from": "申請單位主管3確認中",
+      "to": "申請單位次長確認中",
+      "filterCond": "部門次長簽核人數 in (\"2人\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "駁回",
+      "from": "申請單位主管3確認中",
+      "to": "申請單位主管3駁回",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "申請單位主管3確認中",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "提交單位次長1確認",
+      "from": "申請單位次長確認中",
+      "to": "申請單位次長1確認中",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "駁回",
+      "from": "申請單位次長確認中",
+      "to": "申請單位次長駁回",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位部長確認",
+      "from": "申請單位次長1確認中",
+      "to": "申請單位部長確認中",
+      "filterCond": "單位部長_支店長 in (\" GROUP\", \"部長\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "駁回",
+      "from": "申請單位次長1確認中",
+      "to": "申請單位次長1駁回",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "申請單位次長1確認中",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "申請單位部長確認中",
+      "to": "單位會計處理中(台北)",
+      "filterCond": "會計單位 in (\" GROUP\", \"ACC_TPE\") and 手動設定簽核流程 not in (\"手動設定簽核流程\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "申請單位部長確認中",
+      "to": "單位會計處理中(台北海運)",
+      "filterCond": "會計單位 in (\" GROUP\", \"ACC_TPE海運\") and 手動設定簽核流程 not in (\"手動設定簽核流程\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "申請單位部長確認中",
+      "to": "單位會計處理中(桃園&新竹)",
+      "filterCond": "會計單位 in (\" GROUP\", \"ACC_CKS\") and 手動設定簽核流程 not in (\"手動設定簽核流程\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "申請單位部長確認中",
+      "to": "單位會計處理中(物流)",
+      "filterCond": "會計單位 in (\" GROUP\", \"ACC_NEXT\") and 手動設定簽核流程 not in (\"手動設定簽核流程\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "申請單位部長確認中",
+      "to": "單位會計處理中(台中)",
+      "filterCond": "會計單位 in (\" GROUP\", \"ACC_TEPZ\") and 手動設定簽核流程 not in (\"手動設定簽核流程\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "申請單位部長確認中",
+      "to": "單位會計處理中(高雄)",
+      "filterCond": "會計單位 in (\" GROUP\", \"ACC_KHH\") and 手動設定簽核流程 not in (\"手動設定簽核流程\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "駁回",
+      "from": "申請單位部長確認中",
+      "to": "申請單位部長駁回",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "申請單位部長確認中",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "入帳完成",
+      "from": "單位會計處理中(台北)",
+      "to": "請款流程結束",
+      "filterCond": "傳票日期 = THIS_YEAR()",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "駁回",
+      "from": "單位會計處理中(台北)",
+      "to": "單位會計駁回",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至台北(海運)會計",
+      "from": "單位會計處理中(台北)",
+      "to": "單位會計處理中(台北海運)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至桃園會計",
+      "from": "單位會計處理中(台北)",
+      "to": "單位會計處理中(桃園&新竹)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至台中會計",
+      "from": "單位會計處理中(台北)",
+      "to": "單位會計處理中(台中)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至物流會計",
+      "from": "單位會計處理中(台北)",
+      "to": "單位會計處理中(物流)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至高雄會計",
+      "from": "單位會計處理中(台北)",
+      "to": "單位會計處理中(高雄)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "單位會計處理中(台北)",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "單位會計處理中(台北)",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "入帳完成",
+      "from": "單位會計處理中(台北海運)",
+      "to": "請款流程結束",
+      "filterCond": "傳票日期 = THIS_YEAR()",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "駁回",
+      "from": "單位會計處理中(台北海運)",
+      "to": "單位會計駁回",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至台北會計",
+      "from": "單位會計處理中(台北海運)",
+      "to": "單位會計處理中(台北)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至桃園會計",
+      "from": "單位會計處理中(台北海運)",
+      "to": "單位會計處理中(桃園&新竹)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至台中會計",
+      "from": "單位會計處理中(台北海運)",
+      "to": "單位會計處理中(台中)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至物流會計",
+      "from": "單位會計處理中(台北海運)",
+      "to": "單位會計處理中(物流)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至高雄會計",
+      "from": "單位會計處理中(台北海運)",
+      "to": "單位會計處理中(高雄)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "單位會計處理中(台北海運)",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "入帳完成",
+      "from": "單位會計處理中(桃園&新竹)",
+      "to": "請款流程結束",
+      "filterCond": "傳票日期 = THIS_YEAR()",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "駁回",
+      "from": "單位會計處理中(桃園&新竹)",
+      "to": "單位會計駁回",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至台北會計",
+      "from": "單位會計處理中(桃園&新竹)",
+      "to": "單位會計處理中(台北)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至台北(海運)會計",
+      "from": "單位會計處理中(桃園&新竹)",
+      "to": "單位會計處理中(台北海運)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至台中會計",
+      "from": "單位會計處理中(桃園&新竹)",
+      "to": "單位會計處理中(台中)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至物流會計",
+      "from": "單位會計處理中(桃園&新竹)",
+      "to": "單位會計處理中(物流)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至高雄會計",
+      "from": "單位會計處理中(桃園&新竹)",
+      "to": "單位會計處理中(高雄)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "單位會計處理中(桃園&新竹)",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "入帳完成",
+      "from": "單位會計處理中(台中)",
+      "to": "請款流程結束",
+      "filterCond": "傳票日期 = THIS_YEAR()",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "駁回",
+      "from": "單位會計處理中(台中)",
+      "to": "單位會計駁回",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至台北會計",
+      "from": "單位會計處理中(台中)",
+      "to": "單位會計處理中(台北)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至台北(海運)會計",
+      "from": "單位會計處理中(台中)",
+      "to": "單位會計處理中(台北海運)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至桃園會計",
+      "from": "單位會計處理中(台中)",
+      "to": "單位會計處理中(桃園&新竹)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至物流會計",
+      "from": "單位會計處理中(台中)",
+      "to": "單位會計處理中(物流)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至高雄會計",
+      "from": "單位會計處理中(台中)",
+      "to": "單位會計處理中(高雄)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "單位會計處理中(台中)",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "入帳完成",
+      "from": "單位會計處理中(物流)",
+      "to": "請款流程結束",
+      "filterCond": "傳票日期 = THIS_YEAR()",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "駁回",
+      "from": "單位會計處理中(物流)",
+      "to": "單位會計駁回",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至台北會計",
+      "from": "單位會計處理中(物流)",
+      "to": "單位會計處理中(台北)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至台北(海運)會計",
+      "from": "單位會計處理中(物流)",
+      "to": "單位會計處理中(台北海運)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至桃園會計",
+      "from": "單位會計處理中(物流)",
+      "to": "單位會計處理中(桃園&新竹)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至台中會計",
+      "from": "單位會計處理中(物流)",
+      "to": "單位會計處理中(台中)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至高雄會計",
+      "from": "單位會計處理中(物流)",
+      "to": "單位會計處理中(高雄)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "單位會計處理中(物流)",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "入帳完成",
+      "from": "單位會計處理中(高雄)",
+      "to": "請款流程結束",
+      "filterCond": "傳票日期 = THIS_YEAR()",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "駁回",
+      "from": "單位會計處理中(高雄)",
+      "to": "單位會計駁回",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至台北會計",
+      "from": "單位會計處理中(高雄)",
+      "to": "單位會計處理中(台北)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至台北(海運)會計",
+      "from": "單位會計處理中(高雄)",
+      "to": "單位會計處理中(台北海運)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至桃園會計",
+      "from": "單位會計處理中(高雄)",
+      "to": "單位會計處理中(桃園&新竹)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至台中會計",
+      "from": "單位會計處理中(高雄)",
+      "to": "單位會計處理中(台中)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "轉至物流會計",
+      "from": "單位會計處理中(高雄)",
+      "to": "單位會計處理中(物流)",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "單位會計處理中(高雄)",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "再申請",
+      "from": "申請單位主管1駁回",
+      "to": "草稿（未送出）",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "再申請",
+      "from": "申請單位主管1駁回",
+      "to": "草稿（未送出）",
+      "filterCond": "",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "作廢",
+      "from": "申請單位主管1駁回",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "再申請",
+      "from": "申請單位主管2駁回",
+      "to": "草稿（未送出）",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "申請單位主管2駁回",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "再申請",
+      "from": "申請單位主管3駁回",
+      "to": "草稿（未送出）",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "申請單位主管3駁回",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "再申請",
+      "from": "申請單位次長駁回",
+      "to": "草稿（未送出）",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "申請單位次長駁回",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "再申請",
+      "from": "申請單位次長1駁回",
+      "to": "草稿（未送出）",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "申請單位次長1駁回",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "再申請",
+      "from": "申請單位部長駁回",
+      "to": "草稿（未送出）",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "申請單位部長駁回",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "再申請",
+      "from": "單位會計駁回",
+      "to": "草稿（未送出）",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "單位會計駁回",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "提交簽核人2確認",
+      "from": "簽核人確認中[1]",
+      "to": "簽核人確認中[2]",
+      "filterCond": "手動簽核人數 in (\"2人\", \"3人\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[1]",
+      "to": "單位會計處理中(台北)",
+      "filterCond": "手動簽核人數 in (\"1人\") and 會計單位 in (\" GROUP\", \"ACC_TPE\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[1]",
+      "to": "單位會計處理中(台北海運)",
+      "filterCond": "手動簽核人數 in (\"1人\") and 會計單位 in (\" GROUP\", \"ACC_TPE海運\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[1]",
+      "to": "單位會計處理中(桃園&新竹)",
+      "filterCond": "手動簽核人數 in (\"1人\") and 會計單位 in (\" GROUP\", \"ACC_CKS\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[1]",
+      "to": "單位會計處理中(物流)",
+      "filterCond": "手動簽核人數 in (\"1人\") and 會計單位 in (\" GROUP\", \"ACC_NEXT\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[1]",
+      "to": "單位會計處理中(台中)",
+      "filterCond": "手動簽核人數 in (\"1人\") and 會計單位 in (\" GROUP\", \"ACC_TEPZ\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[1]",
+      "to": "單位會計處理中(高雄)",
+      "filterCond": "手動簽核人數 in (\"1人\") and 會計單位 in (\" GROUP\", \"ACC_KHH\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "返回至申請人",
+      "from": "簽核人確認中[1]",
+      "to": "草稿（未送出）",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "簽核人確認中[1]",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "提交簽核人3確認",
+      "from": "簽核人確認中[2]",
+      "to": "簽核人確認中[3]",
+      "filterCond": "手動簽核人數 in (\"3人\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[2]",
+      "to": "單位會計處理中(台北)",
+      "filterCond": "手動簽核人數 in (\"2人\") and 會計單位 in (\" GROUP\", \"ACC_TPE\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[2]",
+      "to": "單位會計處理中(台北海運)",
+      "filterCond": "手動簽核人數 in (\"2人\") and 會計單位 in (\" GROUP\", \"ACC_TPE海運\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[2]",
+      "to": "單位會計處理中(桃園&新竹)",
+      "filterCond": "手動簽核人數 in (\"2人\") and 會計單位 in (\" GROUP\", \"ACC_CKS\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[2]",
+      "to": "單位會計處理中(物流)",
+      "filterCond": "手動簽核人數 in (\"2人\") and 會計單位 in (\" GROUP\", \"ACC_NEXT\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[2]",
+      "to": "單位會計處理中(台中)",
+      "filterCond": "手動簽核人數 in (\"2人\") and 會計單位 in (\" GROUP\", \"ACC_TEPZ\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[2]",
+      "to": "單位會計處理中(高雄)",
+      "filterCond": "手動簽核人數 in (\"2人\") and 會計單位 in (\" GROUP\", \"ACC_KHH\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "返回至申請人",
+      "from": "簽核人確認中[2]",
+      "to": "草稿（未送出）",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "簽核人確認中[2]",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[3]",
+      "to": "單位會計處理中(台北)",
+      "filterCond": "會計單位 in (\" GROUP\", \"ACC_TPE\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[3]",
+      "to": "單位會計處理中(台北海運)",
+      "filterCond": "會計單位 in (\" GROUP\", \"ACC_TPE海運\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[3]",
+      "to": "單位會計處理中(桃園&新竹)",
+      "filterCond": "會計單位 in (\" GROUP\", \"ACC_CKS\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[3]",
+      "to": "單位會計處理中(物流)",
+      "filterCond": "會計單位 in (\" GROUP\", \"ACC_NEXT\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[3]",
+      "to": "單位會計處理中(台中)",
+      "filterCond": "會計單位 in (\" GROUP\", \"ACC_TEPZ\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "提交單位會計入帳",
+      "from": "簽核人確認中[3]",
+      "to": "單位會計處理中(高雄)",
+      "filterCond": "會計單位 in (\" GROUP\", \"ACC_KHH\")",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "返回至申請人",
+      "from": "簽核人確認中[3]",
+      "to": "草稿（未送出）",
+      "filterCond": "",
+      "type": "PRIMARY"
+    },
+    {
+      "name": "作廢",
+      "from": "簽核人確認中[3]",
+      "to": "表單作廢",
+      "filterCond": "表單作廢 in (\"作廢\")",
+      "type": "SECONDARY",
+      "executableUser": {
+        "entities": []
+      }
+    }
+  ],
+  "revision": "2046"
+}

@@ -725,13 +725,13 @@
   });
 
   // ── 手動簽核人（手動簽核人設定.js 用）────────────────────────────
-  //   勾「手動設定簽核流程」→ 跳視窗由申請人指定 1～3 位簽核人，依 FIELDS 順序簽，簽完送 ACCOUNTING_FIELD 指定的會計承辦人。
+  //   勾「手動設定簽核流程」→ 跳視窗由申請人指定 1～3 位簽核人，依 FIELDS 順序簽，簽完和自動單一樣依會計單位送「單位會計處理中(…)」；ACCOUNTING_FIELD 只給畫面路線顯示。
   //   手動模式不用原本的 6 格（單位主管1～單位部長_支店長）：人數歸 0人、欄位清空。
   //   只限 COST_SCOPE.EXEMPT_GROUP 群組的申請人；流程管理依 COUNT_FIELD 決定第 1 關之後送到哪。
   const MANUAL_SIGNERS = Object.freeze({
     FIELDS: Object.freeze(['手動簽核人1', '手動簽核人2', '手動簽核人3']),
     COUNT_FIELD: '手動簽核人數', // DROP_DOWN（1人／2人／3人）；程式依實際填的人數寫入，畫面不顯示
-    ACCOUNTING_FIELD: '手動會計承辦人', // USER_SELECT：簽完送「單位會計處理中」的人（視窗第 4 格）；原本的會計單位承辦人照舊自動帶入
+    ACCOUNTING_FIELD: '手動會計承辦人', // USER_SELECT：依會計對應主檔自動帶入（＝會計單位承辦人），視窗不能選；流程不用它，只給路線顯示
     COUNT_UNIT: '人',
     EDITABLE_STATUSES: Object.freeze([STATUS.REIMBURSEMENT_FILL, STATUS.APPLY_START]), // 另加駁回狀態（REJECT_SUFFIX 結尾）
     REJECT_SUFFIX: '駁回',

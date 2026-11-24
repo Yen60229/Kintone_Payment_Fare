@@ -5,7 +5,7 @@
 //   checkAll(process, config) 每一筆都從草稿（未送出）一路按「送出」走到會計，並在每一關檢查：
 //     - 每一關剛好一顆送出按鈕（不會兩顆、不會卡住）
 //     - 這一關的作業者找得到人（欄位型作業者至少有一個欄位有值）
-//     - 最後停在對的會計狀態（依「會計單位」；手動設定簽核流程的停在「單位會計處理中」）
+//     - 最後停在對的會計狀態（依「會計單位」；舊版流程手動設定簽核流程的停在「單位會計處理中」）
 //
 // 「合法組合」的規則，和簽核人員程式實際會寫的值一致（只列程式寫得出來的；寫不出來的不列，否則會誤報）：
 //   1. 簽核人排「完整鏈」：主管、次長各自靠右對齊（主管 1 人放單位主管3、2 人放主管2＋主管3…；
@@ -19,6 +19,8 @@
 //        - 會計單位承辦人一定有填；流程條件看的是承辦人所屬的組織（MANUAL_ACCOUNTING_ORGS 兩家公司各列一次）
 //        - 簽核人是使用者自己挑的，主管 0～3 人、次長 0～2 人、有無部長都可以
 //   3. 自動排人的單，會計單位是 ACCOUNTING.MAP 六個群組之一
+//   4. 新版手動（流程條件用到「手動簽核人數」）：6 格清空、人數 0人，改填 手動簽核人1～N、手動簽核人數 N人（1～3）；
+//      會計單位和自動一樣帶（六個群組各列一次）；流程裡沒有「單位會計處理中」狀態時，手動也依會計單位停在「單位會計處理中(…)」
 //
 // 簽核人的位置一律靠右對齊；使用者手動亂填（例如只填單位主管1）不在列舉範圍內。
 
@@ -43,6 +45,12 @@ const CREATOR_FIELD = '建立人';
 // 兩家的會計承辦人所屬的組織都要走一遍。
 const MANUAL_ACCOUNTING_ORGS = Object.freeze(['NX臺灣國際物流', '聯海通運股份有限公司']);
 const FAKE_USER = Object.freeze(['U']);
+const MANUAL_SIGNER_COUNTS = Object.freeze([1, 2, 3]);
+const MANUAL_ACCOUNTING_STATE = '單位會計處理中';
+
+/** 流程是不是新版手動設定（簽核人放 手動簽核人1～3，條件看 手動簽核人數） */
+const usesManualSigners = (proc, config) =>
+  Boolean(proc) && proc.actions.some((a) => String(a.filterCond || '').includes(config.MANUAL_SIGNERS.COUNT_FIELD));
 
 /**
  * 簽核人的形狀：有人的簽核欄位、有沒有部長。人數從有人的格子數出來（和簽核人員程式的人數欄位一樣）。
@@ -91,8 +99,9 @@ const autoShapes = () => fullShapes().filter((shape) => shape.hasHead || (shape.
  * @param {string} [o.staffOrg]  手動的單，會計單位承辦人所屬的組織（預設第一個，見 MANUAL_ACCOUNTING_ORGS）
  * @param {string} [o.ownerConfirm]  費用所屬人確認（需要／不需要；空字串＝流程還沒有這個關卡）
  */
-const makeProcessRecord = (config, { manual, accounting, managers, deputies, hasHead, slotValues = {}, staffOrg = MANUAL_ACCOUNTING_ORGS[0], ownerConfirm = '' }) => {
+const makeProcessRecord = (config, { manual, accounting, managers, deputies, hasHead, slotValues = {}, staffOrg = MANUAL_ACCOUNTING_ORGS[0], ownerConfirm = '', manualSigners = 0 }) => {
   const F = config.FIELDS;
+  const MS = config.MANUAL_SIGNERS;
   const record = {
     [F.ACCOUNTING_UNIT]: accounting,
     [F.MANUAL_FLOW]: manual ? config.OPTIONS.MANUAL_FLOW.ON : '',
@@ -108,6 +117,11 @@ const makeProcessRecord = (config, { manual, accounting, managers, deputies, has
   SIGNING_FIELDS.forEach((code) => {
     record[code] = slotValues[code] || [];
   });
+  MS.FIELDS.forEach((code, i) => {
+    record[code] = i < manualSigners ? FAKE_USER : [];
+  });
+  record[MS.COUNT_FIELD] = manualSigners > 0 ? `${manualSigners}人` : '';
+  record[MS.ACCOUNTING_FIELD] = manual ? FAKE_USER : [];
   return record;
 };
 
@@ -123,7 +137,21 @@ function* enumerateRecords(config, proc) {
   const accountingGroups = Object.values(config.ACCOUNTING.MAP);
   const confirmValues = usesOwnerConfirm(proc, config) ? Object.values(config.OPTIONS.OWNER_CONFIRM) : [''];
 
-  for (const manual of [false, true]) {
+  if (usesManualSigners(proc, config)) {
+    // 新版手動：6 格空、人數 0人；手動簽核人 1～3 位；會計單位六個群組各列一次
+    for (const n of MANUAL_SIGNER_COUNTS) {
+      for (const acc of accountingGroups) {
+        for (const ownerConfirm of confirmValues) {
+          const record = makeProcessRecord(config, { manual: true, accounting: acc, managers: 0, deputies: 0, hasHead: false, manualSigners: n, ownerConfirm });
+          const parts = ['手動', `簽核人${n}人`, acc];
+          if (ownerConfirm) parts.push(`費用所屬人確認=${ownerConfirm}`);
+          yield { id: parts.join('／'), record };
+        }
+      }
+    }
+  }
+
+  for (const manual of usesManualSigners(proc, config) ? [false] : [false, true]) {
     // 手動的單會計單位是空的，只列一次，但會計單位承辦人每個組織各列一次；自動的單每個會計單位各列一次
     const accounts = manual ? [''] : accountingGroups;
     const staffOrgs = manual ? MANUAL_ACCOUNTING_ORGS : [undefined];
@@ -210,7 +238,8 @@ const walkAndCheck = (proc, config, record, accountingStates) => {
 
   const last = path[path.length - 1];
   const manual = isFilled(record[F.MANUAL_FLOW]);
-  const expected = manual ? '單位會計處理中' : accountingStates[record[F.ACCOUNTING_UNIT]];
+  const manualState = manual && proc.states[MANUAL_ACCOUNTING_STATE] ? MANUAL_ACCOUNTING_STATE : '';
+  const expected = manualState || accountingStates[record[F.ACCOUNTING_UNIT]];
   if (!expected) problems.push(`會計單位「${record[F.ACCOUNTING_UNIT]}」找不到對應的會計狀態（流程裡沒有作業者是這個群組的「單位會計處理中(…)」）`);
   else if (last !== expected) problems.push(`最後停在「${last}」，應該是「${expected}」；經過 ${path.join(' → ')}`);
   return { path, problems };
@@ -248,6 +277,7 @@ module.exports = {
   walkAndCheck,
   checkAll,
   usesOwnerConfirm,
+  usesManualSigners,
   accountingStateByGroup,
   isFilled,
   SIGNING_FIELDS,

@@ -22,6 +22,7 @@ const { checkButtons } = require('./lib/process_buttons.cjs');
 const { loadConfig, APP_ID } = require('../process_management/load_config.cjs');
 const { latestExport } = require('../process_management/check_process.cjs');
 const { buildProposal, CONFIRM: OWNER_CONFIRMING, REJECT: OWNER_REJECT } = require('../process_management/owner_confirm_proposal.cjs');
+const { buildProposal: buildManualAccounting, MANUAL_ACCOUNTING } = require('../process_management/manual_accounting_proposal.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const EXPORTS_DIR = path.join(ROOT, 'process_management', 'exports');
@@ -580,6 +581,53 @@ check('費用所屬人確認提案：需要的單一定先到確認中，確認�
 check('舊版流程（沒用到費用所屬人確認）維持 126 種假資料，提案流程 252 種', () => {
   assert.strictEqual([...enumerateRecords(CONFIG, EXPORT_CURRENT)].length, 126);
   assert.strictEqual([...enumerateRecords(CONFIG, PROPOSAL)].length, 252);
+});
+
+// ── 9. 手動簽核簽完走自動的會計分流（提案：process_management/manual_accounting_proposal.cjs，來源 758 rev 2046）──
+const SRC_758 = JSON.parse(fs.readFileSync(path.join(ROOT, 'process_management', 'proposals', '758_rev2046_來源.json'), 'utf8'));
+const MANUAL_ACC_PROPOSAL = buildManualAccounting(SRC_758);
+const MS = CONFIG.MANUAL_SIGNERS;
+const isManualRecord = (record) => (record[F.MANUAL_FLOW] || '') !== '';
+
+check('手動走會計分流提案：拿掉「單位會計處理中」狀態與所有進出它的動作；index 連號；不改來源、不能重跑', () => {
+  assert.strictEqual(MANUAL_ACC_PROPOSAL.states[MANUAL_ACCOUNTING], undefined);
+  assert.ok(SRC_758.states[MANUAL_ACCOUNTING], '來源不動');
+  assert.ok(!MANUAL_ACC_PROPOSAL.actions.some((a) => a.from === MANUAL_ACCOUNTING || a.to === MANUAL_ACCOUNTING));
+  const idx = Object.values(MANUAL_ACC_PROPOSAL.states).map((st) => Number(st.index)).sort((a, b) => a - b);
+  assert.deepStrictEqual(idx, idx.map((_, i) => i));
+  assert.throws(() => buildManualAccounting(MANUAL_ACC_PROPOSAL), /沒有/);
+});
+
+check('手動走會計分流提案：簽核人確認中[1～3] 送會計的動作各拆成六條，依會計單位送「單位會計處理中(…)」', () => {
+  const groups = Object.values(CONFIG.ACCOUNTING.MAP);
+  ['簽核人確認中[1]', '簽核人確認中[2]', '簽核人確認中[3]'].forEach((from) => {
+    const toAcc = MANUAL_ACC_PROPOSAL.actions.filter((a) => a.from === from && a.to.startsWith('單位會計處理中('));
+    assert.strictEqual(toAcc.length, 6, from);
+    groups.forEach((g) => assert.ok(toAcc.some((a) => a.filterCond.endsWith(`會計單位 in (" GROUP", "${g}")`)), `${from} ${g}`));
+  });
+});
+
+check('手動走會計分流提案：結構 0 問題；手動的單（簽核人 1～3 位 × 六個會計單位）都走到該會計單位的狀態、作業者找得到人', () => {
+  assert.deepStrictEqual(lintProcess(MANUAL_ACC_PROPOSAL, CONFIG), []);
+  const { failures } = checkAll(MANUAL_ACC_PROPOSAL, CONFIG);
+  assert.deepStrictEqual(failures.filter((x) => isManualRecord(x.record)).map((x) => `${x.id}：${x.message}`), []);
+  let manual = 0;
+  for (const { id, record } of enumerateRecords(CONFIG, MANUAL_ACC_PROPOSAL)) {
+    if (!isManualRecord(record)) continue;
+    manual += 1;
+    const walked = sim.walk(MANUAL_ACC_PROPOSAL, S.START, record, toAccounting);
+    const n = Number(record[MS.COUNT_FIELD].replace('人', ''));
+    assert.ok(walked.some((st) => st === `簽核人確認中[${n}]`), id);
+    assert.ok(walked[walked.length - 1].startsWith('單位會計處理中('), id);
+  }
+  assert.strictEqual(manual, 3 * 6 * 2, '簽核人 3 種 × 會計單位 6 個 × 費用所屬人確認 2 種');
+  const buttons = checkButtons(MANUAL_ACC_PROPOSAL, CONFIG);
+  assert.deepStrictEqual(buttons.failures.filter((x) => isManualRecord(x.record || {})).map((x) => `${x.id}：${x.message}`), []);
+});
+
+check('檢查工具認得新版手動：來源 758 rev 2046 的手動單也 0 問題（停在「單位會計處理中」）；「返回至申請人」不算送出按鈕', () => {
+  const { failures } = checkAll(SRC_758, CONFIG);
+  assert.deepStrictEqual(failures.filter((x) => isManualRecord(x.record)).map((x) => `${x.id}：${x.message}`), []);
 });
 
 console.log(`\n${passed} assertions passed.`);

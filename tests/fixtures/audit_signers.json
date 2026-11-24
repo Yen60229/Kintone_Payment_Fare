@@ -88,7 +88,7 @@
       "單位部長_支店長": { "type": "USER_SELECT", "value": [] },
       "部門主管簽核人數": { "type": "DROP_DOWN", "value": "0人" },
       "部門次長簽核人數": { "type": "DROP_DOWN", "value": "0人" },
-      "會計單位": { "type": "GROUP_SELECT", "value": [] },
+      "會計單位": { "type": "GROUP_SELECT", "value": [{ "code": "ACC_TPE", "name": "ACC_TPE" }] },
       "會計單位承辦人": { "type": "USER_SELECT", "value": [{ "code": "A1", "name": "會計甲" }] },
       "權限開放人員": { "type": "USER_SELECT", "value": [{ "code": "P1", "name": "權限甲" }] },
       "交通費請款單": { "type": "SUBTABLE", "value": [] }

@@ -58,6 +58,8 @@ npm run check:process
 - 目前 749 rev 1795 本身有已知問題，所以會回傳結束代碼 1（見 docs 待決事項）。
 - 產生「費用所屬人確認中」的流程提案檔（只產生檔案，後台照著改）：
   `node process_management/owner_confirm_proposal.cjs <來源匯出檔> <輸出檔>`；提案檔放 `process_management/proposals/`。
+- 產生「手動簽核簽完走自動的會計分流」的提案檔（拿掉「單位會計處理中」，簽核人確認中[1～3] 依會計單位送各會計狀態）：
+  `node process_management/manual_accounting_proposal.cjs <來源匯出檔> <輸出檔>`。
 
 ### 冒煙測試（Playwright，不連 kintone）
 ```bash
