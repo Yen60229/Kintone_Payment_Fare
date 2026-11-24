@@ -193,11 +193,33 @@ const validateNewAccount = ({ code, name }, accounts) => {
   return '';
 };
 
-/** REST 呼叫：測試時注入 api(path, method, params) */
-const defaultApi = (path, method, params) => {
-  // 主檔只有 Administrator 能新增、編輯、檢視：有裝發票登記 plug-in 並設定 Token 時走它的代理（2026-11-24），否則用登入者自己的權限
-  const proxy = window.NX_EMPLOYEE_ACCOUNT_API;
-  return typeof proxy === 'function' ? proxy(path, method, params) : kintone.api(kintone.api.url(path, true), method, params);
+/** 狀態驅動動作外掛丟的錯誤是「API <path> <status>: <回應內容>」：拆出 kintone 的 code／message，讓 createErrorText 判斷得出沒權限 */
+const normalizeSdaError = (err) => {
+  const m = /^API \S+ (\d+): ([\s\S]*)$/.exec(String(err?.message ?? ''));
+  if (!m) return err;
+  let body;
+  try {
+    body = JSON.parse(m[2]) || {};
+  } catch (e) {
+    body = {};
+  }
+  return Object.assign(new Error(body.message || err.message), { code: body.code, status: Number(m[1]) });
+};
+
+/**
+ * 員工匯款帳號主檔的 REST 呼叫（測試時注入 api(path, method, params)）。
+ * 主檔只有 Administrator 能檢視／新增／編輯（2026-11-24）：App 有裝狀態驅動動作外掛時借它的 window.NXSdaApi，
+ *   用外掛「跨 App Token 對應表」裡主檔的 Token（Token 在伺服器端注入，前端拿不到）；沒裝外掛才用登入者自己的權限。
+ *   對應表沒登錄主檔 Token 時外掛自己也會退回登入者權限。正式區、測試區請款單都要裝外掛並登錄主檔 Token。
+ */
+const defaultApi = async (path, method, params) => {
+  const sda = window.NXSdaApi;
+  if (typeof sda?.call !== 'function') return kintone.api(kintone.api.url(path, true), method, params);
+  try {
+    return await sda.call(path, method, params, params.app);
+  } catch (err) {
+    throw normalizeSdaError(err);
+  }
 };
 
 /** 讀主檔全部記錄（依 $id 遞增翻頁，每次 ACCOUNT_PAGE 筆），回傳 normalizeAccounts 的結果 */

@@ -20,35 +20,6 @@
     }
   };
   const appId = tryGet(() => kintone.app.getId()) || tryGet(() => kintone.mobile.app.getId());
-
-  // 員工匯款帳號主檔 API（2026-11-24）：一般填單人對主檔沒權限，改走 plug-in 代理（設定頁存的 Administrator API Token，
-  //   只在伺服器端帶出、前端看不到）。請款單 JS 用 window.NX_EMPLOYEE_ACCOUNT_API(path, method, params)，格式同 kintone.api。
-  //   只開放 GET /k/v1/records、POST /k/v1/record、PUT /k/v1/record（新增、編輯、檢視）。
-  const rawConfig = tryGet(() => JSON.parse(kintone.plugin.app.getConfig(PLUGIN_ID)?.config || '{}')) || {};
-  if (rawConfig.employeeAccountProxy) {
-    const toQuery = (params) => {
-      const parts = [];
-      Object.entries(params || {}).forEach(([k, v]) => {
-        if (Array.isArray(v)) v.forEach((item, i) => parts.push(`${encodeURIComponent(`${k}[${i}]`)}=${encodeURIComponent(item)}`));
-        else if (v !== undefined && v !== null) parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
-      });
-      return parts.join('&');
-    };
-    window.NX_EMPLOYEE_ACCOUNT_API = async (path, method, params) => {
-      const base = `${location.origin}${path}.json`;
-      const isGet = method === 'GET';
-      const url = isGet ? `${base}?${toQuery(params)}` : base;
-      const [body, status] = await kintone.plugin.app.proxy(PLUGIN_ID, url, method, { 'Content-Type': 'application/json' }, isGet ? {} : params);
-      let data = {};
-      try {
-        data = JSON.parse(body);
-      } catch (e) {
-        data = {};
-      }
-      if (status !== 200) throw Object.assign(new Error(data.message || `HTTP ${status}`), { code: data.code, status });
-      return data;
-    };
-  }
   const config = Core.parseConfig(kintone.plugin.app.getConfig(PLUGIN_ID), appId);
   if (!config) {
     console.warn('[發票登記] plug-in 還沒設定，不檢查發票號碼');

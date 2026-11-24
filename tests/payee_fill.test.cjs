@@ -247,6 +247,26 @@ check('新增員工帳號：POST 一筆（員工編號＋中文姓名）；沒�
   assert.strictEqual(P.createErrorText({ message: '重複' }), '新增失敗：重複');
 });
 
+check('主檔 API：有狀態驅動動作外掛就借 NXSdaApi（第 4 個參數＝主檔 App 取 Token）；外掛的錯誤拆出 code 判斷沒權限', async () => {
+  const appId = global.window.PR_CONFIG.APPS.EMPLOYEE_ACCOUNT;
+  const calls = [];
+  global.window.NXSdaApi = { call: async (...a) => (calls.push(a), { id: '9' }) };
+  try {
+    await P.createAccount({ code: '00999', name: '林' });
+    assert.deepStrictEqual(calls, [['/k/v1/record', 'POST', { app: appId, record: { five_digit_num: { value: '00999' }, chinese_name: { value: '林' } } }, appId]]);
+    global.window.NXSdaApi = {
+      call: async () => {
+        throw new Error('API /k/v1/record 403: {"code":"CB_NO02","id":"x","message":"沒有權限"}');
+      },
+    };
+    const err = await P.createAccount({ code: '00998', name: '林' }).then(() => null, (e) => e);
+    assert.strictEqual(err.code, 'CB_NO02');
+    assert.ok(P.createErrorText(err).includes('沒有新增員工帳號的權限'));
+  } finally {
+    delete global.window.NXSdaApi;
+  }
+});
+
 check('選擇員工：沒有 SweetAlert 開不了視窗 → alert 提示手動輸入、受款人不動', () => {
   alerts.length = 0;
   currentRecord = recordWithApplicant(null);
