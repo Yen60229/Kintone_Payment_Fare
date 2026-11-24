@@ -556,7 +556,7 @@
 
   // ── 批次填傳票／入帳完成（批次填傳票_入帳完成.js 用，2026-11-18 從請購庶務搬來）────────────
   //   FROM_STATUSES：流程管理裡「入帳完成」動作所在的七個單位會計狀態（要與後台一字不差，含半形括號與 &）。
-  //   ASSIGNEE_FIELD：流程「作業者」欄位（STATUS_ASSIGNEE）代碼；只有目前作業者本人能執行動作，所以只列自己的單。
+  //   ASSIGNEE_FIELD：流程「作業者」欄位（STATUS_ASSIGNEE）代碼；只有目前作業者本人能執行動作。（2026-11-24）視窗改列所有看得到的單；不是執行者但在該單「會計單位」群組裡的人，執行前透過狀態驅動動作外掛（NXSdaApi）把自己加進執行者（改執行者需要 App 管理權限，外掛 token 要勾）。
   const BATCH_VOUCHER = Object.freeze({
     ACTION: '入帳完成', // 動作名稱（不是狀態值，見 ACTIONS 註解）
     TARGET_STATUS: '請款流程結束', // 執行動作後到達的狀態
@@ -570,6 +570,8 @@
       '單位會計處理中',
     ]),
     ASSIGNEE_FIELD: '執行者',
+    ACCOUNTING_UNIT_FIELD: FIELDS.ACCOUNTING_UNIT, // GROUP_SELECT：在這些群組裡的人才能把自己加進執行者
+    ASSIGNEE_MAX: 100, // kintone 執行者上限
     CHUNK_SIZE: 100, // REST API 單次 PUT 上限
     PAGE_LIMIT: 500, // 查詢每頁筆數
   });
