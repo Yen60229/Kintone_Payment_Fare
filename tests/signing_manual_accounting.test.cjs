@@ -193,13 +193,13 @@ const check = async (label, fn) => {
     await fire(ORG_CHANGE);
     assert.deepStrictEqual(T.env.live[F.ACCOUNTING_STAFF].value.map((u) => u.code), ['S1'], '原本的欄位照舊重帶');
     assert.deepStrictEqual(T.env.live[MANUAL_ACC].value.map((u) => u.code), ['S1'], '舊的手動會計承辦人也蓋成自動帶入的人');
-    assert.deepStrictEqual(offered, [['S1']]);
+    assert.deepStrictEqual(offered, [['ACC_TPE']], '通知的是會計單位');
 
     T.env.live = makeLive({ manual: true });
     await fire(ORG_CHANGE);
     assert.deepStrictEqual(T.env.live[MANUAL_ACC].value.map((u) => u.code), ['S1']);
     assert.strictEqual(T.env.live[MANUAL_ACC].disabled, true);
-    assert.deepStrictEqual(offered, [['S1'], ['S1']]);
+    assert.deepStrictEqual(offered, [['ACC_TPE'], ['ACC_TPE']]);
 
     T.env.live = makeLive({ manual: false });
     await fire(ORG_CHANGE);

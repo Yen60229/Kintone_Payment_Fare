@@ -484,9 +484,18 @@ check('COST_SCOPE：排除群組「費用歸屬不限部門」、組織樹快取
 });
 
 // ── ACCOUNTING ─────────────────────────────────────────────────────
-check('ACCOUNTING 只剩 MAP 六個會計群組；依費用歸屬據點判斷的機場／海運特殊代碼已刪（會計單位只依費用所屬人部門）', () => {
+check('ACCOUNTING 只有 MAP 六個會計群組與 LABELS 中文名；依費用歸屬據點判斷的機場／海運特殊代碼已刪（會計單位只依費用所屬人部門）', () => {
   assert.deepStrictEqual({ ...c.ACCOUNTING.MAP }, { TPE: 'ACC_TPE', TPE海運: 'ACC_TPE海運', CKS: 'ACC_CKS', KHH: 'ACC_KHH', TEPZ: 'ACC_TEPZ', NEXT: 'ACC_NEXT' });
-  assert.deepStrictEqual(Object.keys(c.ACCOUNTING), ['MAP']);
+  assert.deepStrictEqual(Object.keys(c.ACCOUNTING), ['MAP', 'LABELS']);
+  // 每個會計群組都有中文名，而且和流程狀態「單位會計處理中(○○)」括號內一致
+  assert.deepStrictEqual(Object.keys(c.ACCOUNTING.LABELS).sort(), Object.values(c.ACCOUNTING.MAP).sort());
+  const src = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'process_management', 'proposals', '758_rev2046_來源.json'), 'utf8'));
+  Object.values(src.states).forEach((st) => {
+    const m = /^單位會計處理中\((.+)\)$/.exec(st.name);
+    if (!m) return;
+    const group = st.assignee.entities.find(({ entity }) => entity.type === 'GROUP').entity.code;
+    assert.strictEqual(c.ACCOUNTING.LABELS[group], m[1], st.name);
+  });
 });
 
 check('SIGNING（「所／中心 → 部」補前綴對應）已刪：簽核流程主檔改用組織欄位「簽核所屬單位」查，不再拼名稱', () => {

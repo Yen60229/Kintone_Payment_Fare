@@ -583,12 +583,12 @@ function setAccountingUnit(orgName) {
 
       // API 回來時使用者可能剛勾選手動，所以看寫入當下的畫面資料，不看呼叫當時的狀態
       const updateRecord = KT.record().get();
-      const { hasAccount, isManual, staff } = fillAccounting(updateRecord.record, accountData);
+      const { hasAccount, isManual } = fillAccounting(updateRecord.record, accountData);
 
       KT.record().setFieldShown(F.ACCOUNTING_UNIT, hasAccount);
       KT.record().set(updateRecord);
-      // 手動模式：手動會計承辦人已在 fillAccounting 自動帶入，按鈕旁的簽核路線跟著重畫
-      if (isManual) MANUAL_SIGNERS.offerAccounting(staff);
+      // 手動模式：簽核路線的「會計」顯示會計單位群組，帶入後視窗預覽與按鈕旁的路線跟著重畫
+      if (isManual) MANUAL_SIGNERS.offerAccounting(updateRecord.record[F.ACCOUNTING_UNIT]?.value || []);
     }).catch((err) => console.error('[簽核人員] 帶入會計單位失敗:', err)),
     function (error) {
       console.error('API錯誤:', error);

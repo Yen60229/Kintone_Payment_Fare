@@ -182,6 +182,9 @@ const button = (className, text, onClick) => {
 
 const namesOf = (list) => list.map((u) => u.name).join('、');
 
+/** 會計單位（GROUP_SELECT 的值）的中文名：對照 ACCOUNTING.LABELS，對照不到顯示代碼 */
+const accountingLabelOf = (list) => list.map((g) => C.ACCOUNTING?.LABELS?.[g.code] || g.name || g.code).join('、');
+
 /**
  * 簽核路線：申請人 → 第 1～3 關 → 會計入帳。視窗上方的預覽與表單上按鈕旁的路線共用。
  * 最多 5 站（申請人＋3 位簽核人＋會計），每站一顆圓燈、名字寫在燈旁邊且完整顯示（名字再長也不截斷）；
@@ -209,7 +212,7 @@ const routeList = ({ applicant, signers, staff, live = false }) => {
   filled.forEach((u, i) => stop('signer', `第 ${i + 1} 關`, u.name));
   if (filled.length === 0) stop('signer', '第 1 關', '', { next: live });
   else if (live && filled.length < 3) stop('signer', `第 ${filled.length + 1} 關`, '', { optional: true, next: true });
-  stop('end', '會計', staff.length > 0 ? namesOf(staff) : '自動帶入');
+  stop('end', '會計', staff.length > 0 ? accountingLabelOf(staff) : '依會計單位自動帶入');
   return list;
 };
 
@@ -218,8 +221,8 @@ let activeDialog = null; // 開著的視窗；會計承辦人比視窗晚帶入�
 
 /**
  * 開「指定簽核人」視窗（SweetAlert，內容與按鈕樣式在 payment_request.css 的 .pr-signer*）。
- * 三格是簽核人（依序簽）；會計承辦人自動帶入，只顯示在路線預覽（accounting），不能在這裡選。
- * @param {{ initial: Array<{code,name}|null>, applicant: {code,name}|null, accounting?: Array<{code,name}> }} p
+ * 三格是簽核人（依序簽）；會計是會計單位群組（自動帶入），只顯示在路線預覽（accounting），不能在這裡選。
+ * @param {{ initial: Array<{code,name}|null>, applicant: {code,name}|null, accounting?: Array<{code,name}> }} p  accounting：會計單位（GROUP_SELECT 的值）
  * @returns {Promise<{ signers: Array<{code,name}|null> }|null>} 按確定回傳選好的人；取消／Esc 回傳 null
  */
 const openDialog = ({ initial, applicant, accounting }) => {
@@ -427,7 +430,7 @@ const openDialog = ({ initial, applicant, accounting }) => {
   };
 
   activeDialog = {
-    /** 會計承辦人自動帶入（可能比視窗晚到）：更新路線預覽 */
+    /** 會計單位自動帶入（可能比視窗晚到）：更新路線預覽 */
     offerAccounting: (list) => {
       staff = (list || []).map(toUser).filter(Boolean);
       render(-1);
@@ -501,7 +504,7 @@ const renderButton = (record) => {
     return;
   }
   const filled = signersOf(record).filter(Boolean);
-  const staff = (record[CFG.ACCOUNTING_FIELD]?.value || []).map(toUser).filter(Boolean);
+  const staff = (record[F.ACCOUNTING_UNIT]?.value || []).map(toUser).filter(Boolean); // 會計那站顯示會計單位群組
   const wrap = el('div', 'pr-signer-entry');
   wrap.appendChild(button('pr-signer-entry__btn', filled.length > 0 ? '更改簽核人' : '設定簽核人', () => open()));
   if (filled.length > 0) {
@@ -521,7 +524,7 @@ const open = () => {
   return openDialog({
     initial: signersOf(record),
     applicant,
-    accounting: record[CFG.ACCOUNTING_FIELD]?.value || [],
+    accounting: record[F.ACCOUNTING_UNIT]?.value || [],
   }).then((result) => {
     if (!result) {
       // 按取消而且一位簽核人都沒指定：手動設定沒有意義，取消勾選、改回系統自動排人
@@ -566,7 +569,7 @@ export const MANUAL_SIGNERS = Object.freeze({
   validate,
   openDialog,
   open,
-  /** 會計承辦人自動帶入後呼叫（signing_personnel_manager）：開著的視窗路線預覽更新，按鈕旁的順序也重畫 */
+  /** 會計單位自動帶入後呼叫（signing_personnel_manager，傳會計單位的值）：開著的視窗路線預覽更新，按鈕旁的順序也重畫 */
   offerAccounting: (list) => {
     activeDialog?.offerAccounting(list);
     renderButton(KT.record().get().record);

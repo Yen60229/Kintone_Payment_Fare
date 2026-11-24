@@ -256,6 +256,8 @@
   //   這裡列出全部會計群組，給流程管理檢查（process_management）比對用。群組代碼依環境，見 ENV_SETTINGS 的 ACCOUNTING_MAP。
   const ACCOUNTING = Object.freeze({
     MAP: ENV_CFG.ACCOUNTING_MAP,
+    // 會計單位代碼 → 中文名（和流程狀態「單位會計處理中(○○)」括號內一字不差；手動簽核人設定的簽核路線用，和請購庶務一致）
+    LABELS: Object.freeze({ ACC_TPE: '台北', ACC_TPE海運: '台北海運', ACC_CKS: '桃園&新竹', ACC_TEPZ: '台中', ACC_NEXT: '物流', ACC_KHH: '高雄' }),
   });
 
   // ── 預計付款日 ─────────────────────────────────────────────────────────────

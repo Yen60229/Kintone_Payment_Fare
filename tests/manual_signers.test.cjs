@@ -264,14 +264,14 @@ check('視窗：上方「簽核會經過」一行最多 5 格、即時更新；�
   const route = () => routeOf(box());
   const next = () => findAll(box(), 'is-next').map((li) => find(li, 'pr-route__label').textContent);
   assert.strictEqual(find(d.root, 'pr-signer__route-title').textContent, '簽核會經過');
-  assert.deepStrictEqual(route(), ['申請人 申請人甲', '第 1 關 尚未指定', '會計 自動帶入']);
+  assert.deepStrictEqual(route(), ['申請人 申請人甲', '第 1 關 尚未指定', '會計 依會計單位自動帶入']);
   assert.strictEqual(findAll(box(), 'is-empty').length, 1);
   assert.deepStrictEqual(next(), ['第 1 關']);
   (await d.type(0, '王小明'))[0].click();
-  assert.deepStrictEqual(route(), ['申請人 申請人甲', '第 1 關 王小明', '第 2 關 可不填', '會計 自動帶入']);
+  assert.deepStrictEqual(route(), ['申請人 申請人甲', '第 1 關 王小明', '第 2 關 可不填', '會計 依會計單位自動帶入']);
   assert.deepStrictEqual(next(), ['第 2 關']);
   (await d.type(1, '李美玲'))[0].click();
-  assert.deepStrictEqual(route(), ['申請人 申請人甲', '第 1 關 王小明', '第 2 關 李美玲', '第 3 關 可不填', '會計 自動帶入']);
+  assert.deepStrictEqual(route(), ['申請人 申請人甲', '第 1 關 王小明', '第 2 關 李美玲', '第 3 關 可不填', '會計 依會計單位自動帶入']);
   assert.strictEqual(findAll(box(), 'pr-route__stop').length, 5, '最多 5 格');
   assert.strictEqual(findAll(box(), 'is-empty').length, 0, '可不填是選填，不標紅');
 });
@@ -368,7 +368,7 @@ check('視窗：會計承辦人比視窗晚帶入 → 路線預覽跟著更新�
   t.env.currentRecord = recordOf({ signers: [] });
   const d = await openWith(t, { initial: [], accounting: [] });
   const last = () => routeOf(find(d.root, 'pr-signer__route')).slice(-1)[0];
-  assert.strictEqual(last(), '會計 自動帶入');
+  assert.strictEqual(last(), '會計 依會計單位自動帶入');
   t.M.offerAccounting([U('ACC2', '會計李')]);
   assert.strictEqual(last(), '會計 會計李');
   t.M.offerAccounting([U('ACC3', '會計陳')]);
@@ -488,7 +488,8 @@ check('詳細畫面：手動模式只顯示有填的格子', async () => {
 
 check('按「設定簽核人」→ 選人按完成 → 寫回畫面（三格、人數並鎖住；會計承辦人不動），按鈕改成「更改簽核人」並列出順序', async () => {
   const t = setup();
-  t.env.currentRecord = recordOf({ signers: [], staff: [U('a01', '王小明')] });
+  t.env.currentRecord = recordOf({ signers: [] });
+  t.env.currentRecord['會計單位'] = { type: 'GROUP_SELECT', value: [{ code: 'ACC_TPE', name: 'ACC_TPE' }] };
   await t.env.fire('app.record.create.show', { record: t.env.currentRecord });
   find(t.env.spaces[t.C.SPACES.MANUAL_SIGNERS], 'pr-signer-entry__btn').click();
   await settle();
@@ -514,12 +515,13 @@ check('按「設定簽核人」→ 選人按完成 → 寫回畫面（三格、�
   assert.strictEqual(live[S[0]].disabled, true);
   assert.deepStrictEqual(
     Array.from(live['手動會計承辦人'].value, (u) => u.code),
-    ['a01'],
+    ['ACC1'],
+    '視窗不動手動會計承辦人',
   );
   assert.strictEqual(live['手動會計承辦人'].disabled, true);
   const entry = t.env.spaces[t.C.SPACES.MANUAL_SIGNERS].children[0];
   assert.strictEqual(find(entry, 'pr-signer-entry__btn').textContent, '更改簽核人');
-  assert.deepStrictEqual(routeOf(entry), ['申請人 申請人甲', '第 1 關 李美玲', '第 2 關 王大同', '會計 王小明']);
+  assert.deepStrictEqual(routeOf(entry), ['申請人 申請人甲', '第 1 關 李美玲', '第 2 關 王大同', '會計 台北'], '會計顯示會計單位的中文名');
   assert.strictEqual(find(entry, 'pr-signer-entry__summary'), undefined);
   assert.strictEqual(findAll(entry, 'is-next').length, 0, '表單上的路線不閃呼吸燈、也不加「可不填」');
 });
